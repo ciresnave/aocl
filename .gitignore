@@ -1,0 +1,19 @@
+/target
+**/*.rs.bk
+Cargo.lock.bak
+
+# Rust profile-guided / coverage artifacts that some toolchains drop in the
+# crate root rather than under target/.
+**/*.profraw
+**/*.profdata
+
+# AMD-copyrighted reference docs the user keeps locally — must not be
+# committed to a public repo.
+/AMD Docs/
+
+# OS / editor
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

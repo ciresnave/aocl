@@ -1,0 +1,19 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/aocl-sys",
+    "crates/aocl",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/ciresnave/aocl"
+authors = ["Eric Evans <ciresnave@gmail.com>"]
+
+[workspace.dependencies]
+libc = "0.2"
+thiserror = "1"
+bindgen = "0.69"

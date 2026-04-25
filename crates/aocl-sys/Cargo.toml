@@ -1,0 +1,48 @@
+[package]
+name = "aocl-sys"
+description = "Unsafe FFI bindings to AMD AOCL (AMD Optimizing CPU Libraries)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+build = "build.rs"
+links = "aocl"
+categories = ["external-ffi-bindings", "science", "mathematics"]
+keywords = ["aocl", "amd", "blas", "lapack", "ffi"]
+
+[features]
+# By default we wire up the most commonly-used AOCL components plus utils
+# (CPU identification — extremely lightweight). Users can disable defaults
+# and pick exactly what they need.
+default = ["utils"]
+
+# --- Library-component features ----------------------------------------------
+# Each gates bindings + linking for one AOCL component. Enabling the feature
+# requires the corresponding component to be present under $AOCL_ROOT.
+blis = []
+libflame = []
+fftw = []
+libm = []
+sparse = []
+rng = []
+securerng = []
+utils = []
+compression = []
+crypto = []
+data-analytics = []
+scalapack = []
+
+# --- Build-mode features -----------------------------------------------------
+# Use 64-bit integer indexing (LAPACK/BLAS "ILP64"). Default = LP64 (32-bit).
+ilp64 = []
+# Statically link AOCL libraries. Default = dynamically link.
+static-link = []
+
+[dependencies]
+libc.workspace = true
+
+[build-dependencies]
+bindgen.workspace = true

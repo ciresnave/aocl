@@ -1,0 +1,37 @@
+[package]
+name = "aocl"
+description = "Safe, idiomatic Rust wrappers for AMD AOCL (AMD Optimizing CPU Libraries)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+categories = ["science", "mathematics", "api-bindings"]
+keywords = ["aocl", "amd", "blas", "lapack", "math"]
+
+[features]
+# Library-component features forward to aocl-sys.
+default = ["utils"]
+
+blis = ["aocl-sys/blis"]
+libflame = ["aocl-sys/libflame"]
+fftw = ["aocl-sys/fftw"]
+libm = ["aocl-sys/libm"]
+sparse = ["aocl-sys/sparse"]
+rng = ["aocl-sys/rng"]
+securerng = ["aocl-sys/securerng"]
+utils = ["aocl-sys/utils"]
+compression = ["aocl-sys/compression"]
+crypto = ["aocl-sys/crypto"]
+data-analytics = ["aocl-sys/data-analytics"]
+scalapack = ["aocl-sys/scalapack"]
+
+# Build modes (forwarded).
+ilp64 = ["aocl-sys/ilp64"]
+static-link = ["aocl-sys/static-link"]
+
+[dependencies]
+aocl-sys = { path = "../aocl-sys", version = "0.1", default-features = false }
+thiserror.workspace = true
