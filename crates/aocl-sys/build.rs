@@ -240,10 +240,42 @@ fn int_subdir(only_lp64: bool) -> &'static str {
     }
 }
 
+/// On Windows, if neither `LIBCLANG_PATH` nor `LLVM_CONFIG_PATH` is set, try
+/// the standard LLVM install locations. Without this, on systems where
+/// another libclang appears earlier on `PATH` (e.g. the one bundled with the
+/// Swift toolchain) `clang-sys` can pick that up, which breaks parsing of
+/// the x86 intrinsic headers AOCL pulls in.
+fn ensure_libclang_path() {
+    if env::var_os("LIBCLANG_PATH").is_some()
+        || env::var_os("LLVM_CONFIG_PATH").is_some()
+    {
+        return;
+    }
+    if cfg!(target_os = "windows") {
+        for candidate in [
+            r"C:\Program Files\LLVM\bin",
+            r"C:\Program Files (x86)\LLVM\bin",
+        ] {
+            let p = std::path::PathBuf::from(candidate);
+            if p.join("libclang.dll").exists() {
+                println!(
+                    "cargo:warning=auto-detected libclang at {}",
+                    p.display()
+                );
+                env::set_var("LIBCLANG_PATH", &p);
+                return;
+            }
+        }
+    }
+}
+
 fn main() {
     println!("cargo:rerun-if-env-changed=AOCL_ROOT");
+    println!("cargo:rerun-if-env-changed=LIBCLANG_PATH");
     println!("cargo:rerun-if-changed=wrapper");
     println!("cargo:rerun-if-changed=build.rs");
+
+    ensure_libclang_path();
 
     let static_link = feature_enabled("static-link");
     let ilp64 = feature_enabled("ilp64");
@@ -320,6 +352,9 @@ fn main() {
         }
         println!("cargo:rerun-if-changed={}", wrapper_path.display());
 
+        let target_arch =
+            env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+
         let mut builder = bindgen::Builder::default()
             .header(wrapper_path.to_string_lossy())
             // Primary include for this component's headers.
@@ -344,6 +379,18 @@ fn main() {
 
         for inc in lib.extra_includes {
             builder = builder.clang_arg(format!("-I{inc}"));
+        }
+
+        // Several AOCL components include x86 SIMD intrinsic headers
+        // (mmintrin.h, immintrin.h, ...). Without explicit target-feature
+        // flags, clang refuses to parse the vector-type definitions.
+        // Enabling SSE4.2 + AVX2 covers everything AOCL ships and is a
+        // safe baseline for any modern AMD CPU.
+        if target_arch == "x86_64" || target_arch == "x86" {
+            builder = builder
+                .clang_arg("-msse4.2")
+                .clang_arg("-mavx2")
+                .clang_arg("-mfma");
         }
 
         if ilp64 {
