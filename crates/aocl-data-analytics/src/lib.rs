@@ -102,6 +102,30 @@ fn check_matrix(
     Ok(())
 }
 
+/// Method used for quantile computation. Each variant matches one of
+/// the nine standard quantile types (Hyndman & Fan 1996); types 6 and 7
+/// are the most commonly used.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum QuantileType {
+    Type1, Type2, Type3, Type4, Type5, Type6, Type7, Type8, Type9,
+}
+
+impl QuantileType {
+    fn raw(self) -> sys::da_quantile_type {
+        match self {
+            QuantileType::Type1 => sys::da_quantile_type__da_quantile_type_1,
+            QuantileType::Type2 => sys::da_quantile_type__da_quantile_type_2,
+            QuantileType::Type3 => sys::da_quantile_type__da_quantile_type_3,
+            QuantileType::Type4 => sys::da_quantile_type__da_quantile_type_4,
+            QuantileType::Type5 => sys::da_quantile_type__da_quantile_type_5,
+            QuantileType::Type6 => sys::da_quantile_type__da_quantile_type_6,
+            QuantileType::Type7 => sys::da_quantile_type__da_quantile_type_7,
+            QuantileType::Type8 => sys::da_quantile_type__da_quantile_type_8,
+            QuantileType::Type9 => sys::da_quantile_type__da_quantile_type_9,
+        }
+    }
+}
+
 /// Scalar element type usable with the wrapped DA routines.
 pub trait Scalar: Copy + Sized + Sealed {
     /// Compute means along `axis` for an `n_rows × n_cols` matrix.
@@ -134,10 +158,100 @@ pub trait Scalar: Copy + Sized + Sealed {
         mean_out: &mut [Self],
         variance_out: &mut [Self],
     ) -> Result<()>;
+
+    /// Geometric mean. Requires non-negative data.
+    #[allow(clippy::too_many_arguments)]
+    fn geometric_mean(
+        layout: Layout, axis: Axis, n_rows: usize, n_cols: usize,
+        x: &[Self], ldx: usize, out: &mut [Self],
+    ) -> Result<()>;
+
+    /// Harmonic mean.
+    #[allow(clippy::too_many_arguments)]
+    fn harmonic_mean(
+        layout: Layout, axis: Axis, n_rows: usize, n_cols: usize,
+        x: &[Self], ldx: usize, out: &mut [Self],
+    ) -> Result<()>;
+
+    /// Mean, variance, and skewness together.
+    #[allow(clippy::too_many_arguments)]
+    fn skewness(
+        layout: Layout, axis: Axis, n_rows: usize, n_cols: usize,
+        x: &[Self], ldx: usize,
+        mean_out: &mut [Self], variance_out: &mut [Self], skew_out: &mut [Self],
+    ) -> Result<()>;
+
+    /// Mean, variance, and excess kurtosis together (Fisher convention,
+    /// so a normal distribution scores zero).
+    #[allow(clippy::too_many_arguments)]
+    fn kurtosis(
+        layout: Layout, axis: Axis, n_rows: usize, n_cols: usize,
+        x: &[Self], ldx: usize,
+        mean_out: &mut [Self], variance_out: &mut [Self], kurtosis_out: &mut [Self],
+    ) -> Result<()>;
+
+    /// `k`-th central moment. If `mean_out` already holds means and
+    /// `use_precomputed_mean` is true, those means are used; otherwise
+    /// they are computed and stored.
+    #[allow(clippy::too_many_arguments)]
+    fn moment(
+        layout: Layout, axis: Axis, n_rows: usize, n_cols: usize,
+        x: &[Self], ldx: usize, k: i64, use_precomputed_mean: bool,
+        mean_out: &mut [Self], moment_out: &mut [Self],
+    ) -> Result<()>;
+
+    /// Quantile of the data along `axis`. `q` ∈ [0, 1].
+    #[allow(clippy::too_many_arguments)]
+    fn quantile(
+        layout: Layout, axis: Axis, n_rows: usize, n_cols: usize,
+        x: &[Self], ldx: usize, q: Self,
+        quantile_out: &mut [Self], qtype: QuantileType,
+    ) -> Result<()>;
+
+    /// Min, lower hinge (25th percentile), median, upper hinge
+    /// (75th percentile), max — Tukey's "five-number summary".
+    #[allow(clippy::too_many_arguments)]
+    fn five_point_summary(
+        layout: Layout, axis: Axis, n_rows: usize, n_cols: usize,
+        x: &[Self], ldx: usize,
+        min: &mut [Self], lower: &mut [Self], median: &mut [Self],
+        upper: &mut [Self], max: &mut [Self],
+    ) -> Result<()>;
+
+    /// Compute the `n_cols × n_cols` covariance matrix (rows are
+    /// observations). `dof` follows the same convention as `variance`.
+    #[allow(clippy::too_many_arguments)]
+    fn covariance_matrix(
+        layout: Layout, n_rows: usize, n_cols: usize,
+        x: &[Self], ldx: usize, dof: i64,
+        cov: &mut [Self], ldcov: usize,
+    ) -> Result<()>;
+
+    /// Compute the `n_cols × n_cols` correlation matrix (rows are
+    /// observations).
+    #[allow(clippy::too_many_arguments)]
+    fn correlation_matrix(
+        layout: Layout, n_rows: usize, n_cols: usize,
+        x: &[Self], ldx: usize,
+        corr: &mut [Self], ldcorr: usize,
+    ) -> Result<()>;
 }
 
 macro_rules! impl_scalar {
-    ($t:ty, $mean:ident, $variance:ident) => {
+    (
+        $t:ty,
+        mean = $mean:ident,
+        variance = $variance:ident,
+        geometric_mean = $gmean:ident,
+        harmonic_mean = $hmean:ident,
+        skewness = $skew:ident,
+        kurtosis = $kurt:ident,
+        moment = $moment:ident,
+        quantile = $quant:ident,
+        five_point_summary = $fps:ident,
+        covariance_matrix = $cov:ident,
+        correlation_matrix = $corr:ident
+    ) => {
         impl Scalar for $t {
             fn mean(
                 layout: Layout,
@@ -203,12 +317,258 @@ macro_rules! impl_scalar {
                 };
                 check_status("data-analytics", status)
             }
+
+            fn geometric_mean(
+                layout: Layout, axis: Axis, n_rows: usize, n_cols: usize,
+                x: &[Self], ldx: usize, out: &mut [Self],
+            ) -> Result<()> {
+                check_matrix("geometric_mean: X", layout, n_rows, n_cols, ldx, x.len())?;
+                let need = axis.output_len(n_rows, n_cols);
+                if out.len() < need {
+                    return Err(Error::InvalidArgument(format!(
+                        "geometric_mean: out length {} < required {need}", out.len()
+                    )));
+                }
+                let status = unsafe {
+                    sys::$gmean(
+                        layout_raw(layout), axis.raw(),
+                        n_rows as sys::da_int, n_cols as sys::da_int,
+                        x.as_ptr(), ldx as sys::da_int, out.as_mut_ptr(),
+                    )
+                };
+                check_status("data-analytics", status)
+            }
+
+            fn harmonic_mean(
+                layout: Layout, axis: Axis, n_rows: usize, n_cols: usize,
+                x: &[Self], ldx: usize, out: &mut [Self],
+            ) -> Result<()> {
+                check_matrix("harmonic_mean: X", layout, n_rows, n_cols, ldx, x.len())?;
+                let need = axis.output_len(n_rows, n_cols);
+                if out.len() < need {
+                    return Err(Error::InvalidArgument(format!(
+                        "harmonic_mean: out length {} < required {need}", out.len()
+                    )));
+                }
+                let status = unsafe {
+                    sys::$hmean(
+                        layout_raw(layout), axis.raw(),
+                        n_rows as sys::da_int, n_cols as sys::da_int,
+                        x.as_ptr(), ldx as sys::da_int, out.as_mut_ptr(),
+                    )
+                };
+                check_status("data-analytics", status)
+            }
+
+            fn skewness(
+                layout: Layout, axis: Axis, n_rows: usize, n_cols: usize,
+                x: &[Self], ldx: usize,
+                mean_out: &mut [Self], variance_out: &mut [Self], skew_out: &mut [Self],
+            ) -> Result<()> {
+                check_matrix("skewness: X", layout, n_rows, n_cols, ldx, x.len())?;
+                let need = axis.output_len(n_rows, n_cols);
+                if mean_out.len() < need || variance_out.len() < need || skew_out.len() < need {
+                    return Err(Error::InvalidArgument(format!(
+                        "skewness: outputs must hold {need} elements"
+                    )));
+                }
+                let status = unsafe {
+                    sys::$skew(
+                        layout_raw(layout), axis.raw(),
+                        n_rows as sys::da_int, n_cols as sys::da_int,
+                        x.as_ptr(), ldx as sys::da_int,
+                        mean_out.as_mut_ptr(), variance_out.as_mut_ptr(), skew_out.as_mut_ptr(),
+                    )
+                };
+                check_status("data-analytics", status)
+            }
+
+            fn kurtosis(
+                layout: Layout, axis: Axis, n_rows: usize, n_cols: usize,
+                x: &[Self], ldx: usize,
+                mean_out: &mut [Self], variance_out: &mut [Self], kurtosis_out: &mut [Self],
+            ) -> Result<()> {
+                check_matrix("kurtosis: X", layout, n_rows, n_cols, ldx, x.len())?;
+                let need = axis.output_len(n_rows, n_cols);
+                if mean_out.len() < need || variance_out.len() < need || kurtosis_out.len() < need {
+                    return Err(Error::InvalidArgument(format!(
+                        "kurtosis: outputs must hold {need} elements"
+                    )));
+                }
+                let status = unsafe {
+                    sys::$kurt(
+                        layout_raw(layout), axis.raw(),
+                        n_rows as sys::da_int, n_cols as sys::da_int,
+                        x.as_ptr(), ldx as sys::da_int,
+                        mean_out.as_mut_ptr(), variance_out.as_mut_ptr(), kurtosis_out.as_mut_ptr(),
+                    )
+                };
+                check_status("data-analytics", status)
+            }
+
+            fn moment(
+                layout: Layout, axis: Axis, n_rows: usize, n_cols: usize,
+                x: &[Self], ldx: usize, k: i64, use_precomputed_mean: bool,
+                mean_out: &mut [Self], moment_out: &mut [Self],
+            ) -> Result<()> {
+                check_matrix("moment: X", layout, n_rows, n_cols, ldx, x.len())?;
+                let need = axis.output_len(n_rows, n_cols);
+                if mean_out.len() < need || moment_out.len() < need {
+                    return Err(Error::InvalidArgument(format!(
+                        "moment: outputs must hold {need} elements"
+                    )));
+                }
+                let status = unsafe {
+                    sys::$moment(
+                        layout_raw(layout), axis.raw(),
+                        n_rows as sys::da_int, n_cols as sys::da_int,
+                        x.as_ptr(), ldx as sys::da_int,
+                        k as sys::da_int,
+                        if use_precomputed_mean { 1 } else { 0 } as sys::da_int,
+                        mean_out.as_mut_ptr(), moment_out.as_mut_ptr(),
+                    )
+                };
+                check_status("data-analytics", status)
+            }
+
+            fn quantile(
+                layout: Layout, axis: Axis, n_rows: usize, n_cols: usize,
+                x: &[Self], ldx: usize, q: Self,
+                quantile_out: &mut [Self], qtype: QuantileType,
+            ) -> Result<()> {
+                check_matrix("quantile: X", layout, n_rows, n_cols, ldx, x.len())?;
+                let need = axis.output_len(n_rows, n_cols);
+                if quantile_out.len() < need {
+                    return Err(Error::InvalidArgument(format!(
+                        "quantile: out length {} < required {need}", quantile_out.len()
+                    )));
+                }
+                let status = unsafe {
+                    sys::$quant(
+                        layout_raw(layout), axis.raw(),
+                        n_rows as sys::da_int, n_cols as sys::da_int,
+                        x.as_ptr(), ldx as sys::da_int,
+                        q, quantile_out.as_mut_ptr(), qtype.raw(),
+                    )
+                };
+                check_status("data-analytics", status)
+            }
+
+            fn five_point_summary(
+                layout: Layout, axis: Axis, n_rows: usize, n_cols: usize,
+                x: &[Self], ldx: usize,
+                min: &mut [Self], lower: &mut [Self], median: &mut [Self],
+                upper: &mut [Self], max: &mut [Self],
+            ) -> Result<()> {
+                check_matrix("five_point_summary: X", layout, n_rows, n_cols, ldx, x.len())?;
+                let need = axis.output_len(n_rows, n_cols);
+                if min.len() < need || lower.len() < need || median.len() < need
+                    || upper.len() < need || max.len() < need
+                {
+                    return Err(Error::InvalidArgument(format!(
+                        "five_point_summary: each output must hold {need} elements"
+                    )));
+                }
+                let status = unsafe {
+                    sys::$fps(
+                        layout_raw(layout), axis.raw(),
+                        n_rows as sys::da_int, n_cols as sys::da_int,
+                        x.as_ptr(), ldx as sys::da_int,
+                        min.as_mut_ptr(), lower.as_mut_ptr(), median.as_mut_ptr(),
+                        upper.as_mut_ptr(), max.as_mut_ptr(),
+                    )
+                };
+                check_status("data-analytics", status)
+            }
+
+            fn covariance_matrix(
+                layout: Layout, n_rows: usize, n_cols: usize,
+                x: &[Self], ldx: usize, dof: i64,
+                cov: &mut [Self], ldcov: usize,
+            ) -> Result<()> {
+                check_matrix("covariance_matrix: X", layout, n_rows, n_cols, ldx, x.len())?;
+                if ldcov < n_cols {
+                    return Err(Error::InvalidArgument(format!(
+                        "covariance_matrix: ldcov={ldcov} < n_cols={n_cols}"
+                    )));
+                }
+                if cov.len() < n_cols * ldcov {
+                    return Err(Error::InvalidArgument(format!(
+                        "covariance_matrix: cov length {} < n_cols·ldcov = {}",
+                        cov.len(), n_cols * ldcov
+                    )));
+                }
+                let status = unsafe {
+                    sys::$cov(
+                        layout_raw(layout),
+                        n_rows as sys::da_int, n_cols as sys::da_int,
+                        x.as_ptr(), ldx as sys::da_int,
+                        dof as sys::da_int,
+                        cov.as_mut_ptr(), ldcov as sys::da_int,
+                    )
+                };
+                check_status("data-analytics", status)
+            }
+
+            fn correlation_matrix(
+                layout: Layout, n_rows: usize, n_cols: usize,
+                x: &[Self], ldx: usize,
+                corr: &mut [Self], ldcorr: usize,
+            ) -> Result<()> {
+                check_matrix("correlation_matrix: X", layout, n_rows, n_cols, ldx, x.len())?;
+                if ldcorr < n_cols {
+                    return Err(Error::InvalidArgument(format!(
+                        "correlation_matrix: ldcorr={ldcorr} < n_cols={n_cols}"
+                    )));
+                }
+                if corr.len() < n_cols * ldcorr {
+                    return Err(Error::InvalidArgument(format!(
+                        "correlation_matrix: corr length {} < n_cols·ldcorr = {}",
+                        corr.len(), n_cols * ldcorr
+                    )));
+                }
+                let status = unsafe {
+                    sys::$corr(
+                        layout_raw(layout),
+                        n_rows as sys::da_int, n_cols as sys::da_int,
+                        x.as_ptr(), ldx as sys::da_int,
+                        corr.as_mut_ptr(), ldcorr as sys::da_int,
+                    )
+                };
+                check_status("data-analytics", status)
+            }
         }
     };
 }
 
-impl_scalar!(f32, da_mean_s, da_variance_s);
-impl_scalar!(f64, da_mean_d, da_variance_d);
+impl_scalar!(
+    f32,
+    mean = da_mean_s,
+    variance = da_variance_s,
+    geometric_mean = da_geometric_mean_s,
+    harmonic_mean = da_harmonic_mean_s,
+    skewness = da_skewness_s,
+    kurtosis = da_kurtosis_s,
+    moment = da_moment_s,
+    quantile = da_quantile_s,
+    five_point_summary = da_five_point_summary_s,
+    covariance_matrix = da_covariance_matrix_s,
+    correlation_matrix = da_correlation_matrix_s
+);
+impl_scalar!(
+    f64,
+    mean = da_mean_d,
+    variance = da_variance_d,
+    geometric_mean = da_geometric_mean_d,
+    harmonic_mean = da_harmonic_mean_d,
+    skewness = da_skewness_d,
+    kurtosis = da_kurtosis_d,
+    moment = da_moment_d,
+    quantile = da_quantile_d,
+    five_point_summary = da_five_point_summary_d,
+    covariance_matrix = da_covariance_matrix_d,
+    correlation_matrix = da_correlation_matrix_d
+);
 
 /// Compute the mean of a tightly-packed row-major matrix along `axis`.
 pub fn mean<T: Scalar>(
@@ -242,6 +602,95 @@ pub fn variance<T: Scalar>(
         mean_out,
         variance_out,
     )
+}
+
+/// Compute the geometric mean along `axis` for a tightly-packed
+/// row-major matrix. All entries must be non-negative.
+pub fn geometric_mean<T: Scalar>(
+    axis: Axis, n_rows: usize, n_cols: usize, x: &[T], out: &mut [T],
+) -> Result<()> {
+    T::geometric_mean(Layout::RowMajor, axis, n_rows, n_cols, x, n_cols, out)
+}
+
+/// Compute the harmonic mean along `axis` for a tightly-packed
+/// row-major matrix.
+pub fn harmonic_mean<T: Scalar>(
+    axis: Axis, n_rows: usize, n_cols: usize, x: &[T], out: &mut [T],
+) -> Result<()> {
+    T::harmonic_mean(Layout::RowMajor, axis, n_rows, n_cols, x, n_cols, out)
+}
+
+/// Compute means, variances, and Fisher–Pearson skewness along `axis`.
+pub fn skewness<T: Scalar>(
+    axis: Axis, n_rows: usize, n_cols: usize, x: &[T],
+    mean_out: &mut [T], variance_out: &mut [T], skew_out: &mut [T],
+) -> Result<()> {
+    T::skewness(Layout::RowMajor, axis, n_rows, n_cols, x, n_cols,
+                mean_out, variance_out, skew_out)
+}
+
+/// Compute means, variances, and excess kurtosis (Fisher convention,
+/// so a normal distribution scores zero) along `axis`.
+pub fn kurtosis<T: Scalar>(
+    axis: Axis, n_rows: usize, n_cols: usize, x: &[T],
+    mean_out: &mut [T], variance_out: &mut [T], kurtosis_out: &mut [T],
+) -> Result<()> {
+    T::kurtosis(Layout::RowMajor, axis, n_rows, n_cols, x, n_cols,
+                mean_out, variance_out, kurtosis_out)
+}
+
+/// Compute the `k`-th central moment along `axis`. If `mean_out` already
+/// holds means and `use_precomputed_mean` is `true`, those are used
+/// directly; otherwise means are computed and stored.
+#[allow(clippy::too_many_arguments)]
+pub fn moment<T: Scalar>(
+    axis: Axis, n_rows: usize, n_cols: usize, x: &[T],
+    k: i64, use_precomputed_mean: bool,
+    mean_out: &mut [T], moment_out: &mut [T],
+) -> Result<()> {
+    T::moment(Layout::RowMajor, axis, n_rows, n_cols, x, n_cols,
+              k, use_precomputed_mean, mean_out, moment_out)
+}
+
+/// Compute the `q`-th quantile along `axis` (`q` ∈ [0, 1]). The
+/// `qtype` selects one of the nine standard quantile formulae;
+/// `QuantileType::Type7` matches numpy and R's defaults.
+#[allow(clippy::too_many_arguments)]
+pub fn quantile<T: Scalar>(
+    axis: Axis, n_rows: usize, n_cols: usize, x: &[T],
+    q: T, quantile_out: &mut [T], qtype: QuantileType,
+) -> Result<()> {
+    T::quantile(Layout::RowMajor, axis, n_rows, n_cols, x, n_cols,
+                q, quantile_out, qtype)
+}
+
+/// Compute Tukey's five-number summary (min, lower hinge, median,
+/// upper hinge, max) along `axis`.
+#[allow(clippy::too_many_arguments)]
+pub fn five_point_summary<T: Scalar>(
+    axis: Axis, n_rows: usize, n_cols: usize, x: &[T],
+    min: &mut [T], lower: &mut [T], median: &mut [T],
+    upper: &mut [T], max: &mut [T],
+) -> Result<()> {
+    T::five_point_summary(Layout::RowMajor, axis, n_rows, n_cols, x, n_cols,
+                          min, lower, median, upper, max)
+}
+
+/// Compute the `n_cols × n_cols` covariance matrix (rows are observations).
+/// `dof` follows the same convention as [`variance`].
+pub fn covariance_matrix<T: Scalar>(
+    n_rows: usize, n_cols: usize, x: &[T], dof: i64, cov: &mut [T],
+) -> Result<()> {
+    T::covariance_matrix(Layout::RowMajor, n_rows, n_cols, x, n_cols,
+                         dof, cov, n_cols)
+}
+
+/// Compute the `n_cols × n_cols` correlation matrix (rows are observations).
+pub fn correlation_matrix<T: Scalar>(
+    n_rows: usize, n_cols: usize, x: &[T], corr: &mut [T],
+) -> Result<()> {
+    T::correlation_matrix(Layout::RowMajor, n_rows, n_cols, x, n_cols,
+                          corr, n_cols)
 }
 
 // =========================================================================
@@ -1735,6 +2184,68 @@ mod tests {
 
         let acc = forest.score(6, 2, &x_train, &y_train).unwrap();
         assert!((acc - 1.0).abs() < 1e-9, "score = {acc}");
+    }
+
+    #[test]
+    fn quantile_median_of_1_to_5() {
+        // Row-major 1×5 row vector; median (q=0.5) should be 3.
+        let x = [1.0_f64, 2.0, 3.0, 4.0, 5.0];
+        let mut q = [0.0_f64; 1];
+        quantile(Axis::All, 1, 5, &x, 0.5, &mut q, QuantileType::Type7).unwrap();
+        assert!((q[0] - 3.0).abs() < 1e-12, "median = {}", q[0]);
+    }
+
+    #[test]
+    fn five_point_summary_works() {
+        // 1×5 row vector — five-number summary should give 1, ?, 3, ?, 5.
+        let x = [1.0_f64, 2.0, 3.0, 4.0, 5.0];
+        let mut min = [0.0_f64; 1];
+        let mut lower = [0.0_f64; 1];
+        let mut med = [0.0_f64; 1];
+        let mut upper = [0.0_f64; 1];
+        let mut max = [0.0_f64; 1];
+        five_point_summary(Axis::All, 1, 5, &x, &mut min, &mut lower, &mut med, &mut upper, &mut max).unwrap();
+        assert!((min[0] - 1.0).abs() < 1e-12);
+        assert!((max[0] - 5.0).abs() < 1e-12);
+        assert!((med[0] - 3.0).abs() < 1e-12);
+        // Hinges should sit between min and median, median and max.
+        assert!(lower[0] >= min[0] && lower[0] <= med[0]);
+        assert!(upper[0] >= med[0] && upper[0] <= max[0]);
+    }
+
+    #[test]
+    fn correlation_matrix_identity_for_perfectly_correlated() {
+        // Two perfectly correlated columns: y = 2*x + 1. Correlation
+        // matrix is the 2x2 all-ones matrix.
+        // Row-major: 4 rows, 2 columns.
+        let x = [
+            1.0_f64, 3.0,
+            2.0,     5.0,
+            3.0,     7.0,
+            4.0,     9.0,
+        ];
+        let mut corr = [0.0_f64; 4];
+        correlation_matrix(4, 2, &x, &mut corr).unwrap();
+        for v in &corr {
+            assert!((v - 1.0).abs() < 1e-9, "off-diagonal correlation = {}", v);
+        }
+    }
+
+    #[test]
+    fn skewness_kurtosis_normal_data_near_zero() {
+        // Symmetric data → skewness ≈ 0; mesokurtic ≈ 0 (Fisher).
+        let x = [1.0_f64, 2.0, 3.0, 4.0, 5.0]; // 1×5 row vector
+        let mut mu = [0.0_f64; 1];
+        let mut var = [0.0_f64; 1];
+        let mut skew = [0.0_f64; 1];
+        skewness(Axis::All, 1, 5, &x, &mut mu, &mut var, &mut skew).unwrap();
+        assert!((mu[0] - 3.0).abs() < 1e-12);
+        assert!(skew[0].abs() < 1e-9, "skewness = {}", skew[0]);
+
+        let mut kurt = [0.0_f64; 1];
+        kurtosis(Axis::All, 1, 5, &x, &mut mu, &mut var, &mut kurt).unwrap();
+        // Uniform discrete sample like 1..5 has Fisher kurtosis = -1.3.
+        assert!(kurt[0] < 0.0, "kurtosis = {}", kurt[0]);
     }
 
     #[test]
