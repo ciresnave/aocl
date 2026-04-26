@@ -1076,6 +1076,286 @@ impl std::fmt::Debug for Dbscan {
     }
 }
 
+// =========================================================================
+//   Decision tree / forest
+// =========================================================================
+
+/// A single decision tree classifier. Configure tree-specific options
+/// such as `"maximum depth"` or `"minimum samples per split"` via
+/// [`DecisionTree::handle_mut`] before calling [`DecisionTree::fit`].
+pub struct DecisionTree {
+    handle: Handle,
+}
+
+impl DecisionTree {
+    /// Build a new decision-tree handle in `f64` precision.
+    pub fn new() -> Result<Self> {
+        let handle = Handle::new_double(HandleKind::DecisionTree)?;
+        Ok(Self { handle })
+    }
+
+    /// Borrow the underlying handle to set tree options.
+    pub fn handle_mut(&mut self) -> &mut Handle {
+        &mut self.handle
+    }
+
+    /// Fit on column-major `n_samples × n_features` features `x` with
+    /// integer class labels `y`. `n_class = 0` lets AOCL infer it from
+    /// the label distribution.
+    pub fn fit(
+        &mut self,
+        n_samples: usize,
+        n_features: usize,
+        n_class: usize,
+        x: &[f64],
+        y: &[i32],
+    ) -> Result<()> {
+        if x.len() < n_samples * n_features {
+            return Err(Error::InvalidArgument(format!(
+                "tree fit: x length {} < n_samples·n_features = {}",
+                x.len(), n_samples * n_features
+            )));
+        }
+        if y.len() < n_samples {
+            return Err(Error::InvalidArgument(format!(
+                "tree fit: y length {} < n_samples = {n_samples}",
+                y.len()
+            )));
+        }
+        let lda = n_samples;
+        let status = unsafe {
+            sys::da_tree_set_training_data_d(
+                self.handle.raw,
+                n_samples as sys::da_int,
+                n_features as sys::da_int,
+                n_class as sys::da_int,
+                x.as_ptr(),
+                lda as sys::da_int,
+                y.as_ptr() as *const sys::da_int,
+            )
+        };
+        if status != sys::da_status__da_status_success {
+            let extra = self.handle.last_error_message().unwrap_or_default();
+            return Err(Error::Status {
+                component: "data-analytics",
+                code: status as i64,
+                message: format!("tree set_training_data failed: {extra}"),
+            });
+        }
+        let status = unsafe { sys::da_tree_fit_d(self.handle.raw) };
+        if status != sys::da_status__da_status_success {
+            let extra = self.handle.last_error_message().unwrap_or_default();
+            return Err(Error::Status {
+                component: "data-analytics",
+                code: status as i64,
+                message: format!("tree fit failed: {extra}"),
+            });
+        }
+        Ok(())
+    }
+
+    /// Predict class labels for `n_samples × n_features` test data.
+    pub fn predict(
+        &mut self,
+        n_samples: usize,
+        n_features: usize,
+        x_test: &[f64],
+        labels: &mut [i32],
+    ) -> Result<()> {
+        if x_test.len() < n_samples * n_features {
+            return Err(Error::InvalidArgument(format!(
+                "tree predict: x_test length {} < n_samples·n_features = {}",
+                x_test.len(), n_samples * n_features
+            )));
+        }
+        if labels.len() < n_samples {
+            return Err(Error::InvalidArgument(format!(
+                "tree predict: labels length {} < n_samples = {n_samples}",
+                labels.len()
+            )));
+        }
+        let status = unsafe {
+            sys::da_tree_predict_d(
+                self.handle.raw,
+                n_samples as sys::da_int,
+                n_features as sys::da_int,
+                x_test.as_ptr(),
+                n_samples as sys::da_int,
+                labels.as_mut_ptr() as *mut sys::da_int,
+            )
+        };
+        check_status("data-analytics", status)
+    }
+
+    /// Compute prediction accuracy on a labelled test set: returns the
+    /// fraction of correctly classified samples.
+    pub fn score(
+        &mut self,
+        n_samples: usize,
+        n_features: usize,
+        x_test: &[f64],
+        y_test: &[i32],
+    ) -> Result<f64> {
+        let mut acc = 0.0_f64;
+        let status = unsafe {
+            sys::da_tree_score_d(
+                self.handle.raw,
+                n_samples as sys::da_int,
+                n_features as sys::da_int,
+                x_test.as_ptr(),
+                n_samples as sys::da_int,
+                y_test.as_ptr() as *const sys::da_int,
+                &mut acc,
+            )
+        };
+        check_status("data-analytics", status)?;
+        Ok(acc)
+    }
+}
+
+impl std::fmt::Debug for DecisionTree {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DecisionTree").field("handle", &self.handle).finish()
+    }
+}
+
+/// A random-forest classifier. Configure forest options such as
+/// `"number of trees"` or `"bootstrap"` via [`DecisionForest::handle_mut`]
+/// before calling [`DecisionForest::fit`].
+pub struct DecisionForest {
+    handle: Handle,
+}
+
+impl DecisionForest {
+    /// Build a new decision-forest handle in `f64` precision.
+    pub fn new() -> Result<Self> {
+        let handle = Handle::new_double(HandleKind::DecisionForest)?;
+        Ok(Self { handle })
+    }
+
+    /// Borrow the underlying handle to set forest options.
+    pub fn handle_mut(&mut self) -> &mut Handle {
+        &mut self.handle
+    }
+
+    /// Fit on column-major `n_samples × n_features` features `x` with
+    /// integer class labels `y`. Pass `n_class = 0` to let AOCL infer it.
+    pub fn fit(
+        &mut self,
+        n_samples: usize,
+        n_features: usize,
+        n_class: usize,
+        x: &[f64],
+        y: &[i32],
+    ) -> Result<()> {
+        if x.len() < n_samples * n_features {
+            return Err(Error::InvalidArgument(format!(
+                "forest fit: x length {} < n_samples·n_features = {}",
+                x.len(), n_samples * n_features
+            )));
+        }
+        if y.len() < n_samples {
+            return Err(Error::InvalidArgument(format!(
+                "forest fit: y length {} < n_samples = {n_samples}",
+                y.len()
+            )));
+        }
+        let lda = n_samples;
+        let status = unsafe {
+            sys::da_forest_set_training_data_d(
+                self.handle.raw,
+                n_samples as sys::da_int,
+                n_features as sys::da_int,
+                n_class as sys::da_int,
+                x.as_ptr(),
+                lda as sys::da_int,
+                y.as_ptr() as *const sys::da_int,
+            )
+        };
+        if status != sys::da_status__da_status_success {
+            let extra = self.handle.last_error_message().unwrap_or_default();
+            return Err(Error::Status {
+                component: "data-analytics",
+                code: status as i64,
+                message: format!("forest set_training_data failed: {extra}"),
+            });
+        }
+        let status = unsafe { sys::da_forest_fit_d(self.handle.raw) };
+        if status != sys::da_status__da_status_success {
+            let extra = self.handle.last_error_message().unwrap_or_default();
+            return Err(Error::Status {
+                component: "data-analytics",
+                code: status as i64,
+                message: format!("forest fit failed: {extra}"),
+            });
+        }
+        Ok(())
+    }
+
+    /// Predict class labels for `n_samples × n_features` test data.
+    pub fn predict(
+        &mut self,
+        n_samples: usize,
+        n_features: usize,
+        x_test: &[f64],
+        labels: &mut [i32],
+    ) -> Result<()> {
+        if x_test.len() < n_samples * n_features {
+            return Err(Error::InvalidArgument(format!(
+                "forest predict: x_test length {} < n_samples·n_features = {}",
+                x_test.len(), n_samples * n_features
+            )));
+        }
+        if labels.len() < n_samples {
+            return Err(Error::InvalidArgument(format!(
+                "forest predict: labels length {} < n_samples = {n_samples}",
+                labels.len()
+            )));
+        }
+        let status = unsafe {
+            sys::da_forest_predict_d(
+                self.handle.raw,
+                n_samples as sys::da_int,
+                n_features as sys::da_int,
+                x_test.as_ptr(),
+                n_samples as sys::da_int,
+                labels.as_mut_ptr() as *mut sys::da_int,
+            )
+        };
+        check_status("data-analytics", status)
+    }
+
+    /// Compute prediction accuracy on a labelled test set.
+    pub fn score(
+        &mut self,
+        n_samples: usize,
+        n_features: usize,
+        x_test: &[f64],
+        y_test: &[i32],
+    ) -> Result<f64> {
+        let mut acc = 0.0_f64;
+        let status = unsafe {
+            sys::da_forest_score_d(
+                self.handle.raw,
+                n_samples as sys::da_int,
+                n_features as sys::da_int,
+                x_test.as_ptr(),
+                n_samples as sys::da_int,
+                y_test.as_ptr() as *const sys::da_int,
+                &mut acc,
+            )
+        };
+        check_status("data-analytics", status)?;
+        Ok(acc)
+    }
+}
+
+impl std::fmt::Debug for DecisionForest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DecisionForest").field("handle", &self.handle).finish()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1179,6 +1459,50 @@ mod tests {
         knn.predict(2, 2, &x_test, &mut labels).unwrap();
         assert_eq!(labels[0], 0);
         assert_eq!(labels[1], 1);
+    }
+
+    #[test]
+    fn decision_tree_two_class_separation() {
+        // Same separable two-class setup as the KNN test.
+        let x_train: Vec<f64> = vec![
+            // feature 0
+            0.0, 0.1, 0.2, 10.0, 10.1, 10.2,
+            // feature 1
+            0.1, 0.0, 0.1, 10.1, 10.0, 10.1,
+        ];
+        let y_train = vec![0_i32, 0, 0, 1, 1, 1];
+        let mut tree = DecisionTree::new().unwrap();
+        tree.fit(6, 2, 2, &x_train, &y_train).unwrap();
+
+        let x_test = vec![0.05, 9.95, 0.05, 10.05];
+        let mut labels = vec![0_i32; 2];
+        tree.predict(2, 2, &x_test, &mut labels).unwrap();
+        assert_eq!(labels[0], 0);
+        assert_eq!(labels[1], 1);
+
+        // Score on the training set should be 1.0 for this separable problem.
+        let acc = tree.score(6, 2, &x_train, &y_train).unwrap();
+        assert!((acc - 1.0).abs() < 1e-9, "score = {acc}");
+    }
+
+    #[test]
+    fn decision_forest_two_class_separation() {
+        let x_train: Vec<f64> = vec![
+            0.0, 0.1, 0.2, 10.0, 10.1, 10.2,
+            0.1, 0.0, 0.1, 10.1, 10.0, 10.1,
+        ];
+        let y_train = vec![0_i32, 0, 0, 1, 1, 1];
+        let mut forest = DecisionForest::new().unwrap();
+        forest.fit(6, 2, 2, &x_train, &y_train).unwrap();
+
+        let x_test = vec![0.05, 9.95, 0.05, 10.05];
+        let mut labels = vec![0_i32; 2];
+        forest.predict(2, 2, &x_test, &mut labels).unwrap();
+        assert_eq!(labels[0], 0);
+        assert_eq!(labels[1], 1);
+
+        let acc = forest.score(6, 2, &x_train, &y_train).unwrap();
+        assert!((acc - 1.0).abs() < 1e-9, "score = {acc}");
     }
 
     #[test]
