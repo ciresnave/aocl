@@ -1356,6 +1356,238 @@ impl std::fmt::Debug for DecisionForest {
     }
 }
 
+// =========================================================================
+//   Support Vector Machines (SVM)
+// =========================================================================
+
+/// Family of SVM model. Classification variants train against integer
+/// class labels (passed as `f64`); regression variants train against a
+/// real-valued response.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum SvmKind {
+    /// C-regularised classification (`SVC`).
+    Svc,
+    /// Nu-regularised classification (`NuSVC`).
+    NuSvc,
+    /// Epsilon-regularised regression (`SVR`).
+    Svr,
+    /// Nu-regularised regression (`NuSVR`).
+    NuSvr,
+}
+
+impl SvmKind {
+    fn raw(self) -> sys::da_svm_model {
+        match self {
+            SvmKind::Svc => sys::da_svm_model__svc,
+            SvmKind::NuSvc => sys::da_svm_model__nusvc,
+            SvmKind::Svr => sys::da_svm_model__svr,
+            SvmKind::NuSvr => sys::da_svm_model__nusvr,
+        }
+    }
+}
+
+/// Decision-function shape used for multi-class classification.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DecisionShape {
+    /// One-vs-Rest.
+    Ovr,
+    /// One-vs-One.
+    Ovo,
+}
+
+impl DecisionShape {
+    fn raw(self) -> sys::da_svm_decision_function_shape {
+        match self {
+            DecisionShape::Ovr => sys::da_svm_decision_function_shape__ovr,
+            DecisionShape::Ovo => sys::da_svm_decision_function_shape__ovo,
+        }
+    }
+}
+
+/// Support vector machine wrapper covering both classification (`Svc`,
+/// `NuSvc`) and regression (`Svr`, `NuSvr`) modes. Configure
+/// SVM-specific options (kernel, C, epsilon, gamma, …) via
+/// [`Svm::handle_mut`] before calling [`Svm::fit`].
+pub struct Svm {
+    handle: Handle,
+    kind: SvmKind,
+}
+
+impl Svm {
+    /// Build a C-SVC classifier in `f64` precision.
+    pub fn new_svc() -> Result<Self> { Self::new_with(SvmKind::Svc) }
+    /// Build a Nu-SVC classifier in `f64` precision.
+    pub fn new_nu_svc() -> Result<Self> { Self::new_with(SvmKind::NuSvc) }
+    /// Build an epsilon-SVR regressor in `f64` precision.
+    pub fn new_svr() -> Result<Self> { Self::new_with(SvmKind::Svr) }
+    /// Build a Nu-SVR regressor in `f64` precision.
+    pub fn new_nu_svr() -> Result<Self> { Self::new_with(SvmKind::NuSvr) }
+
+    fn new_with(kind: SvmKind) -> Result<Self> {
+        let handle = Handle::new_double(HandleKind::Svm)?;
+        let status = unsafe { sys::da_svm_select_model_d(handle.raw, kind.raw()) };
+        check_status("data-analytics", status)?;
+        Ok(Self { handle, kind })
+    }
+
+    /// Borrow the underlying handle to set SVM-specific options.
+    pub fn handle_mut(&mut self) -> &mut Handle { &mut self.handle }
+
+    /// Family of SVM model that this handle was constructed for.
+    pub fn kind(&self) -> SvmKind { self.kind }
+
+    /// Fit on column-major `n_samples × n_features` features `x` and a
+    /// length-`n_samples` response vector `y`. For classification, `y`
+    /// holds class indices `0..n_class-1` (as floats); for regression
+    /// it holds the real target.
+    pub fn fit(
+        &mut self,
+        n_samples: usize,
+        n_features: usize,
+        x: &[f64],
+        y: &[f64],
+    ) -> Result<()> {
+        if x.len() < n_samples * n_features {
+            return Err(Error::InvalidArgument(format!(
+                "svm fit: x length {} < n_samples·n_features = {}",
+                x.len(), n_samples * n_features
+            )));
+        }
+        if y.len() < n_samples {
+            return Err(Error::InvalidArgument(format!(
+                "svm fit: y length {} < n_samples = {n_samples}",
+                y.len()
+            )));
+        }
+        let lda = n_samples;
+        let status = unsafe {
+            sys::da_svm_set_data_d(
+                self.handle.raw,
+                n_samples as sys::da_int,
+                n_features as sys::da_int,
+                x.as_ptr(),
+                lda as sys::da_int,
+                y.as_ptr(),
+            )
+        };
+        if status != sys::da_status__da_status_success {
+            let extra = self.handle.last_error_message().unwrap_or_default();
+            return Err(Error::Status {
+                component: "data-analytics",
+                code: status as i64,
+                message: format!("svm set_data failed: {extra}"),
+            });
+        }
+        let status = unsafe { sys::da_svm_compute_d(self.handle.raw) };
+        if status != sys::da_status__da_status_success {
+            let extra = self.handle.last_error_message().unwrap_or_default();
+            return Err(Error::Status {
+                component: "data-analytics",
+                code: status as i64,
+                message: format!("svm compute failed: {extra}"),
+            });
+        }
+        Ok(())
+    }
+
+    /// Predict labels (classification) or values (regression) for new
+    /// data. `predictions` receives `n_samples` outputs.
+    pub fn predict(
+        &mut self,
+        n_samples: usize,
+        n_features: usize,
+        x_test: &[f64],
+        predictions: &mut [f64],
+    ) -> Result<()> {
+        if x_test.len() < n_samples * n_features {
+            return Err(Error::InvalidArgument(format!(
+                "svm predict: x_test length {} < n_samples·n_features = {}",
+                x_test.len(), n_samples * n_features
+            )));
+        }
+        if predictions.len() < n_samples {
+            return Err(Error::InvalidArgument(format!(
+                "svm predict: predictions length {} < n_samples = {n_samples}",
+                predictions.len()
+            )));
+        }
+        let status = unsafe {
+            sys::da_svm_predict_d(
+                self.handle.raw,
+                n_samples as sys::da_int,
+                n_features as sys::da_int,
+                x_test.as_ptr(),
+                n_samples as sys::da_int,
+                predictions.as_mut_ptr(),
+            )
+        };
+        check_status("data-analytics", status)
+    }
+
+    /// Compute the model's score: accuracy for classification or `R²`
+    /// for regression.
+    pub fn score(
+        &mut self,
+        n_samples: usize,
+        n_features: usize,
+        x_test: &[f64],
+        y_test: &[f64],
+    ) -> Result<f64> {
+        let mut s = 0.0_f64;
+        let status = unsafe {
+            sys::da_svm_score_d(
+                self.handle.raw,
+                n_samples as sys::da_int,
+                n_features as sys::da_int,
+                x_test.as_ptr(),
+                n_samples as sys::da_int,
+                y_test.as_ptr(),
+                &mut s,
+            )
+        };
+        check_status("data-analytics", status)?;
+        Ok(s)
+    }
+
+    /// Compute the SVM decision function on test data (classification
+    /// only; for regression call [`Svm::predict`] directly). Output
+    /// layout depends on `shape` and `n_class`; see AOCL docs for the
+    /// exact size requirements.
+    pub fn decision_function(
+        &mut self,
+        n_samples: usize,
+        n_features: usize,
+        x_test: &[f64],
+        shape: DecisionShape,
+        decision_values: &mut [f64],
+        ldd: usize,
+    ) -> Result<()> {
+        let status = unsafe {
+            sys::da_svm_decision_function_d(
+                self.handle.raw,
+                n_samples as sys::da_int,
+                n_features as sys::da_int,
+                x_test.as_ptr(),
+                n_samples as sys::da_int,
+                shape.raw(),
+                decision_values.as_mut_ptr(),
+                ldd as sys::da_int,
+            )
+        };
+        check_status("data-analytics", status)
+    }
+}
+
+impl std::fmt::Debug for Svm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Svm")
+            .field("kind", &self.kind)
+            .field("handle", &self.handle)
+            .finish()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1502,6 +1734,28 @@ mod tests {
         assert_eq!(labels[1], 1);
 
         let acc = forest.score(6, 2, &x_train, &y_train).unwrap();
+        assert!((acc - 1.0).abs() < 1e-9, "score = {acc}");
+    }
+
+    #[test]
+    fn svm_svc_two_class_separation() {
+        // Same separable two-class setup; SVM uses f64 labels (class
+        // indices stored as floats).
+        let x_train: Vec<f64> = vec![
+            0.0, 0.1, 0.2, 10.0, 10.1, 10.2,
+            0.1, 0.0, 0.1, 10.1, 10.0, 10.1,
+        ];
+        let y_train = vec![0.0_f64, 0.0, 0.0, 1.0, 1.0, 1.0];
+        let mut svm = Svm::new_svc().unwrap();
+        svm.fit(6, 2, &x_train, &y_train).unwrap();
+
+        let x_test = vec![0.05, 9.95, 0.05, 10.05];
+        let mut predictions = vec![0.0_f64; 2];
+        svm.predict(2, 2, &x_test, &mut predictions).unwrap();
+        assert!((predictions[0] - 0.0).abs() < 1e-9, "pred[0] = {}", predictions[0]);
+        assert!((predictions[1] - 1.0).abs() < 1e-9, "pred[1] = {}", predictions[1]);
+
+        let acc = svm.score(6, 2, &x_train, &y_train).unwrap();
         assert!((acc - 1.0).abs() < 1e-9, "score = {acc}");
     }
 
