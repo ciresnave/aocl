@@ -22,7 +22,7 @@ pub enum Mode {
 }
 
 impl Mode {
-    fn raw(self) -> sys::alc_digest_mode_t {
+    pub(crate) fn raw(self) -> sys::alc_digest_mode_t {
         match self {
             Mode::Md5 => sys::_alc_digest_mode_ALC_MD5,
             Mode::Sha1 => sys::_alc_digest_mode_ALC_SHA1,

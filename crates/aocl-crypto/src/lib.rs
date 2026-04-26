@@ -1,23 +1,16 @@
 //! Safe wrappers for AOCL-Cryptography (ALCP).
 //!
-//! Currently exposes the digest API. Cipher / AEAD / MAC / RSA / EC will
-//! follow.
-//!
-//! # Example
-//!
-//! ```no_run
-//! use aocl_crypto::digest::{Digest, Mode};
-//!
-//! let mut d = Digest::new(Mode::Sha2_256).unwrap();
-//! d.update(b"hello, ").unwrap();
-//! d.update(b"world").unwrap();
-//! let hash = d.finalize().unwrap();
-//! assert_eq!(hash.len(), 32);
-//! ```
+//! Modules:
+//! - [`digest`] — MD5, SHA-1, SHA-2, SHA-3 hash functions
+//! - [`cipher`] — AES (ECB / CBC / OFB / CTR / CFB / XTS) and ChaCha20
+//!   stream-cipher encryption
+//! - [`mac`] — Message Authentication Codes: HMAC, CMAC, Poly1305
 
 #![warn(missing_debug_implementations)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+pub mod cipher;
 pub mod digest;
+pub mod mac;
 
 pub use aocl_error::{Error, Result};
