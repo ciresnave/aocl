@@ -30,8 +30,10 @@ Early development. Module coverage:
 - `fft` (feature `fftw`) — `dft_1d_inplace` 1-D complex DFT (forward / backward), planner mutex-serialized for thread safety.
 - `rng` (feature `rng`) — `Rng` with `BaseGenerator` (LCG, MT, …); `uniform`, `gaussian`, `exponential` samplers.
 - `data_analytics` (feature `data-analytics`) — `mean`, `variance` along row / column / global axes for `f32`/`f64`.
-- `securerng`, `compression`, `crypto` — bindings only (`aocl_sys::*`); safe layer pending.
-- `scalapack` — link-only; AOCL ships no public C headers (Fortran/MPI).
+- `securerng` (feature `securerng`) — `is_rdrand_supported`, `is_rdseed_supported`, `rdrand_u{16,32,64}`, `rdseed_u{16,32,64}`, `rdrand_bytes`, `rdseed_bytes`, `rdrand_u{32,64}_array`.
+- `compression` (feature `compression`) — `Codec` enum (LZ4/LZ4HC/LZMA/BZIP2/Snappy/ZLIB/ZSTD); `compress`, `decompress`, `compress_bound`.
+- `crypto::digest` (feature `crypto`) — streaming `Digest` for MD5, SHA-1, SHA-2 (224/256/384/512), SHA-3 (224/256/384/512), plus a one-shot `hash` helper.
+- `scalapack` — link-only today; AOCL ships no public C headers (Fortran/MPI). Hand-written FFI + a safe wrapper over BLACS+pdgesv/pdgemm is queued as the next milestone.
 
 ## License
 

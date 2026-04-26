@@ -68,7 +68,9 @@ When linking dynamically (the default), the AOCL DLLs / shared objects must be r
   set PATH=C:\Program Files\AMD\AOCL-Windows\amd-blis\lib\LP64;%PATH%
   ```
 
-  Many of AMD's Windows AOCL DLLs are built with the Intel compiler and depend on `libmmd.dll` and `svml_dispmd.dll` (Intel runtime). If you have Intel oneAPI installed, add `C:\Program Files (x86)\Intel\oneAPI\<version>\bin` to `PATH` as well.
+  Many of AMD's Windows AOCL DLLs are built with the Intel compiler and depend on `libmmd.dll` and `svml_dispmd.dll` (Intel runtime). If you have Intel oneAPI installed, add `C:\Program Files (x86)\Intel\oneAPI\<version>\bin` to `PATH` as well. Some components (`compression`) also pull in LLVM's OpenMP runtime (`libomp.dll`) — add `C:\Program Files\LLVM\bin` to `PATH` if you have LLVM installed. The `crypto` ALCP DLL also depends on OpenSSL 3 (`libcrypto-3-x64.dll`).
+
+  When mixing components from different AOCL DLLs that link different OpenMP runtimes (Intel `libiomp5md.dll` vs LLVM `libomp.dll`), set `KMP_DUPLICATE_LIB_OK=TRUE` to suppress the runtime's duplicate-library abort. AMD's libraries do not actually conflict in practice.
 
 - **Linux**: add to `LD_LIBRARY_PATH`, or rely on the system loader cache.
 
