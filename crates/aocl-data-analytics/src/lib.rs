@@ -63,6 +63,20 @@ fn check_status(component: &'static str, status: sys::da_status) -> Result<()> {
             "invalid array dimension"
         }
         s if s == sys::da_status__da_status_no_data => "no data",
+        s if s == sys::da_status__da_status_wrong_type => "wrong type",
+        s if s == sys::da_status__da_status_invalid_handle_type => "invalid handle type",
+        s if s == sys::da_status__da_status_handle_not_initialized => "handle not initialized",
+        s if s == sys::da_status__da_status_store_not_initialized => "store not initialized",
+        s if s == sys::da_status__da_status_invalid_option => "invalid option",
+        s if s == sys::da_status__da_status_incompatible_options => "incompatible options",
+        s if s == sys::da_status__da_status_operation_failed => "operation failed",
+        s if s == sys::da_status__da_status_unknown_query => "unknown query",
+        s if s == sys::da_status__da_status_incorrect_output => "incorrect output",
+        s if s == sys::da_status__da_status_maxit => "max iterations reached",
+        s if s == sys::da_status__da_status_maxtime => "max time reached",
+        s if s == sys::da_status__da_status_numerical_difficulties => "numerical difficulties",
+        s if s == sys::da_status__da_status_bad_derivatives => "bad derivatives",
+        s if s == sys::da_status__da_status_optimization_usrstop => "optimisation user stop",
         _ => "unknown DA status",
     }
     .to_string();
@@ -694,6 +708,271 @@ pub fn correlation_matrix<T: Scalar>(
 }
 
 // =========================================================================
+//   Nonlinear least-squares (NLLS)
+// =========================================================================
+
+/// Type-erased residual closure: maps coefficients `x` of length `n_coef`
+/// to residuals `res` of length `n_res`. Return `0` on success or non-zero
+/// to signal an evaluation failure (the solver will return an error).
+pub type ResFn<'a> = Box<dyn FnMut(&[f64], &mut [f64]) -> i32 + 'a>;
+
+/// Type-erased Jacobian closure: writes the `n_res × n_coef` Jacobian
+/// of the residuals at `x` into `jac`. Layout matches the AOCL
+/// `"storage scheme"` option (defaults to row-major). Return `0` on
+/// success.
+pub type JacFn<'a> = Box<dyn FnMut(&[f64], &mut [f64]) -> i32 + 'a>;
+
+struct NllsCallbacks<'a> {
+    resfun: ResFn<'a>,
+    resgrd: Option<JacFn<'a>>,
+    n_coef: usize,
+    n_res: usize,
+}
+
+unsafe extern "C" fn nlls_resfun_shim(
+    _n_coef: sys::da_int,
+    _n_res: sys::da_int,
+    data: *mut std::os::raw::c_void,
+    x: *const f64,
+    res: *mut f64,
+) -> sys::da_int {
+    let cbs = unsafe { &mut *(data as *mut NllsCallbacks) };
+    let x_slice = unsafe { std::slice::from_raw_parts(x, cbs.n_coef) };
+    let res_slice = unsafe { std::slice::from_raw_parts_mut(res, cbs.n_res) };
+    // Catch panics so we don't unwind across the FFI boundary.
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        (cbs.resfun)(x_slice, res_slice)
+    }));
+    match result {
+        Ok(rc) => rc as sys::da_int,
+        Err(_) => 1, // signal failure to the solver
+    }
+}
+
+unsafe extern "C" fn nlls_resgrd_shim(
+    _n_coef: sys::da_int,
+    _n_res: sys::da_int,
+    data: *mut std::os::raw::c_void,
+    x: *const f64,
+    jac: *mut f64,
+) -> sys::da_int {
+    let cbs = unsafe { &mut *(data as *mut NllsCallbacks) };
+    let x_slice = unsafe { std::slice::from_raw_parts(x, cbs.n_coef) };
+    let jac_slice = unsafe {
+        std::slice::from_raw_parts_mut(jac, cbs.n_res * cbs.n_coef)
+    };
+    let f = match cbs.resgrd.as_mut() {
+        Some(f) => f,
+        None => return 1,
+    };
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        f(x_slice, jac_slice)
+    }));
+    match result {
+        Ok(rc) => rc as sys::da_int,
+        Err(_) => 1,
+    }
+}
+
+/// Nonlinear least-squares solver wrapping AOCL's `RAlfit` family.
+///
+/// Provide a residual function (mandatory) and optionally a Jacobian.
+/// If the Jacobian is omitted, AOCL will estimate derivatives by finite
+/// differences. After [`Nlls::fit`], the optimised coefficients are in
+/// the user's input vector and a 100-element `rinfo` of solver stats
+/// can be retrieved via [`Nlls::info`].
+pub struct Nlls<'a> {
+    handle: Handle,
+    callbacks: Box<NllsCallbacks<'a>>,
+}
+
+impl<'a> Nlls<'a> {
+    /// Build a new NLLS solver with `n_coef` coefficients and `n_res`
+    /// residuals. `resfun` evaluates `r(x)`; finite differences will
+    /// estimate the Jacobian unless one is supplied via
+    /// [`Nlls::with_jacobian`].
+    pub fn new<F>(n_coef: usize, n_res: usize, resfun: F) -> Result<Self>
+    where
+        F: FnMut(&[f64], &mut [f64]) -> i32 + 'a,
+    {
+        let handle = Handle::new_double(HandleKind::Nlls)?;
+        let callbacks = Box::new(NllsCallbacks {
+            resfun: Box::new(resfun),
+            resgrd: None,
+            n_coef,
+            n_res,
+        });
+        let mut this = Self { handle, callbacks };
+        this.install()?;
+        Ok(this)
+    }
+
+    /// Attach an analytic Jacobian. Layout follows the `"storage scheme"`
+    /// option set on the underlying handle (default row-major).
+    pub fn with_jacobian<G>(mut self, resgrd: G) -> Result<Self>
+    where
+        G: FnMut(&[f64], &mut [f64]) -> i32 + 'a,
+    {
+        self.callbacks.resgrd = Some(Box::new(resgrd));
+        self.install()?;
+        Ok(self)
+    }
+
+    fn install(&mut self) -> Result<()> {
+        let resgrd = if self.callbacks.resgrd.is_some() {
+            Some(nlls_resgrd_shim as unsafe extern "C" fn(_, _, _, _, _) -> _)
+        } else {
+            None
+        };
+        let status = unsafe {
+            sys::da_nlls_define_residuals_d(
+                self.handle.raw,
+                self.callbacks.n_coef as sys::da_int,
+                self.callbacks.n_res as sys::da_int,
+                Some(nlls_resfun_shim),
+                resgrd,
+                None,
+                None,
+            )
+        };
+        if status != sys::da_status__da_status_success {
+            let extra = self.handle.last_error_message().unwrap_or_default();
+            return Err(Error::Status {
+                component: "data-analytics",
+                code: status as i64,
+                message: format!("nlls define_residuals failed: {extra}"),
+            });
+        }
+        Ok(())
+    }
+
+    /// Borrow the underlying handle to set NLLS-specific options
+    /// (`"ralfit iteration limit"`, `"storage scheme"`, etc.).
+    pub fn handle_mut(&mut self) -> &mut Handle {
+        &mut self.handle
+    }
+
+    /// Constrain coefficients to lie within `lower[i] <= x[i] <= upper[i]`.
+    /// Pass `None` for an unbounded side; the slices must have length
+    /// `n_coef`.
+    pub fn set_bounds(
+        &mut self,
+        lower: Option<&mut [f64]>,
+        upper: Option<&mut [f64]>,
+    ) -> Result<()> {
+        let n_coef = self.callbacks.n_coef as sys::da_int;
+        let l_ptr = lower.as_ref().map_or(std::ptr::null_mut(), |s| s.as_ptr() as *mut f64);
+        let u_ptr = upper.as_ref().map_or(std::ptr::null_mut(), |s| s.as_ptr() as *mut f64);
+        if let Some(l) = lower.as_ref() {
+            if l.len() < self.callbacks.n_coef {
+                return Err(Error::InvalidArgument(format!(
+                    "set_bounds: lower length {} < n_coef = {}",
+                    l.len(), self.callbacks.n_coef
+                )));
+            }
+        }
+        if let Some(u) = upper.as_ref() {
+            if u.len() < self.callbacks.n_coef {
+                return Err(Error::InvalidArgument(format!(
+                    "set_bounds: upper length {} < n_coef = {}",
+                    u.len(), self.callbacks.n_coef
+                )));
+            }
+        }
+        let status = unsafe {
+            sys::da_nlls_define_bounds_d(self.handle.raw, n_coef, l_ptr, u_ptr)
+        };
+        check_status("data-analytics", status)
+    }
+
+    /// Set per-residual weights `w_i = √W_ii` (length `n_res`).
+    pub fn set_weights(&mut self, weights: &mut [f64]) -> Result<()> {
+        if weights.len() < self.callbacks.n_res {
+            return Err(Error::InvalidArgument(format!(
+                "set_weights: weights length {} < n_res = {}",
+                weights.len(), self.callbacks.n_res
+            )));
+        }
+        let status = unsafe {
+            sys::da_nlls_define_weights_d(
+                self.handle.raw,
+                self.callbacks.n_res as sys::da_int,
+                weights.as_mut_ptr(),
+            )
+        };
+        check_status("data-analytics", status)
+    }
+
+    /// Run the optimiser. On entry `coef` is the initial guess; on
+    /// success it holds the optimised coefficients.
+    pub fn fit(&mut self, coef: &mut [f64]) -> Result<()> {
+        if coef.len() < self.callbacks.n_coef {
+            return Err(Error::InvalidArgument(format!(
+                "nlls fit: coef length {} < n_coef = {}",
+                coef.len(), self.callbacks.n_coef
+            )));
+        }
+        let udata = self.callbacks.as_mut() as *mut NllsCallbacks
+            as *mut std::os::raw::c_void;
+        let status = unsafe {
+            sys::da_nlls_fit_d(
+                self.handle.raw,
+                self.callbacks.n_coef as sys::da_int,
+                coef.as_mut_ptr(),
+                udata,
+            )
+        };
+        if status != sys::da_status__da_status_success {
+            let extra = self.handle.last_error_message().unwrap_or_default();
+            return Err(Error::Status {
+                component: "data-analytics",
+                code: status as i64,
+                message: format!("nlls fit failed: {extra}"),
+            });
+        }
+        Ok(())
+    }
+
+    /// Retrieve the solver's information vector (`rinfo`, length 100) —
+    /// see AOCL's documentation for the index meanings:
+    /// `info_objective` (0), `info_grad_norm` (1), `info_iter` (2),
+    /// `info_time` (3), etc.
+    pub fn info(&self) -> Result<Vec<f64>> {
+        // rinfo is a fixed-size 100-element vector for NLLS.
+        let mut dim: sys::da_int = 100;
+        let mut out = vec![0.0_f64; 100];
+        let status = unsafe {
+            sys::da_handle_get_result_d(
+                self.handle.raw,
+                sys::da_result__da_rinfo,
+                &mut dim,
+                out.as_mut_ptr(),
+            )
+        };
+        if status != sys::da_status__da_status_success {
+            let extra = self.handle.last_error_message().unwrap_or_default();
+            return Err(Error::Status {
+                component: "data-analytics",
+                code: status as i64,
+                message: format!("nlls info: {extra}"),
+            });
+        }
+        out.truncate(dim as usize);
+        Ok(out)
+    }
+}
+
+impl<'a> std::fmt::Debug for Nlls<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Nlls")
+            .field("n_coef", &self.callbacks.n_coef)
+            .field("n_res", &self.callbacks.n_res)
+            .field("handle", &self.handle)
+            .finish()
+    }
+}
+
+// =========================================================================
 //   Pairwise distances
 // =========================================================================
 
@@ -826,6 +1105,7 @@ pub enum HandleKind {
     DecisionForest,
     Knn,
     Svm,
+    Nlls,
 }
 
 impl HandleKind {
@@ -839,6 +1119,7 @@ impl HandleKind {
             HandleKind::DecisionForest => sys::da_handle_type__da_handle_decision_forest,
             HandleKind::Knn => sys::da_handle_type__da_handle_knn,
             HandleKind::Svm => sys::da_handle_type__da_handle_svm,
+            HandleKind::Nlls => sys::da_handle_type__da_handle_nlls,
         }
     }
 }
@@ -2300,6 +2581,44 @@ mod tests {
 
         let acc = forest.score(6, 2, &x_train, &y_train).unwrap();
         assert!((acc - 1.0).abs() < 1e-9, "score = {acc}");
+    }
+
+    #[test]
+    fn nlls_fits_exponential_decay() {
+        // Fit y(t) = a · exp(-b · t) to noiseless data with a=2, b=0.3.
+        // 5 sample points; residuals = predictions - observed.
+        let t: Vec<f64> = vec![0.0, 1.0, 2.0, 3.0, 4.0];
+        let true_a = 2.0_f64;
+        let true_b = 0.3_f64;
+        let y: Vec<f64> = t.iter().map(|&ti| true_a * (-true_b * ti).exp()).collect();
+
+        // Closure captures t and y by reference. resfun computes
+        // r_i(x) = a · exp(-b · t_i) - y_i, where x = [a, b].
+        let n_coef = 2;
+        let n_res = t.len();
+        let resfun = |x: &[f64], res: &mut [f64]| -> i32 {
+            let a = x[0];
+            let b = x[1];
+            for i in 0..res.len() {
+                res[i] = a * (-b * t[i]).exp() - y[i];
+            }
+            0
+        };
+
+        let mut model = Nlls::new(n_coef, n_res, resfun).unwrap();
+        // Start far from the truth to give the optimiser real work.
+        let mut coef = vec![1.0_f64, 1.0_f64];
+        model.fit(&mut coef).unwrap();
+
+        // Should recover the true parameters within a tight tolerance.
+        assert!((coef[0] - true_a).abs() < 1e-4, "a = {}", coef[0]);
+        assert!((coef[1] - true_b).abs() < 1e-4, "b = {}", coef[1]);
+
+        // Solver info should report nonzero iterations.
+        let rinfo = model.info().unwrap();
+        assert!(!rinfo.is_empty());
+        // info[2] is iter count per the C header; should be > 0.
+        assert!(rinfo[2] > 0.0, "iterations = {}", rinfo[2]);
     }
 
     #[test]
