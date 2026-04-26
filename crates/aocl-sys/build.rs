@@ -114,8 +114,8 @@ const LIBRARIES: &[LibSpec] = &[
         module: "rng",
         has_int_subdir: true,
         only_lp64: false,
-        win_static: &["amdrng-static"],
-        win_dynamic: &["amdrng"],
+        win_static: &["rng_amd-static"],
+        win_dynamic: &["rng_amd"],
         unix_static: &["amdrng"],
         unix_dynamic: &["amdrng"],
         extra_includes: &[],
@@ -166,8 +166,8 @@ const LIBRARIES: &[LibSpec] = &[
         module: "data_analytics",
         has_int_subdir: true,
         only_lp64: false,
-        win_static: &["AOCL-LibDA-Win-MT"],
-        win_dynamic: &["AOCL-LibDA-Win-MT-dll"],
+        win_static: &["aocl-da"],
+        win_dynamic: &["aocl-da"],
         unix_static: &["aocl-da"],
         unix_dynamic: &["aocl-da"],
         extra_includes: &[],
@@ -317,13 +317,28 @@ fn main() {
             (comp_dir.join("include"), comp_dir.join("lib"))
         };
 
-        if lib_dir.exists() {
-            println!("cargo:rustc-link-search=native={}", lib_dir.display());
+        // Some components (sparse, fftw, compression) split their libs
+        // between `shared/` and `static/` subdirectories. Pick whichever
+        // matches the requested linkage.
+        let final_lib_dir = {
+            let split = if static_link {
+                lib_dir.join("static")
+            } else {
+                lib_dir.join("shared")
+            };
+            if split.exists() { split } else { lib_dir.clone() }
+        };
+
+        if final_lib_dir.exists() {
+            println!(
+                "cargo:rustc-link-search=native={}",
+                final_lib_dir.display()
+            );
         } else {
             println!(
                 "cargo:warning=lib dir not found for '{}': {}",
                 lib.feature,
-                lib_dir.display()
+                final_lib_dir.display()
             );
         }
 

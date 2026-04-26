@@ -61,11 +61,14 @@ cargo build -p aocl --no-default-features \
 
 When linking dynamically (the default), the AOCL DLLs / shared objects must be reachable at runtime:
 
-- **Windows**: add the relevant `<AOCL_ROOT>\<component>\lib[\LP64|\ILP64]` directory to `PATH` before running. For example:
+- **Windows**: add the relevant `<AOCL_ROOT>\<component>\lib[\LP64|\ILP64]` directory to `PATH` before running. Some components live under `lib\<arch>\shared\` (sparse, fftw, compression, data-analytics). For example:
 
   ```bat
   set PATH=C:\Program Files\AMD\AOCL-Windows\amd-utils\lib;%PATH%
+  set PATH=C:\Program Files\AMD\AOCL-Windows\amd-blis\lib\LP64;%PATH%
   ```
+
+  Many of AMD's Windows AOCL DLLs are built with the Intel compiler and depend on `libmmd.dll` and `svml_dispmd.dll` (Intel runtime). If you have Intel oneAPI installed, add `C:\Program Files (x86)\Intel\oneAPI\<version>\bin` to `PATH` as well.
 
 - **Linux**: add to `LD_LIBRARY_PATH`, or rely on the system loader cache.
 
