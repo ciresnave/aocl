@@ -199,3 +199,112 @@ extern "C" {
         info: *mut c_int,
     );
 }
+
+/// Distributed real symmetric eigendecomposition. `jobz` is `b'N'`
+/// (eigenvalues only) or `b'V'` (also eigenvectors). `uplo` is `b'U'` or
+/// `b'L'`. `w` receives `n` real eigenvalues. `z` (when computed) is
+/// the eigenvector matrix with descriptor `descz`. `work` is workspace
+/// of size `lwork`; pass `lwork = -1` to query the optimal size which
+/// is returned in `work[0]`.
+extern "C" {
+    pub fn pssyev_(
+        jobz: *const c_char, uplo: *const c_char, n: *const c_int,
+        a: *mut f32, ia: *const c_int, ja: *const c_int, desca: *const c_int,
+        w: *mut f32,
+        z: *mut f32, iz: *const c_int, jz: *const c_int, descz: *const c_int,
+        work: *mut f32, lwork: *const c_int,
+        info: *mut c_int,
+    );
+
+    pub fn pdsyev_(
+        jobz: *const c_char, uplo: *const c_char, n: *const c_int,
+        a: *mut f64, ia: *const c_int, ja: *const c_int, desca: *const c_int,
+        w: *mut f64,
+        z: *mut f64, iz: *const c_int, jz: *const c_int, descz: *const c_int,
+        work: *mut f64, lwork: *const c_int,
+        info: *mut c_int,
+    );
+}
+
+/// Distributed least squares (`m × n` overdetermined or underdetermined
+/// system). `trans = b'N'` for `min || A·X − B ||₂`, `b'T'` for the
+/// transposed problem. `work` is workspace of size `lwork`; pass
+/// `lwork = -1` for size query.
+extern "C" {
+    pub fn psgels_(
+        trans: *const c_char,
+        m: *const c_int, n: *const c_int, nrhs: *const c_int,
+        a: *mut f32, ia: *const c_int, ja: *const c_int, desca: *const c_int,
+        b: *mut f32, ib: *const c_int, jb: *const c_int, descb: *const c_int,
+        work: *mut f32, lwork: *const c_int,
+        info: *mut c_int,
+    );
+
+    pub fn pdgels_(
+        trans: *const c_char,
+        m: *const c_int, n: *const c_int, nrhs: *const c_int,
+        a: *mut f64, ia: *const c_int, ja: *const c_int, desca: *const c_int,
+        b: *mut f64, ib: *const c_int, jb: *const c_int, descb: *const c_int,
+        work: *mut f64, lwork: *const c_int,
+        info: *mut c_int,
+    );
+}
+
+/// Distributed back-substitution after `pdgetrf` (LU).
+extern "C" {
+    pub fn psgetrs_(
+        trans: *const c_char,
+        n: *const c_int, nrhs: *const c_int,
+        a: *const f32, ia: *const c_int, ja: *const c_int, desca: *const c_int,
+        ipiv: *const c_int,
+        b: *mut f32, ib: *const c_int, jb: *const c_int, descb: *const c_int,
+        info: *mut c_int,
+    );
+
+    pub fn pdgetrs_(
+        trans: *const c_char,
+        n: *const c_int, nrhs: *const c_int,
+        a: *const f64, ia: *const c_int, ja: *const c_int, desca: *const c_int,
+        ipiv: *const c_int,
+        b: *mut f64, ib: *const c_int, jb: *const c_int, descb: *const c_int,
+        info: *mut c_int,
+    );
+}
+
+/// Distributed back-substitution after `pdpotrf` (Cholesky).
+extern "C" {
+    pub fn pspotrs_(
+        uplo: *const c_char,
+        n: *const c_int, nrhs: *const c_int,
+        a: *const f32, ia: *const c_int, ja: *const c_int, desca: *const c_int,
+        b: *mut f32, ib: *const c_int, jb: *const c_int, descb: *const c_int,
+        info: *mut c_int,
+    );
+
+    pub fn pdpotrs_(
+        uplo: *const c_char,
+        n: *const c_int, nrhs: *const c_int,
+        a: *const f64, ia: *const c_int, ja: *const c_int, desca: *const c_int,
+        b: *mut f64, ib: *const c_int, jb: *const c_int, descb: *const c_int,
+        info: *mut c_int,
+    );
+}
+
+/// Distributed QR factorization. `tau` is local; `work` workspace.
+extern "C" {
+    pub fn psgeqrf_(
+        m: *const c_int, n: *const c_int,
+        a: *mut f32, ia: *const c_int, ja: *const c_int, desca: *const c_int,
+        tau: *mut f32,
+        work: *mut f32, lwork: *const c_int,
+        info: *mut c_int,
+    );
+
+    pub fn pdgeqrf_(
+        m: *const c_int, n: *const c_int,
+        a: *mut f64, ia: *const c_int, ja: *const c_int, desca: *const c_int,
+        tau: *mut f64,
+        work: *mut f64, lwork: *const c_int,
+        info: *mut c_int,
+    );
+}

@@ -347,6 +347,154 @@ pub fn pdgetrf(
     map_info("scalapack", info)
 }
 
+/// Distributed back-substitution after [`pdgetrf`].
+#[allow(clippy::too_many_arguments)]
+pub fn pdgetrs(
+    trans: Trans,
+    n: usize, nrhs: usize,
+    a: &[f64], ia: i32, ja: i32, desca: &BlockCyclic,
+    ipiv: &[i32],
+    b: &mut [f64], ib: i32, jb: i32, descb: &BlockCyclic,
+) -> Result<()> {
+    let t = trans_char(trans);
+    let n_i = n as c_int;
+    let nrhs_i = nrhs as c_int;
+    let mut info: c_int = 0;
+    unsafe {
+        sys::pdgetrs_(
+            &t,
+            &n_i, &nrhs_i,
+            a.as_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
+            ipiv.as_ptr(),
+            b.as_mut_ptr(), &ib, &jb, descb.as_raw().as_ptr(),
+            &mut info,
+        );
+    }
+    map_info("scalapack", info)
+}
+
+/// Distributed back-substitution after [`pdpotrf`].
+#[allow(clippy::too_many_arguments)]
+pub fn pdpotrs(
+    uplo: Uplo,
+    n: usize, nrhs: usize,
+    a: &[f64], ia: i32, ja: i32, desca: &BlockCyclic,
+    b: &mut [f64], ib: i32, jb: i32, descb: &BlockCyclic,
+) -> Result<()> {
+    let u = uplo_char(uplo);
+    let n_i = n as c_int;
+    let nrhs_i = nrhs as c_int;
+    let mut info: c_int = 0;
+    unsafe {
+        sys::pdpotrs_(
+            &u,
+            &n_i, &nrhs_i,
+            a.as_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
+            b.as_mut_ptr(), &ib, &jb, descb.as_raw().as_ptr(),
+            &mut info,
+        );
+    }
+    map_info("scalapack", info)
+}
+
+/// Whether `pdsyev` should compute eigenvectors as well as eigenvalues.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum EigCompute {
+    ValuesOnly,
+    ValuesAndVectors,
+}
+
+impl EigCompute {
+    fn job_char(self) -> c_char {
+        match self {
+            EigCompute::ValuesOnly => b'N' as c_char,
+            EigCompute::ValuesAndVectors => b'V' as c_char,
+        }
+    }
+}
+
+/// Distributed real symmetric eigendecomposition. Provide `work` of
+/// size `lwork`; pass `lwork = -1` for a workspace-size query (the
+/// optimum is written into `work[0]`).
+#[allow(clippy::too_many_arguments)]
+pub fn pdsyev(
+    compute: EigCompute,
+    uplo: Uplo,
+    n: usize,
+    a: &mut [f64], ia: i32, ja: i32, desca: &BlockCyclic,
+    w: &mut [f64],
+    z: &mut [f64], iz: i32, jz: i32, descz: &BlockCyclic,
+    work: &mut [f64],
+    lwork: i32,
+) -> Result<()> {
+    let j = compute.job_char();
+    let u = uplo_char(uplo);
+    let n_i = n as c_int;
+    let mut info: c_int = 0;
+    unsafe {
+        sys::pdsyev_(
+            &j, &u, &n_i,
+            a.as_mut_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
+            w.as_mut_ptr(),
+            z.as_mut_ptr(), &iz, &jz, descz.as_raw().as_ptr(),
+            work.as_mut_ptr(), &lwork,
+            &mut info,
+        );
+    }
+    map_info("scalapack", info)
+}
+
+/// Distributed least squares `min || A·X − B ||₂`. `trans = Trans::No`
+/// for the standard problem; `Trans::T` for the transposed.
+#[allow(clippy::too_many_arguments)]
+pub fn pdgels(
+    trans: Trans,
+    m: usize, n: usize, nrhs: usize,
+    a: &mut [f64], ia: i32, ja: i32, desca: &BlockCyclic,
+    b: &mut [f64], ib: i32, jb: i32, descb: &BlockCyclic,
+    work: &mut [f64], lwork: i32,
+) -> Result<()> {
+    let t = trans_char(trans);
+    let m_i = m as c_int;
+    let n_i = n as c_int;
+    let nrhs_i = nrhs as c_int;
+    let mut info: c_int = 0;
+    unsafe {
+        sys::pdgels_(
+            &t,
+            &m_i, &n_i, &nrhs_i,
+            a.as_mut_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
+            b.as_mut_ptr(), &ib, &jb, descb.as_raw().as_ptr(),
+            work.as_mut_ptr(), &lwork,
+            &mut info,
+        );
+    }
+    map_info("scalapack", info)
+}
+
+/// Distributed QR factorization.
+#[allow(clippy::too_many_arguments)]
+pub fn pdgeqrf(
+    m: usize, n: usize,
+    a: &mut [f64], ia: i32, ja: i32, desca: &BlockCyclic,
+    tau: &mut [f64],
+    work: &mut [f64], lwork: i32,
+) -> Result<()> {
+    let m_i = m as c_int;
+    let n_i = n as c_int;
+    let mut info: c_int = 0;
+    unsafe {
+        sys::pdgeqrf_(
+            &m_i, &n_i,
+            a.as_mut_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
+            tau.as_mut_ptr(),
+            work.as_mut_ptr(), &lwork,
+            &mut info,
+        );
+    }
+    map_info("scalapack", info)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
