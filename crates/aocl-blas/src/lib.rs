@@ -1,12 +1,19 @@
 //! Safe wrappers for AOCL-BLAS (BLIS) via the CBLAS interface.
 //!
-//! Comprehensive Level-1 (vector–vector) coverage across `f32`, `f64`,
-//! `Complex32`, and `Complex64`, plus GEMM from Level 3. Level 2 and the
-//! rest of Level 3 are next.
+//! Comprehensive Level-1 (vector-vector) and core Level-2 (matrix-vector)
+//! coverage across `f32`, `f64`, `Complex32`, and `Complex64`, plus GEMM
+//! from Level 3. Banded / packed Level-2 variants and the rest of Level 3
+//! are next.
 //!
-//! The [`Scalar`] trait gathers operations defined for all four
-//! precisions; the [`RealScalar`] extension trait gathers operations
-//! defined only for the real precisions (`rotg`, `rot`, `dsdot`).
+//! Trait split:
+//! - [`Scalar`] — operations defined for all four precisions: every
+//!   Level-1 op, plus `gemv` / `trmv` / `trsv`, plus `gemm`.
+//! - [`RealScalar`] — operations defined only for `f32` / `f64`:
+//!   Givens rotations, the precision-mixing dot variants, plus
+//!   symmetric Level-2 ops (`symv`, `syr`, `syr2`, `ger`).
+//! - [`ComplexScalar`] — operations defined only for `Complex32` /
+//!   `Complex64`: Hermitian Level-2 ops (`hemv`, `her`, `her2`) and the
+//!   complex rank-1 update variants (`geru`, `gerc`).
 //!
 //! All wrappers take Rust slices with bounds-checked dimensions; mismatched
 //! sizes return [`Error::InvalidArgument`]. For routines not yet wrapped,
@@ -17,7 +24,7 @@
 
 use aocl_blas_sys as sys;
 pub use aocl_error::{Error, Result};
-pub use aocl_types::{Complex32, Complex64, Layout, Trans};
+pub use aocl_types::{Complex32, Complex64, Diag, Layout, Trans, Uplo};
 use aocl_types::sealed::Sealed;
 
 // ===========================================================================
@@ -37,6 +44,135 @@ fn trans_raw(t: Trans) -> sys::CBLAS_TRANSPOSE {
         Trans::T => sys::CBLAS_TRANSPOSE_CblasTrans as sys::CBLAS_TRANSPOSE,
         Trans::C => sys::CBLAS_TRANSPOSE_CblasConjTrans as sys::CBLAS_TRANSPOSE,
     }
+}
+
+fn uplo_raw(u: Uplo) -> sys::CBLAS_UPLO {
+    match u {
+        Uplo::Upper => sys::CBLAS_UPLO_CblasUpper as sys::CBLAS_UPLO,
+        Uplo::Lower => sys::CBLAS_UPLO_CblasLower as sys::CBLAS_UPLO,
+    }
+}
+
+fn diag_raw(d: Diag) -> sys::CBLAS_DIAG {
+    match d {
+        Diag::NonUnit => sys::CBLAS_DIAG_CblasNonUnit as sys::CBLAS_DIAG,
+        Diag::Unit => sys::CBLAS_DIAG_CblasUnit as sys::CBLAS_DIAG,
+    }
+}
+
+// --- Level-2 dimension validators -----------------------------------------
+
+/// Required leading dimension for an `m × n` row- or column-major matrix.
+fn min_ld(layout: Layout, rows: usize, cols: usize) -> usize {
+    match layout {
+        Layout::RowMajor => cols.max(1),
+        Layout::ColMajor => rows.max(1),
+    }
+}
+
+/// Minimum slice length needed to address an `m × n` matrix with the
+/// given leading dimension and storage order.
+fn min_matrix_len(layout: Layout, rows: usize, cols: usize, ld: usize) -> usize {
+    if rows == 0 || cols == 0 {
+        return 0;
+    }
+    let (lead, trail) = match layout {
+        Layout::RowMajor => (rows, cols),
+        Layout::ColMajor => (cols, rows),
+    };
+    (lead - 1) * ld + trail
+}
+
+fn check_matrix(
+    name: &str,
+    layout: Layout,
+    rows: usize,
+    cols: usize,
+    ld: usize,
+    slice_len: usize,
+) -> Result<()> {
+    let needed_ld = min_ld(layout, rows, cols);
+    if ld < needed_ld {
+        return Err(Error::InvalidArgument(format!(
+            "{name}: ld={ld} < {needed_ld}"
+        )));
+    }
+    let needed = min_matrix_len(layout, rows, cols, ld);
+    if slice_len < needed {
+        return Err(Error::InvalidArgument(format!(
+            "{name}: matrix slice length {slice_len} too small (need {needed})"
+        )));
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn check_gemv(
+    layout: Layout,
+    trans_a: Trans,
+    m: usize,
+    n: usize,
+    a_len: usize,
+    lda: usize,
+    x_len: usize,
+    inc_x: usize,
+    y_len: usize,
+    inc_y: usize,
+) -> Result<()> {
+    check_matrix("gemv: A", layout, m, n, lda, a_len)?;
+    let (x_n, y_n) = match trans_a {
+        Trans::No => (n, m),
+        Trans::T | Trans::C => (m, n),
+    };
+    check_strided_len("gemv: x", x_len, x_n, inc_x)?;
+    check_strided_len("gemv: y", y_len, y_n, inc_y)
+}
+
+fn check_n_square(
+    name: &str,
+    layout: Layout,
+    n: usize,
+    a_len: usize,
+    lda: usize,
+    x_len: usize,
+    inc_x: usize,
+) -> Result<()> {
+    check_matrix(name, layout, n, n, lda, a_len)?;
+    check_strided_len(&format!("{name}: x"), x_len, n, inc_x)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn check_n_square_xy(
+    name: &str,
+    layout: Layout,
+    n: usize,
+    a_len: usize,
+    lda: usize,
+    x_len: usize,
+    inc_x: usize,
+    y_len: usize,
+    inc_y: usize,
+) -> Result<()> {
+    check_matrix(name, layout, n, n, lda, a_len)?;
+    check_strided_len(&format!("{name}: x"), x_len, n, inc_x)?;
+    check_strided_len(&format!("{name}: y"), y_len, n, inc_y)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn check_ger(
+    layout: Layout,
+    m: usize,
+    n: usize,
+    a_len: usize,
+    lda: usize,
+    x_len: usize,
+    inc_x: usize,
+    y_len: usize,
+    inc_y: usize,
+) -> Result<()> {
+    check_matrix("ger: A", layout, m, n, lda, a_len)?;
+    check_strided_len("ger: x", x_len, m, inc_x)?;
+    check_strided_len("ger: y", y_len, n, inc_y)
 }
 
 // ===========================================================================
@@ -197,6 +333,54 @@ pub trait Scalar: Copy + Sized + Sealed {
     /// 0-based index of the element with the smallest absolute value.
     fn iamin(x: &[Self], inc: usize) -> Result<usize>;
 
+    // --- Level-2 (matrix-vector) -----------------------------------------
+
+    /// `Y := α · op(A) · X + β · Y` where `op(A)` is `m × n`.
+    #[allow(clippy::too_many_arguments)]
+    fn gemv(
+        layout: Layout,
+        trans_a: Trans,
+        m: usize,
+        n: usize,
+        alpha: Self,
+        a: &[Self],
+        lda: usize,
+        x: &[Self],
+        inc_x: usize,
+        beta: Self,
+        y: &mut [Self],
+        inc_y: usize,
+    ) -> Result<()>;
+
+    /// `X := op(A) · X` for triangular `A` (`n × n`).
+    #[allow(clippy::too_many_arguments)]
+    fn trmv(
+        layout: Layout,
+        uplo: Uplo,
+        trans_a: Trans,
+        diag: Diag,
+        n: usize,
+        a: &[Self],
+        lda: usize,
+        x: &mut [Self],
+        inc_x: usize,
+    ) -> Result<()>;
+
+    /// Solve `op(A) · X' = X` for triangular `A` (`n × n`), overwriting `X`
+    /// with the solution `X'`.
+    #[allow(clippy::too_many_arguments)]
+    fn trsv(
+        layout: Layout,
+        uplo: Uplo,
+        trans_a: Trans,
+        diag: Diag,
+        n: usize,
+        a: &[Self],
+        lda: usize,
+        x: &mut [Self],
+        inc_x: usize,
+    ) -> Result<()>;
+
     // --- Level-3 (GEMM only for now) -------------------------------------
 
     /// `C := α · op(A) · op(B) + β · C`.
@@ -232,6 +416,149 @@ pub trait RealScalar: Scalar<Real = Self> {
     /// Mixed-precision dot for `f32` operands accumulating in `f64`. For
     /// `f64` `Self` this returns the same value as [`Scalar::dot`].
     fn dsdot(x: &[Self], inc_x: usize, y: &[Self], inc_y: usize) -> Result<f64>;
+
+    /// `Y := α · A · X + β · Y` for symmetric `A` (`n × n`).
+    /// Only the triangle indicated by `uplo` is referenced.
+    #[allow(clippy::too_many_arguments)]
+    fn symv(
+        layout: Layout,
+        uplo: Uplo,
+        n: usize,
+        alpha: Self,
+        a: &[Self],
+        lda: usize,
+        x: &[Self],
+        inc_x: usize,
+        beta: Self,
+        y: &mut [Self],
+        inc_y: usize,
+    ) -> Result<()>;
+
+    /// Symmetric rank-1 update: `A := α · X · Xᵀ + A` for symmetric `A`.
+    /// Only the triangle indicated by `uplo` is referenced and updated.
+    #[allow(clippy::too_many_arguments)]
+    fn syr(
+        layout: Layout,
+        uplo: Uplo,
+        n: usize,
+        alpha: Self,
+        x: &[Self],
+        inc_x: usize,
+        a: &mut [Self],
+        lda: usize,
+    ) -> Result<()>;
+
+    /// Symmetric rank-2 update: `A := α · X · Yᵀ + α · Y · Xᵀ + A`.
+    #[allow(clippy::too_many_arguments)]
+    fn syr2(
+        layout: Layout,
+        uplo: Uplo,
+        n: usize,
+        alpha: Self,
+        x: &[Self],
+        inc_x: usize,
+        y: &[Self],
+        inc_y: usize,
+        a: &mut [Self],
+        lda: usize,
+    ) -> Result<()>;
+
+    /// General rank-1 update: `A := α · X · Yᵀ + A` for `m × n` `A`.
+    #[allow(clippy::too_many_arguments)]
+    fn ger(
+        layout: Layout,
+        m: usize,
+        n: usize,
+        alpha: Self,
+        x: &[Self],
+        inc_x: usize,
+        y: &[Self],
+        inc_y: usize,
+        a: &mut [Self],
+        lda: usize,
+    ) -> Result<()>;
+}
+
+/// Operations defined only for complex BLAS precisions (`Complex32`,
+/// `Complex64`).
+pub trait ComplexScalar: Scalar {
+    /// `Y := α · A · X + β · Y` for Hermitian `A` (`n × n`).
+    /// Only the triangle indicated by `uplo` is referenced.
+    #[allow(clippy::too_many_arguments)]
+    fn hemv(
+        layout: Layout,
+        uplo: Uplo,
+        n: usize,
+        alpha: Self,
+        a: &[Self],
+        lda: usize,
+        x: &[Self],
+        inc_x: usize,
+        beta: Self,
+        y: &mut [Self],
+        inc_y: usize,
+    ) -> Result<()>;
+
+    /// Hermitian rank-1 update: `A := α · X · Xᴴ + A`. Note that AOCL/BLAS
+    /// require the scalar `α` to be **real** here (the diagonal of `A`
+    /// is enforced real). Pass `Self::Real`, which is `f32` for
+    /// `Complex32` and `f64` for `Complex64`.
+    #[allow(clippy::too_many_arguments)]
+    fn her(
+        layout: Layout,
+        uplo: Uplo,
+        n: usize,
+        alpha: Self::Real,
+        x: &[Self],
+        inc_x: usize,
+        a: &mut [Self],
+        lda: usize,
+    ) -> Result<()>;
+
+    /// Hermitian rank-2 update: `A := α · X · Yᴴ + conj(α) · Y · Xᴴ + A`.
+    #[allow(clippy::too_many_arguments)]
+    fn her2(
+        layout: Layout,
+        uplo: Uplo,
+        n: usize,
+        alpha: Self,
+        x: &[Self],
+        inc_x: usize,
+        y: &[Self],
+        inc_y: usize,
+        a: &mut [Self],
+        lda: usize,
+    ) -> Result<()>;
+
+    /// Unconjugated rank-1 update: `A := α · X · Yᵀ + A` for `m × n` `A`.
+    #[allow(clippy::too_many_arguments)]
+    fn geru(
+        layout: Layout,
+        m: usize,
+        n: usize,
+        alpha: Self,
+        x: &[Self],
+        inc_x: usize,
+        y: &[Self],
+        inc_y: usize,
+        a: &mut [Self],
+        lda: usize,
+    ) -> Result<()>;
+
+    /// Conjugated rank-1 update: `A := α · X · Yᴴ + A` for `m × n` `A`.
+    #[allow(clippy::too_many_arguments)]
+    fn gerc(
+        layout: Layout,
+        m: usize,
+        n: usize,
+        alpha: Self,
+        x: &[Self],
+        inc_x: usize,
+        y: &[Self],
+        inc_y: usize,
+        a: &mut [Self],
+        lda: usize,
+    ) -> Result<()>;
 }
 
 // ===========================================================================
@@ -253,7 +580,14 @@ macro_rules! impl_real_scalar {
         gemm = $gemm:ident,
         rotg = $rotg:ident,
         rot  = $rot:ident,
-        dsdot_fn = $dsdot_fn:expr
+        dsdot_fn = $dsdot_fn:expr,
+        gemv = $gemv:ident,
+        trmv = $trmv:ident,
+        trsv = $trsv:ident,
+        symv = $symv:ident,
+        syr  = $syr:ident,
+        syr2 = $syr2:ident,
+        ger  = $ger:ident
     ) => {
         impl Scalar for $t {
             type Real = $t;
@@ -354,6 +688,61 @@ macro_rules! impl_real_scalar {
             }
 
             #[allow(clippy::too_many_arguments)]
+            fn gemv(
+                layout: Layout, trans_a: Trans,
+                m: usize, n: usize,
+                alpha: Self, a: &[Self], lda: usize,
+                x: &[Self], inc_x: usize,
+                beta: Self, y: &mut [Self], inc_y: usize,
+            ) -> Result<()> {
+                check_gemv(layout, trans_a, m, n, a.len(), lda, x.len(), inc_x, y.len(), inc_y)?;
+                unsafe {
+                    sys::$gemv(
+                        layout_raw(layout), trans_raw(trans_a),
+                        m as sys::f77_int, n as sys::f77_int,
+                        alpha, a.as_ptr(), lda as sys::f77_int,
+                        x.as_ptr(), inc_x as sys::f77_int,
+                        beta, y.as_mut_ptr(), inc_y as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn trmv(
+                layout: Layout, uplo: Uplo, trans_a: Trans, diag: Diag,
+                n: usize, a: &[Self], lda: usize,
+                x: &mut [Self], inc_x: usize,
+            ) -> Result<()> {
+                check_n_square("trmv: A", layout, n, a.len(), lda, x.len(), inc_x)?;
+                unsafe {
+                    sys::$trmv(
+                        layout_raw(layout), uplo_raw(uplo), trans_raw(trans_a), diag_raw(diag),
+                        n as sys::f77_int, a.as_ptr(), lda as sys::f77_int,
+                        x.as_mut_ptr(), inc_x as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn trsv(
+                layout: Layout, uplo: Uplo, trans_a: Trans, diag: Diag,
+                n: usize, a: &[Self], lda: usize,
+                x: &mut [Self], inc_x: usize,
+            ) -> Result<()> {
+                check_n_square("trsv: A", layout, n, a.len(), lda, x.len(), inc_x)?;
+                unsafe {
+                    sys::$trsv(
+                        layout_raw(layout), uplo_raw(uplo), trans_raw(trans_a), diag_raw(diag),
+                        n as sys::f77_int, a.as_ptr(), lda as sys::f77_int,
+                        x.as_mut_ptr(), inc_x as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
             fn gemm(
                 layout: Layout, trans_a: Trans, trans_b: Trans,
                 m: usize, n: usize, k: usize,
@@ -403,6 +792,83 @@ macro_rules! impl_real_scalar {
                                          y.as_ptr(), inc_y as sys::f77_int);
                 Ok(r)
             }
+
+            #[allow(clippy::too_many_arguments)]
+            fn symv(
+                layout: Layout, uplo: Uplo, n: usize,
+                alpha: Self, a: &[Self], lda: usize,
+                x: &[Self], inc_x: usize,
+                beta: Self, y: &mut [Self], inc_y: usize,
+            ) -> Result<()> {
+                check_n_square_xy("symv: A", layout, n, a.len(), lda, x.len(), inc_x, y.len(), inc_y)?;
+                unsafe {
+                    sys::$symv(
+                        layout_raw(layout), uplo_raw(uplo),
+                        n as sys::f77_int, alpha, a.as_ptr(), lda as sys::f77_int,
+                        x.as_ptr(), inc_x as sys::f77_int,
+                        beta, y.as_mut_ptr(), inc_y as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn syr(
+                layout: Layout, uplo: Uplo, n: usize,
+                alpha: Self, x: &[Self], inc_x: usize,
+                a: &mut [Self], lda: usize,
+            ) -> Result<()> {
+                check_n_square("syr: A", layout, n, a.len(), lda, x.len(), inc_x)?;
+                unsafe {
+                    sys::$syr(
+                        layout_raw(layout), uplo_raw(uplo),
+                        n as sys::f77_int, alpha, x.as_ptr(), inc_x as sys::f77_int,
+                        a.as_mut_ptr(), lda as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn syr2(
+                layout: Layout, uplo: Uplo, n: usize,
+                alpha: Self, x: &[Self], inc_x: usize,
+                y: &[Self], inc_y: usize,
+                a: &mut [Self], lda: usize,
+            ) -> Result<()> {
+                check_n_square_xy("syr2: A", layout, n, a.len(), lda, x.len(), inc_x, y.len(), inc_y)?;
+                unsafe {
+                    sys::$syr2(
+                        layout_raw(layout), uplo_raw(uplo),
+                        n as sys::f77_int, alpha,
+                        x.as_ptr(), inc_x as sys::f77_int,
+                        y.as_ptr(), inc_y as sys::f77_int,
+                        a.as_mut_ptr(), lda as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn ger(
+                layout: Layout, m: usize, n: usize,
+                alpha: Self, x: &[Self], inc_x: usize,
+                y: &[Self], inc_y: usize,
+                a: &mut [Self], lda: usize,
+            ) -> Result<()> {
+                check_ger(layout, m, n, a.len(), lda, x.len(), inc_x, y.len(), inc_y)?;
+                unsafe {
+                    sys::$ger(
+                        layout_raw(layout),
+                        m as sys::f77_int, n as sys::f77_int,
+                        alpha,
+                        x.as_ptr(), inc_x as sys::f77_int,
+                        y.as_ptr(), inc_y as sys::f77_int,
+                        a.as_mut_ptr(), lda as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
         }
     };
 }
@@ -413,7 +879,9 @@ impl_real_scalar!(
     dot = cblas_sdot, nrm2 = cblas_snrm2, asum = cblas_sasum,
     iamax = cblas_isamax, iamin = cblas_isamin, gemm = cblas_sgemm,
     rotg = cblas_srotg, rot = cblas_srot,
-    dsdot_fn = (|n, x, ix, y, iy| unsafe { sys::cblas_dsdot(n, x, ix, y, iy) })
+    dsdot_fn = (|n, x, ix, y, iy| unsafe { sys::cblas_dsdot(n, x, ix, y, iy) }),
+    gemv = cblas_sgemv, trmv = cblas_strmv, trsv = cblas_strsv,
+    symv = cblas_ssymv, syr = cblas_ssyr, syr2 = cblas_ssyr2, ger = cblas_sger
 );
 impl_real_scalar!(
     f64,
@@ -422,7 +890,9 @@ impl_real_scalar!(
     iamax = cblas_idamax, iamin = cblas_idamin, gemm = cblas_dgemm,
     rotg = cblas_drotg, rot = cblas_drot,
     // For f64 dsdot semantically equals dot on f64 inputs; we forward to ddot.
-    dsdot_fn = (|n, x, ix, y, iy| unsafe { sys::cblas_ddot(n, x, ix, y, iy) })
+    dsdot_fn = (|n, x, ix, y, iy| unsafe { sys::cblas_ddot(n, x, ix, y, iy) }),
+    gemv = cblas_dgemv, trmv = cblas_dtrmv, trsv = cblas_dtrsv,
+    symv = cblas_dsymv, syr = cblas_dsyr, syr2 = cblas_dsyr2, ger = cblas_dger
 );
 
 // ===========================================================================
@@ -438,7 +908,10 @@ macro_rules! impl_complex_scalar {
         dotu = $dotu:ident, dotc = $dotc:ident,
         nrm2 = $nrm2:ident, asum = $asum:ident,
         iamax = $iamax:ident, iamin = $iamin:ident,
-        gemm = $gemm:ident
+        gemm = $gemm:ident,
+        gemv = $gemv:ident, trmv = $trmv:ident, trsv = $trsv:ident,
+        hemv = $hemv:ident, her = $her:ident, her2 = $her2:ident,
+        geru = $geru:ident, gerc = $gerc:ident
     ) => {
         impl Scalar for $t {
             type Real = $real;
@@ -616,6 +1089,65 @@ macro_rules! impl_complex_scalar {
             }
 
             #[allow(clippy::too_many_arguments)]
+            fn gemv(
+                layout: Layout, trans_a: Trans,
+                m: usize, n: usize,
+                alpha: Self, a: &[Self], lda: usize,
+                x: &[Self], inc_x: usize,
+                beta: Self, y: &mut [Self], inc_y: usize,
+            ) -> Result<()> {
+                check_gemv(layout, trans_a, m, n, a.len(), lda, x.len(), inc_x, y.len(), inc_y)?;
+                unsafe {
+                    sys::$gemv(
+                        layout_raw(layout), trans_raw(trans_a),
+                        m as sys::f77_int, n as sys::f77_int,
+                        &alpha as *const Self as *const std::os::raw::c_void,
+                        a.as_ptr() as *const std::os::raw::c_void, lda as sys::f77_int,
+                        x.as_ptr() as *const std::os::raw::c_void, inc_x as sys::f77_int,
+                        &beta as *const Self as *const std::os::raw::c_void,
+                        y.as_mut_ptr() as *mut std::os::raw::c_void, inc_y as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn trmv(
+                layout: Layout, uplo: Uplo, trans_a: Trans, diag: Diag,
+                n: usize, a: &[Self], lda: usize,
+                x: &mut [Self], inc_x: usize,
+            ) -> Result<()> {
+                check_n_square("trmv: A", layout, n, a.len(), lda, x.len(), inc_x)?;
+                unsafe {
+                    sys::$trmv(
+                        layout_raw(layout), uplo_raw(uplo), trans_raw(trans_a), diag_raw(diag),
+                        n as sys::f77_int,
+                        a.as_ptr() as *const std::os::raw::c_void, lda as sys::f77_int,
+                        x.as_mut_ptr() as *mut std::os::raw::c_void, inc_x as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn trsv(
+                layout: Layout, uplo: Uplo, trans_a: Trans, diag: Diag,
+                n: usize, a: &[Self], lda: usize,
+                x: &mut [Self], inc_x: usize,
+            ) -> Result<()> {
+                check_n_square("trsv: A", layout, n, a.len(), lda, x.len(), inc_x)?;
+                unsafe {
+                    sys::$trsv(
+                        layout_raw(layout), uplo_raw(uplo), trans_raw(trans_a), diag_raw(diag),
+                        n as sys::f77_int,
+                        a.as_ptr() as *const std::os::raw::c_void, lda as sys::f77_int,
+                        x.as_mut_ptr() as *mut std::os::raw::c_void, inc_x as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
             fn gemm(
                 layout: Layout, trans_a: Trans, trans_b: Trans,
                 m: usize, n: usize, k: usize,
@@ -639,6 +1171,111 @@ macro_rules! impl_complex_scalar {
                 Ok(())
             }
         }
+
+        impl ComplexScalar for $t {
+            #[allow(clippy::too_many_arguments)]
+            fn hemv(
+                layout: Layout, uplo: Uplo, n: usize,
+                alpha: Self, a: &[Self], lda: usize,
+                x: &[Self], inc_x: usize,
+                beta: Self, y: &mut [Self], inc_y: usize,
+            ) -> Result<()> {
+                check_n_square_xy("hemv: A", layout, n, a.len(), lda, x.len(), inc_x, y.len(), inc_y)?;
+                unsafe {
+                    sys::$hemv(
+                        layout_raw(layout), uplo_raw(uplo),
+                        n as sys::f77_int,
+                        &alpha as *const Self as *const std::os::raw::c_void,
+                        a.as_ptr() as *const std::os::raw::c_void, lda as sys::f77_int,
+                        x.as_ptr() as *const std::os::raw::c_void, inc_x as sys::f77_int,
+                        &beta as *const Self as *const std::os::raw::c_void,
+                        y.as_mut_ptr() as *mut std::os::raw::c_void, inc_y as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn her(
+                layout: Layout, uplo: Uplo, n: usize,
+                alpha: Self::Real, x: &[Self], inc_x: usize,
+                a: &mut [Self], lda: usize,
+            ) -> Result<()> {
+                check_n_square("her: A", layout, n, a.len(), lda, x.len(), inc_x)?;
+                unsafe {
+                    sys::$her(
+                        layout_raw(layout), uplo_raw(uplo),
+                        n as sys::f77_int, alpha,
+                        x.as_ptr() as *const std::os::raw::c_void, inc_x as sys::f77_int,
+                        a.as_mut_ptr() as *mut std::os::raw::c_void, lda as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn her2(
+                layout: Layout, uplo: Uplo, n: usize,
+                alpha: Self, x: &[Self], inc_x: usize,
+                y: &[Self], inc_y: usize,
+                a: &mut [Self], lda: usize,
+            ) -> Result<()> {
+                check_n_square_xy("her2: A", layout, n, a.len(), lda, x.len(), inc_x, y.len(), inc_y)?;
+                unsafe {
+                    sys::$her2(
+                        layout_raw(layout), uplo_raw(uplo),
+                        n as sys::f77_int,
+                        &alpha as *const Self as *const std::os::raw::c_void,
+                        x.as_ptr() as *const std::os::raw::c_void, inc_x as sys::f77_int,
+                        y.as_ptr() as *const std::os::raw::c_void, inc_y as sys::f77_int,
+                        a.as_mut_ptr() as *mut std::os::raw::c_void, lda as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn geru(
+                layout: Layout, m: usize, n: usize,
+                alpha: Self, x: &[Self], inc_x: usize,
+                y: &[Self], inc_y: usize,
+                a: &mut [Self], lda: usize,
+            ) -> Result<()> {
+                check_ger(layout, m, n, a.len(), lda, x.len(), inc_x, y.len(), inc_y)?;
+                unsafe {
+                    sys::$geru(
+                        layout_raw(layout),
+                        m as sys::f77_int, n as sys::f77_int,
+                        &alpha as *const Self as *const std::os::raw::c_void,
+                        x.as_ptr() as *const std::os::raw::c_void, inc_x as sys::f77_int,
+                        y.as_ptr() as *const std::os::raw::c_void, inc_y as sys::f77_int,
+                        a.as_mut_ptr() as *mut std::os::raw::c_void, lda as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn gerc(
+                layout: Layout, m: usize, n: usize,
+                alpha: Self, x: &[Self], inc_x: usize,
+                y: &[Self], inc_y: usize,
+                a: &mut [Self], lda: usize,
+            ) -> Result<()> {
+                check_ger(layout, m, n, a.len(), lda, x.len(), inc_x, y.len(), inc_y)?;
+                unsafe {
+                    sys::$gerc(
+                        layout_raw(layout),
+                        m as sys::f77_int, n as sys::f77_int,
+                        &alpha as *const Self as *const std::os::raw::c_void,
+                        x.as_ptr() as *const std::os::raw::c_void, inc_x as sys::f77_int,
+                        y.as_ptr() as *const std::os::raw::c_void, inc_y as sys::f77_int,
+                        a.as_mut_ptr() as *mut std::os::raw::c_void, lda as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+        }
     };
 }
 
@@ -649,7 +1286,10 @@ impl_complex_scalar!(
     dotu = cblas_cdotu_sub, dotc = cblas_cdotc_sub,
     nrm2 = cblas_scnrm2, asum = cblas_scasum,
     iamax = cblas_icamax, iamin = cblas_icamin,
-    gemm = cblas_cgemm
+    gemm = cblas_cgemm,
+    gemv = cblas_cgemv, trmv = cblas_ctrmv, trsv = cblas_ctrsv,
+    hemv = cblas_chemv, her = cblas_cher, her2 = cblas_cher2,
+    geru = cblas_cgeru, gerc = cblas_cgerc
 );
 impl_complex_scalar!(
     Complex64, f64,
@@ -658,7 +1298,10 @@ impl_complex_scalar!(
     dotu = cblas_zdotu_sub, dotc = cblas_zdotc_sub,
     nrm2 = cblas_dznrm2, asum = cblas_dzasum,
     iamax = cblas_izamax, iamin = cblas_izamin,
-    gemm = cblas_zgemm
+    gemm = cblas_zgemm,
+    gemv = cblas_zgemv, trmv = cblas_ztrmv, trsv = cblas_ztrsv,
+    hemv = cblas_zhemv, her = cblas_zher, her2 = cblas_zher2,
+    geru = cblas_zgeru, gerc = cblas_zgerc
 );
 
 // ===========================================================================
@@ -796,6 +1439,162 @@ pub fn rot<T: RealScalar>(x: &mut [T], y: &mut [T], c: T, s: T) -> Result<()> {
         )));
     }
     T::rot(x, 1, y, 1, c, s)
+}
+
+// ===========================================================================
+//   Level-2 free-function convenience entry points
+//   (tightly-packed row-major matrices; unit stride vectors)
+// ===========================================================================
+
+/// `Y := α · op(A) · X + β · Y` where `A` is `m × n` row-major
+/// tightly-packed. `X` length must match `n` (no trans) or `m` (trans);
+/// `Y` length must match the other.
+#[allow(clippy::too_many_arguments)]
+pub fn gemv<T: Scalar>(
+    trans_a: Trans,
+    m: usize,
+    n: usize,
+    alpha: T,
+    a: &[T],
+    x: &[T],
+    beta: T,
+    y: &mut [T],
+) -> Result<()> {
+    T::gemv(Layout::RowMajor, trans_a, m, n, alpha, a, n, x, 1, beta, y, 1)
+}
+
+/// `X := op(A) · X` for triangular row-major `A` (`n × n`).
+pub fn trmv<T: Scalar>(
+    uplo: Uplo,
+    trans_a: Trans,
+    diag: Diag,
+    n: usize,
+    a: &[T],
+    x: &mut [T],
+) -> Result<()> {
+    T::trmv(Layout::RowMajor, uplo, trans_a, diag, n, a, n, x, 1)
+}
+
+/// Solve `op(A) · X' = X` for triangular row-major `A` (`n × n`).
+pub fn trsv<T: Scalar>(
+    uplo: Uplo,
+    trans_a: Trans,
+    diag: Diag,
+    n: usize,
+    a: &[T],
+    x: &mut [T],
+) -> Result<()> {
+    T::trsv(Layout::RowMajor, uplo, trans_a, diag, n, a, n, x, 1)
+}
+
+/// `Y := α · A · X + β · Y` for symmetric row-major `A` (`n × n`).
+#[allow(clippy::too_many_arguments)]
+pub fn symv<T: RealScalar>(
+    uplo: Uplo,
+    n: usize,
+    alpha: T,
+    a: &[T],
+    x: &[T],
+    beta: T,
+    y: &mut [T],
+) -> Result<()> {
+    T::symv(Layout::RowMajor, uplo, n, alpha, a, n, x, 1, beta, y, 1)
+}
+
+/// Symmetric rank-1 update `A := α · X · Xᵀ + A`.
+pub fn syr<T: RealScalar>(
+    uplo: Uplo,
+    n: usize,
+    alpha: T,
+    x: &[T],
+    a: &mut [T],
+) -> Result<()> {
+    T::syr(Layout::RowMajor, uplo, n, alpha, x, 1, a, n)
+}
+
+/// Symmetric rank-2 update `A := α · X · Yᵀ + α · Y · Xᵀ + A`.
+pub fn syr2<T: RealScalar>(
+    uplo: Uplo,
+    n: usize,
+    alpha: T,
+    x: &[T],
+    y: &[T],
+    a: &mut [T],
+) -> Result<()> {
+    T::syr2(Layout::RowMajor, uplo, n, alpha, x, 1, y, 1, a, n)
+}
+
+/// General rank-1 update `A := α · X · Yᵀ + A` for `m × n` row-major `A`.
+pub fn ger<T: RealScalar>(
+    m: usize,
+    n: usize,
+    alpha: T,
+    x: &[T],
+    y: &[T],
+    a: &mut [T],
+) -> Result<()> {
+    T::ger(Layout::RowMajor, m, n, alpha, x, 1, y, 1, a, n)
+}
+
+/// `Y := α · A · X + β · Y` for Hermitian row-major `A` (`n × n`).
+#[allow(clippy::too_many_arguments)]
+pub fn hemv<T: ComplexScalar>(
+    uplo: Uplo,
+    n: usize,
+    alpha: T,
+    a: &[T],
+    x: &[T],
+    beta: T,
+    y: &mut [T],
+) -> Result<()> {
+    T::hemv(Layout::RowMajor, uplo, n, alpha, a, n, x, 1, beta, y, 1)
+}
+
+/// Hermitian rank-1 update `A := α · X · Xᴴ + A` (real scalar).
+pub fn her<T: ComplexScalar>(
+    uplo: Uplo,
+    n: usize,
+    alpha: T::Real,
+    x: &[T],
+    a: &mut [T],
+) -> Result<()> {
+    T::her(Layout::RowMajor, uplo, n, alpha, x, 1, a, n)
+}
+
+/// Hermitian rank-2 update `A := α · X · Yᴴ + conj(α) · Y · Xᴴ + A`.
+pub fn her2<T: ComplexScalar>(
+    uplo: Uplo,
+    n: usize,
+    alpha: T,
+    x: &[T],
+    y: &[T],
+    a: &mut [T],
+) -> Result<()> {
+    T::her2(Layout::RowMajor, uplo, n, alpha, x, 1, y, 1, a, n)
+}
+
+/// Unconjugated rank-1 update `A := α · X · Yᵀ + A` for complex.
+pub fn geru<T: ComplexScalar>(
+    m: usize,
+    n: usize,
+    alpha: T,
+    x: &[T],
+    y: &[T],
+    a: &mut [T],
+) -> Result<()> {
+    T::geru(Layout::RowMajor, m, n, alpha, x, 1, y, 1, a, n)
+}
+
+/// Conjugated rank-1 update `A := α · X · Yᴴ + A` for complex.
+pub fn gerc<T: ComplexScalar>(
+    m: usize,
+    n: usize,
+    alpha: T,
+    x: &[T],
+    y: &[T],
+    a: &mut [T],
+) -> Result<()> {
+    T::gerc(Layout::RowMajor, m, n, alpha, x, 1, y, 1, a, n)
 }
 
 // ===========================================================================
@@ -1024,5 +1823,187 @@ mod tests {
         let mut c = [0.0_f64; 4];
         let err = gemm(Trans::No, Trans::No, 2, 2, 3, 1.0, &a, &b, 0.0, &mut c).unwrap_err();
         assert!(matches!(err, Error::InvalidArgument(_)));
+    }
+
+    // --- Level 2: gemv ----------------------------------------------------
+
+    #[test]
+    fn gemv_f64_no_trans() {
+        // A = [[1,2,3],[4,5,6]] (2×3), x=[1,1,1], y=A·x = [6, 15]
+        let a = [1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let x = [1.0_f64; 3];
+        let mut y = [0.0_f64; 2];
+        gemv(Trans::No, 2, 3, 1.0, &a, &x, 0.0, &mut y).unwrap();
+        assert_eq!(y, [6.0, 15.0]);
+    }
+
+    #[test]
+    fn gemv_f64_transpose() {
+        // A = [[1,2,3],[4,5,6]] (2×3), x=[1,1] → Aᵀ·x = [5, 7, 9]
+        let a = [1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let x = [1.0_f64; 2];
+        let mut y = [0.0_f64; 3];
+        gemv(Trans::T, 2, 3, 1.0, &a, &x, 0.0, &mut y).unwrap();
+        assert_eq!(y, [5.0, 7.0, 9.0]);
+    }
+
+    #[test]
+    fn gemv_complex64() {
+        // A = [[1+i, 0],[0, 1+i]], x = [1, 1] → A·x = [1+i, 1+i]
+        let i = Complex64::new(1.0, 1.0);
+        let z = Complex64::ZERO;
+        let one = Complex64::ONE;
+        let a = [i, z, z, i];
+        let x = [one, one];
+        let mut y = [z; 2];
+        gemv(Trans::No, 2, 2, one, &a, &x, z, &mut y).unwrap();
+        assert_eq!(y, [i, i]);
+    }
+
+    #[test]
+    fn gemv_dim_mismatch() {
+        let a = [1.0_f64; 6];
+        let x = [1.0_f64; 2]; // wrong: needs 3 for no-trans 2×3
+        let mut y = [0.0_f64; 2];
+        let err = gemv(Trans::No, 2, 3, 1.0, &a, &x, 0.0, &mut y).unwrap_err();
+        assert!(matches!(err, Error::InvalidArgument(_)));
+    }
+
+    // --- Level 2: trmv / trsv --------------------------------------------
+
+    #[test]
+    fn trmv_upper_unit() {
+        // U = [[1, 2, 3],[0, 1, 4],[0, 0, 1]] (unit-triangular row-major,
+        // diagonals implicit). x = [1, 2, 3] → U·x = [1+4+9, 2+12, 3] = [14, 14, 3]
+        // BLAS uses the upper triangle including diagonal; with Diag::Unit
+        // it ignores the actual diagonal entries.
+        let a = [
+            0.0_f64, 2.0, 3.0,
+            0.0,     0.0, 4.0,
+            0.0,     0.0, 0.0,
+        ];
+        let mut x = [1.0_f64, 2.0, 3.0];
+        trmv(Uplo::Upper, Trans::No, Diag::Unit, 3, &a, &mut x).unwrap();
+        assert_eq!(x, [14.0, 14.0, 3.0]);
+    }
+
+    #[test]
+    fn trsv_then_trmv_round_trip() {
+        // For non-unit upper triangular U, trsv solves Ux=b, trmv computes U·y.
+        // Solve U·z = b then verify U·z ≈ b.
+        let u = [
+            2.0_f64, 1.0, 1.0,
+            0.0,     3.0, 2.0,
+            0.0,     0.0, 4.0,
+        ];
+        let b = [11.0_f64, 13.0, 8.0];
+        let mut z = b;
+        trsv(Uplo::Upper, Trans::No, Diag::NonUnit, 3, &u, &mut z).unwrap();
+
+        let mut bp = z;
+        trmv(Uplo::Upper, Trans::No, Diag::NonUnit, 3, &u, &mut bp).unwrap();
+        for (got, orig) in bp.iter().zip(b.iter()) {
+            assert!((got - orig).abs() < 1e-10);
+        }
+    }
+
+    // --- Level 2: symv / syr / syr2 / ger -------------------------------
+
+    #[test]
+    fn symv_f64() {
+        // A = [[1, 2],[2, 3]] symmetric, x = [1, 1] → A·x = [3, 5]
+        // Storing only upper triangle works because Uplo::Upper is asked.
+        let a = [1.0_f64, 2.0, 0.0, 3.0]; // upper-triangle: [1, 2; -, 3]
+        let x = [1.0_f64, 1.0];
+        let mut y = [0.0_f64; 2];
+        symv(Uplo::Upper, 2, 1.0, &a, &x, 0.0, &mut y).unwrap();
+        assert_eq!(y, [3.0, 5.0]);
+    }
+
+    #[test]
+    fn syr_rank1_update() {
+        // A = 0; x = [1, 2]; α=1 → A := x·xᵀ = [[1, 2],[2, 4]]
+        // Storing upper triangle: A[0,0]=1, A[0,1]=2, A[1,1]=4.
+        let mut a = [0.0_f64; 4];
+        let x = [1.0_f64, 2.0];
+        syr(Uplo::Upper, 2, 1.0, &x, &mut a).unwrap();
+        assert_eq!(a[0], 1.0); // (0,0)
+        assert_eq!(a[1], 2.0); // (0,1)
+        assert_eq!(a[3], 4.0); // (1,1)
+    }
+
+    #[test]
+    fn syr2_symmetric_rank2_update() {
+        // A=0, x=[1,0], y=[0,1], α=1 → A = x·yᵀ + y·xᵀ = [[0,1],[1,0]]
+        let mut a = [0.0_f64; 4];
+        let x = [1.0_f64, 0.0];
+        let y = [0.0_f64, 1.0];
+        syr2(Uplo::Upper, 2, 1.0, &x, &y, &mut a).unwrap();
+        assert_eq!(a[1], 1.0); // upper triangle (0,1)
+    }
+
+    #[test]
+    fn ger_rank1_general() {
+        // A = 0 (2×3), x=[1,2], y=[3,4,5], α=1 → A = x·yᵀ
+        // = [[3,4,5],[6,8,10]]
+        let mut a = [0.0_f64; 6];
+        let x = [1.0_f64, 2.0];
+        let y = [3.0_f64, 4.0, 5.0];
+        ger(2, 3, 1.0, &x, &y, &mut a).unwrap();
+        assert_eq!(a, [3.0, 4.0, 5.0, 6.0, 8.0, 10.0]);
+    }
+
+    // --- Level 2: hemv / her / her2 / geru / gerc ----------------------
+
+    #[test]
+    fn hemv_complex64() {
+        // A = [[2, 1+i], [1-i, 3]] is Hermitian. x = [1, 1] → A·x = [3+i, 4-i]
+        // Stored upper-triangle row-major (zero out the unused triangle):
+        let two = Complex64::new(2.0, 0.0);
+        let three = Complex64::new(3.0, 0.0);
+        let a01 = Complex64::new(1.0, 1.0);
+        let z = Complex64::ZERO;
+        let a = [two, a01, z, three];
+        let x = [Complex64::ONE, Complex64::ONE];
+        let mut y = [z; 2];
+        hemv(Uplo::Upper, 2, Complex64::ONE, &a, &x, z, &mut y).unwrap();
+        assert_eq!(y[0], Complex64::new(3.0, 1.0));
+        assert_eq!(y[1], Complex64::new(4.0, -1.0));
+    }
+
+    #[test]
+    fn her_rank1_complex() {
+        // A=0; x = [1, i]; α=1 → A := x·xᴴ
+        // x·xᴴ = [[1,  -i],[i, 1]] (Hermitian)
+        // Upper triangle (row-major): A[0,0]=1, A[0,1]=-i, A[1,1]=1.
+        let mut a = [Complex64::ZERO; 4];
+        let x = [Complex64::ONE, Complex64::I];
+        her(Uplo::Upper, 2, 1.0, &x, &mut a).unwrap();
+        assert_eq!(a[0], Complex64::ONE);
+        assert_eq!(a[1], Complex64::new(0.0, -1.0));
+        assert_eq!(a[3], Complex64::ONE);
+    }
+
+    #[test]
+    fn geru_unconjugated() {
+        // A=0, x=[1+i, 0], y=[1, 0], α=1, m=n=2
+        // A = x·yᵀ = [[1+i, 0],[0, 0]]
+        let mut a = [Complex64::ZERO; 4];
+        let x = [Complex64::new(1.0, 1.0), Complex64::ZERO];
+        let y = [Complex64::ONE, Complex64::ZERO];
+        geru(2, 2, Complex64::ONE, &x, &y, &mut a).unwrap();
+        assert_eq!(a[0], Complex64::new(1.0, 1.0));
+        assert_eq!(a[1], Complex64::ZERO);
+    }
+
+    #[test]
+    fn gerc_conjugated() {
+        // A=0, x=[1+i], y=[1+i], m=n=1, α=1
+        // gerc: A = x·yᴴ = (1+i)·conj(1+i) = (1+i)(1-i) = 1 + 1 = 2
+        let mut a = [Complex64::ZERO; 1];
+        let x = [Complex64::new(1.0, 1.0)];
+        let y = [Complex64::new(1.0, 1.0)];
+        gerc(1, 1, Complex64::ONE, &x, &y, &mut a).unwrap();
+        assert_eq!(a[0], Complex64::new(2.0, 0.0));
     }
 }
