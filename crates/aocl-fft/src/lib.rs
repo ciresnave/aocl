@@ -1,17 +1,19 @@
 //! Safe wrappers for AOCL-FFTW.
 //!
 //! Provides:
-//! - One-shot 1-D / 2-D / 3-D complex DFTs (in-place).
+//! - One-shot 1-D / 2-D / 3-D complex DFTs (in-place) in both `f64`
+//!   (default names) and `f32` (suffixed `_f32`).
 //! - One-shot 1-D real-to-complex (`r2c`) and complex-to-real (`c2r`)
-//!   transforms.
-//! - A reusable [`Plan`] type that caches plan creation and supports
-//!   the FFTW "new-array execute" routines for repeated transforms over
-//!   the same shape.
+//!   transforms in both precisions.
+//! - Reusable plan types: [`Plan`] (`f64`) and [`PlanF32`] (`f32`) that
+//!   cache plan creation and support FFTW's "new-array execute"
+//!   routines for repeated transforms over the same shape.
 //!
 //! Plan creation/destruction is serialized through a process-wide
 //! mutex because FFTW's planner is not internally thread-safe in the
 //! single-threaded build we link against. Plan **execution** is
-//! thread-safe and not held under that lock.
+//! thread-safe and not held under that lock. The same lock guards
+//! both precisions since they share the planner state.
 
 #![warn(missing_debug_implementations)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
@@ -488,6 +490,413 @@ impl std::fmt::Debug for Plan {
     }
 }
 
+// =========================================================================
+//   Single-precision (f32) one-shot complex DFTs
+// =========================================================================
+
+/// Compute a 1-D complex DFT in place over `f32` samples.
+pub fn dft_1d_inplace_f32(direction: Direction, data: &mut [[f32; 2]]) -> Result<()> {
+    if data.is_empty() {
+        return Ok(());
+    }
+    let n = check_n("dft_1d_inplace_f32", data.len())?;
+    let ptr = data.as_mut_ptr() as *mut sys::fftwf_complex;
+    let plan = {
+        let _g = PLANNER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        unsafe { sys::fftwf_plan_dft_1d(n, ptr, ptr, direction.raw(), sys::FFTW_ESTIMATE) }
+    };
+    if plan.is_null() {
+        return Err(Error::AllocationFailed("fft"));
+    }
+    unsafe { sys::fftwf_execute(plan) };
+    let _g = PLANNER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    unsafe { sys::fftwf_destroy_plan(plan) };
+    Ok(())
+}
+
+/// Compute a 2-D complex DFT in place over `f32` samples (row-major).
+pub fn dft_2d_inplace_f32(
+    direction: Direction,
+    n0: usize,
+    n1: usize,
+    data: &mut [[f32; 2]],
+) -> Result<()> {
+    if n0 == 0 || n1 == 0 {
+        return Ok(());
+    }
+    let need = n0 * n1;
+    if data.len() < need {
+        return Err(Error::InvalidArgument(format!(
+            "dft_2d_inplace_f32: data length {} < n0·n1 = {need}",
+            data.len()
+        )));
+    }
+    let n0 = check_n("dft_2d_inplace_f32: n0", n0)?;
+    let n1 = check_n("dft_2d_inplace_f32: n1", n1)?;
+    let ptr = data.as_mut_ptr() as *mut sys::fftwf_complex;
+    let plan = {
+        let _g = PLANNER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        unsafe { sys::fftwf_plan_dft_2d(n0, n1, ptr, ptr, direction.raw(), sys::FFTW_ESTIMATE) }
+    };
+    if plan.is_null() {
+        return Err(Error::AllocationFailed("fft"));
+    }
+    unsafe { sys::fftwf_execute(plan) };
+    let _g = PLANNER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    unsafe { sys::fftwf_destroy_plan(plan) };
+    Ok(())
+}
+
+/// Compute a 3-D complex DFT in place over `f32` samples.
+pub fn dft_3d_inplace_f32(
+    direction: Direction,
+    n0: usize,
+    n1: usize,
+    n2: usize,
+    data: &mut [[f32; 2]],
+) -> Result<()> {
+    if n0 == 0 || n1 == 0 || n2 == 0 {
+        return Ok(());
+    }
+    let need = n0 * n1 * n2;
+    if data.len() < need {
+        return Err(Error::InvalidArgument(format!(
+            "dft_3d_inplace_f32: data length {} < n0·n1·n2 = {need}",
+            data.len()
+        )));
+    }
+    let n0 = check_n("dft_3d_inplace_f32: n0", n0)?;
+    let n1 = check_n("dft_3d_inplace_f32: n1", n1)?;
+    let n2 = check_n("dft_3d_inplace_f32: n2", n2)?;
+    let ptr = data.as_mut_ptr() as *mut sys::fftwf_complex;
+    let plan = {
+        let _g = PLANNER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        unsafe {
+            sys::fftwf_plan_dft_3d(n0, n1, n2, ptr, ptr, direction.raw(), sys::FFTW_ESTIMATE)
+        }
+    };
+    if plan.is_null() {
+        return Err(Error::AllocationFailed("fft"));
+    }
+    unsafe { sys::fftwf_execute(plan) };
+    let _g = PLANNER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    unsafe { sys::fftwf_destroy_plan(plan) };
+    Ok(())
+}
+
+/// Convenience: forward 1-D `f32` DFT in place.
+pub fn forward_inplace_f32(data: &mut [[f32; 2]]) -> Result<()> {
+    dft_1d_inplace_f32(Direction::Forward, data)
+}
+
+/// Convenience: backward (unscaled) 1-D `f32` DFT in place.
+pub fn backward_inplace_f32(data: &mut [[f32; 2]]) -> Result<()> {
+    dft_1d_inplace_f32(Direction::Backward, data)
+}
+
+// =========================================================================
+//   Single-precision (f32) real ↔ complex one-shot (1-D)
+// =========================================================================
+
+/// Compute a 1-D real-to-complex (forward) `f32` DFT.
+///
+/// `output` must hold at least `n/2 + 1` complex samples.
+pub fn r2c_1d_f32(input: &mut [f32], output: &mut [[f32; 2]]) -> Result<()> {
+    let n = input.len();
+    if n == 0 {
+        return Ok(());
+    }
+    let need_out = n / 2 + 1;
+    if output.len() < need_out {
+        return Err(Error::InvalidArgument(format!(
+            "r2c_1d_f32: output length {} < n/2+1 = {need_out}",
+            output.len()
+        )));
+    }
+    let n_i = check_n("r2c_1d_f32", n)?;
+    let in_p = input.as_mut_ptr();
+    let out_p = output.as_mut_ptr() as *mut sys::fftwf_complex;
+    let plan = {
+        let _g = PLANNER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        unsafe { sys::fftwf_plan_dft_r2c_1d(n_i, in_p, out_p, sys::FFTW_ESTIMATE) }
+    };
+    if plan.is_null() {
+        return Err(Error::AllocationFailed("fft"));
+    }
+    unsafe { sys::fftwf_execute(plan) };
+    let _g = PLANNER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    unsafe { sys::fftwf_destroy_plan(plan) };
+    Ok(())
+}
+
+/// Compute a 1-D complex-to-real (backward) `f32` DFT.
+///
+/// `n` is the size of the *output*. As with the f64 version, FFTW does
+/// not normalise — divide by `n` to recover the original after a
+/// forward+backward round-trip.
+pub fn c2r_1d_f32(n: usize, input: &mut [[f32; 2]], output: &mut [f32]) -> Result<()> {
+    if n == 0 {
+        return Ok(());
+    }
+    let need_in = n / 2 + 1;
+    if input.len() < need_in {
+        return Err(Error::InvalidArgument(format!(
+            "c2r_1d_f32: input length {} < n/2+1 = {need_in}",
+            input.len()
+        )));
+    }
+    if output.len() < n {
+        return Err(Error::InvalidArgument(format!(
+            "c2r_1d_f32: output length {} < n = {n}",
+            output.len()
+        )));
+    }
+    let n_i = check_n("c2r_1d_f32", n)?;
+    let in_p = input.as_mut_ptr() as *mut sys::fftwf_complex;
+    let out_p = output.as_mut_ptr();
+    let plan = {
+        let _g = PLANNER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        unsafe { sys::fftwf_plan_dft_c2r_1d(n_i, in_p, out_p, sys::FFTW_ESTIMATE) }
+    };
+    if plan.is_null() {
+        return Err(Error::AllocationFailed("fft"));
+    }
+    unsafe { sys::fftwf_execute(plan) };
+    let _g = PLANNER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    unsafe { sys::fftwf_destroy_plan(plan) };
+    Ok(())
+}
+
+// =========================================================================
+//   Reusable single-precision plan
+// =========================================================================
+
+/// A reusable single-precision FFTW plan over a fixed shape.
+///
+/// Mirrors [`Plan`] but for `f32` / `fftwf_complex` buffers.
+pub struct PlanF32 {
+    plan: sys::fftwf_plan,
+    kind: PlanKind,
+    n_total: usize,
+}
+
+unsafe impl Send for PlanF32 {}
+
+impl PlanF32 {
+    /// Build a 1-D complex DFT plan over `n` samples.
+    pub fn dft_1d(n: usize, direction: Direction) -> Result<Self> {
+        if n == 0 {
+            return Err(Error::InvalidArgument("dft_1d: n must be positive".into()));
+        }
+        let n_i = check_n("dft_1d", n)?;
+        let mut scratch = vec![[0.0_f32, 0.0_f32]; n];
+        let p = scratch.as_mut_ptr() as *mut sys::fftwf_complex;
+        let plan = {
+            let _g = PLANNER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            unsafe { sys::fftwf_plan_dft_1d(n_i, p, p, direction.raw(), sys::FFTW_ESTIMATE) }
+        };
+        if plan.is_null() {
+            return Err(Error::AllocationFailed("fft"));
+        }
+        Ok(Self { plan, kind: PlanKind::Complex, n_total: n })
+    }
+
+    /// Build a 2-D complex DFT plan over `n0 × n1` samples.
+    pub fn dft_2d(n0: usize, n1: usize, direction: Direction) -> Result<Self> {
+        if n0 == 0 || n1 == 0 {
+            return Err(Error::InvalidArgument("dft_2d: dimensions must be positive".into()));
+        }
+        let n0_i = check_n("dft_2d: n0", n0)?;
+        let n1_i = check_n("dft_2d: n1", n1)?;
+        let mut scratch = vec![[0.0_f32, 0.0_f32]; n0 * n1];
+        let p = scratch.as_mut_ptr() as *mut sys::fftwf_complex;
+        let plan = {
+            let _g = PLANNER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            unsafe {
+                sys::fftwf_plan_dft_2d(n0_i, n1_i, p, p, direction.raw(), sys::FFTW_ESTIMATE)
+            }
+        };
+        if plan.is_null() {
+            return Err(Error::AllocationFailed("fft"));
+        }
+        Ok(Self { plan, kind: PlanKind::Complex, n_total: n0 * n1 })
+    }
+
+    /// Build a 3-D complex DFT plan.
+    pub fn dft_3d(n0: usize, n1: usize, n2: usize, direction: Direction) -> Result<Self> {
+        if n0 == 0 || n1 == 0 || n2 == 0 {
+            return Err(Error::InvalidArgument("dft_3d: dimensions must be positive".into()));
+        }
+        let n0_i = check_n("dft_3d: n0", n0)?;
+        let n1_i = check_n("dft_3d: n1", n1)?;
+        let n2_i = check_n("dft_3d: n2", n2)?;
+        let mut scratch = vec![[0.0_f32, 0.0_f32]; n0 * n1 * n2];
+        let p = scratch.as_mut_ptr() as *mut sys::fftwf_complex;
+        let plan = {
+            let _g = PLANNER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            unsafe {
+                sys::fftwf_plan_dft_3d(n0_i, n1_i, n2_i, p, p, direction.raw(), sys::FFTW_ESTIMATE)
+            }
+        };
+        if plan.is_null() {
+            return Err(Error::AllocationFailed("fft"));
+        }
+        Ok(Self { plan, kind: PlanKind::Complex, n_total: n0 * n1 * n2 })
+    }
+
+    /// Build a 1-D real-to-complex forward plan.
+    pub fn r2c_1d(n: usize) -> Result<Self> {
+        if n == 0 {
+            return Err(Error::InvalidArgument("r2c_1d: n must be positive".into()));
+        }
+        let n_i = check_n("r2c_1d", n)?;
+        let mut in_buf = vec![0.0_f32; n];
+        let mut out_buf = vec![[0.0_f32, 0.0_f32]; n / 2 + 1];
+        let plan = {
+            let _g = PLANNER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            unsafe {
+                sys::fftwf_plan_dft_r2c_1d(
+                    n_i,
+                    in_buf.as_mut_ptr(),
+                    out_buf.as_mut_ptr() as *mut sys::fftwf_complex,
+                    sys::FFTW_ESTIMATE,
+                )
+            }
+        };
+        if plan.is_null() {
+            return Err(Error::AllocationFailed("fft"));
+        }
+        Ok(Self { plan, kind: PlanKind::R2C, n_total: n })
+    }
+
+    /// Build a 1-D complex-to-real backward plan.
+    pub fn c2r_1d(n: usize) -> Result<Self> {
+        if n == 0 {
+            return Err(Error::InvalidArgument("c2r_1d: n must be positive".into()));
+        }
+        let n_i = check_n("c2r_1d", n)?;
+        let mut in_buf = vec![[0.0_f32, 0.0_f32]; n / 2 + 1];
+        let mut out_buf = vec![0.0_f32; n];
+        let plan = {
+            let _g = PLANNER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            unsafe {
+                sys::fftwf_plan_dft_c2r_1d(
+                    n_i,
+                    in_buf.as_mut_ptr() as *mut sys::fftwf_complex,
+                    out_buf.as_mut_ptr(),
+                    sys::FFTW_ESTIMATE,
+                )
+            }
+        };
+        if plan.is_null() {
+            return Err(Error::AllocationFailed("fft"));
+        }
+        Ok(Self { plan, kind: PlanKind::C2R, n_total: n })
+    }
+
+    /// Execute a complex DFT plan against new buffers.
+    pub fn execute_dft(
+        &self,
+        input: &mut [[f32; 2]],
+        output: &mut [[f32; 2]],
+    ) -> Result<()> {
+        if self.kind != PlanKind::Complex {
+            return Err(Error::InvalidArgument(
+                "execute_dft: plan is not a complex DFT".into(),
+            ));
+        }
+        if input.len() < self.n_total || output.len() < self.n_total {
+            return Err(Error::InvalidArgument(format!(
+                "execute_dft: buffers ({}, {}) smaller than plan size {}",
+                input.len(), output.len(), self.n_total
+            )));
+        }
+        unsafe {
+            sys::fftwf_execute_dft(
+                self.plan,
+                input.as_mut_ptr() as *mut sys::fftwf_complex,
+                output.as_mut_ptr() as *mut sys::fftwf_complex,
+            );
+        }
+        Ok(())
+    }
+
+    /// Execute a real-to-complex plan against new buffers.
+    pub fn execute_r2c(
+        &self,
+        input: &mut [f32],
+        output: &mut [[f32; 2]],
+    ) -> Result<()> {
+        if self.kind != PlanKind::R2C {
+            return Err(Error::InvalidArgument(
+                "execute_r2c: plan is not an r2c plan".into(),
+            ));
+        }
+        let need_out = self.n_total / 2 + 1;
+        if input.len() < self.n_total || output.len() < need_out {
+            return Err(Error::InvalidArgument(format!(
+                "execute_r2c: input {} < n={}; output {} < n/2+1={}",
+                input.len(), self.n_total, output.len(), need_out
+            )));
+        }
+        unsafe {
+            sys::fftwf_execute_dft_r2c(
+                self.plan,
+                input.as_mut_ptr(),
+                output.as_mut_ptr() as *mut sys::fftwf_complex,
+            );
+        }
+        Ok(())
+    }
+
+    /// Execute a complex-to-real plan against new buffers.
+    pub fn execute_c2r(
+        &self,
+        input: &mut [[f32; 2]],
+        output: &mut [f32],
+    ) -> Result<()> {
+        if self.kind != PlanKind::C2R {
+            return Err(Error::InvalidArgument(
+                "execute_c2r: plan is not a c2r plan".into(),
+            ));
+        }
+        let need_in = self.n_total / 2 + 1;
+        if input.len() < need_in || output.len() < self.n_total {
+            return Err(Error::InvalidArgument(format!(
+                "execute_c2r: input {} < n/2+1={}; output {} < n={}",
+                input.len(), need_in, output.len(), self.n_total
+            )));
+        }
+        unsafe {
+            sys::fftwf_execute_dft_c2r(
+                self.plan,
+                input.as_mut_ptr() as *mut sys::fftwf_complex,
+                output.as_mut_ptr(),
+            );
+        }
+        Ok(())
+    }
+}
+
+impl Drop for PlanF32 {
+    fn drop(&mut self) {
+        if !self.plan.is_null() {
+            let _g = PLANNER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            unsafe { sys::fftwf_destroy_plan(self.plan) };
+            self.plan = std::ptr::null_mut();
+        }
+    }
+}
+
+impl std::fmt::Debug for PlanF32 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PlanF32")
+            .field("kind", &self.kind)
+            .field("n_total", &self.n_total)
+            .finish_non_exhaustive()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -577,5 +986,65 @@ mod tests {
         let mut output: Vec<[f64; 2]> = vec![[0.0, 0.0]; 8];
         let err = plan.execute_dft(&mut input, &mut output).unwrap_err();
         assert!(matches!(err, Error::InvalidArgument(_)));
+    }
+
+    // -------------------------------------------------------------------
+    //   f32 tests
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn dft_inverse_recovers_input_f32() {
+        let original: [[f32; 2]; 4] = [[1.0, 0.0], [2.0, 0.0], [3.0, 0.0], [4.0, 0.0]];
+        let mut buf = original;
+        forward_inplace_f32(&mut buf).unwrap();
+        backward_inplace_f32(&mut buf).unwrap();
+        let n = original.len() as f32;
+        for (got, orig) in buf.iter().zip(original.iter()) {
+            assert!((got[0] / n - orig[0]).abs() < 1e-5);
+            assert!((got[1] / n - orig[1]).abs() < 1e-5);
+        }
+    }
+
+    #[test]
+    fn dc_signal_concentrates_at_dc_f32() {
+        let n = 8;
+        let c = 1.5_f32;
+        let mut buf: Vec<[f32; 2]> = (0..n).map(|_| [c, 0.0]).collect();
+        forward_inplace_f32(&mut buf).unwrap();
+        let n_f = n as f32;
+        assert!((buf[0][0] - c * n_f).abs() < 1e-4);
+        assert!(buf[0][1].abs() < 1e-4);
+        for v in &buf[1..] {
+            assert!(v[0].abs() < 1e-4);
+            assert!(v[1].abs() < 1e-4);
+        }
+    }
+
+    #[test]
+    fn r2c_then_c2r_round_trip_f32() {
+        let original = [1.0_f32, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+        let n = original.len();
+        let mut input = original;
+        let mut spectrum = vec![[0.0_f32, 0.0]; n / 2 + 1];
+        r2c_1d_f32(&mut input, &mut spectrum).unwrap();
+        let mut recovered = vec![0.0_f32; n];
+        c2r_1d_f32(n, &mut spectrum, &mut recovered).unwrap();
+        for (got, orig) in recovered.iter().zip(original.iter()) {
+            assert!((got / n as f32 - orig).abs() < 1e-4);
+        }
+    }
+
+    #[test]
+    fn plan_f32_executes_repeatedly() {
+        let plan = PlanF32::dft_1d(4, Direction::Forward).unwrap();
+        let mut a: Vec<[f32; 2]> = vec![[1.0, 0.0]; 4];
+        let mut out_a = vec![[0.0_f32, 0.0]; 4];
+        plan.execute_dft(&mut a, &mut out_a).unwrap();
+        assert!((out_a[0][0] - 4.0).abs() < 1e-4);
+
+        let mut b: Vec<[f32; 2]> = vec![[2.0, 0.0]; 4];
+        let mut out_b = vec![[0.0_f32, 0.0]; 4];
+        plan.execute_dft(&mut b, &mut out_b).unwrap();
+        assert!((out_b[0][0] - 8.0).abs() < 1e-4);
     }
 }

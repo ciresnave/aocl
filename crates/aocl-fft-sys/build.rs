@@ -15,13 +15,13 @@ fn main() {
         module: "bindings",
         has_int_subdir: false,
         only_lp64: false,
-        // FFTW filenames vary by precision (libfftw3 = double, libfftw3f =
-        // float, libfftw3l = long double). The double-precision build is
-        // exposed here; precision-specific features can be added later.
-        win_static: &["libfftw3"],
-        win_dynamic: &["libfftw3"],
-        unix_static: &["fftw3"],
-        unix_dynamic: &["fftw3"],
+        // FFTW filenames vary by precision: libfftw3 is double, libfftw3f
+        // is single, libfftw3l is long double. We link both single and
+        // double; long-double is not yet exposed by the safe wrapper.
+        win_static: &["libfftw3", "libfftw3f"],
+        win_dynamic: &["libfftw3", "libfftw3f"],
+        unix_static: &["fftw3", "fftw3f"],
+        unix_dynamic: &["fftw3", "fftw3f"],
         extra_includes: &[],
     }
     .build(&root);
