@@ -8,8 +8,10 @@ use std::marker::PhantomData;
 
 use aocl_sparse_sys as sys;
 pub use aocl_error::{Error, Result};
-pub use aocl_types::Trans;
+pub use aocl_types::{Complex32, Complex64, Trans};
 use aocl_types::sealed::Sealed;
+
+pub mod complex;
 
 fn trans_raw(t: Trans) -> sys::aoclsparse_operation {
     match t {
