@@ -244,6 +244,210 @@ pub fn variance<T: Scalar>(
     )
 }
 
+// =========================================================================
+//   da_handle + k-means safe wrapper
+// =========================================================================
+
+/// Type of analytics handle. AOCL-DA uses an opaque handle to track the
+/// state of an algorithm (data, options, fitted model, predictions).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum HandleKind {
+    Linmod,
+    Pca,
+    Kmeans,
+    Dbscan,
+    DecisionTree,
+    DecisionForest,
+    Knn,
+    Svm,
+}
+
+impl HandleKind {
+    fn raw(self) -> sys::da_handle_type {
+        match self {
+            HandleKind::Linmod => sys::da_handle_type__da_handle_linmod,
+            HandleKind::Pca => sys::da_handle_type__da_handle_pca,
+            HandleKind::Kmeans => sys::da_handle_type__da_handle_kmeans,
+            HandleKind::Dbscan => sys::da_handle_type__da_handle_dbscan,
+            HandleKind::DecisionTree => sys::da_handle_type__da_handle_decision_tree,
+            HandleKind::DecisionForest => sys::da_handle_type__da_handle_decision_forest,
+            HandleKind::Knn => sys::da_handle_type__da_handle_knn,
+            HandleKind::Svm => sys::da_handle_type__da_handle_svm,
+        }
+    }
+}
+
+/// Internal precision selector for [`Handle`]: f64 (`Double`) or
+/// f32 (`Single`). The choice determines which underlying `da_*_d` /
+/// `da_*_s` C entry points are used.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Precision {
+    Single,
+    Double,
+}
+
+/// RAII wrapper around `da_handle`. Tracks the algorithm and precision
+/// chosen at construction time.
+pub struct Handle {
+    raw: sys::da_handle,
+    kind: HandleKind,
+    precision: Precision,
+}
+
+unsafe impl Send for Handle {}
+
+impl Handle {
+    /// Create an `f64` handle for the given algorithm.
+    pub fn new_double(kind: HandleKind) -> Result<Self> {
+        let mut raw: sys::da_handle = std::ptr::null_mut();
+        let status = unsafe { sys::da_handle_init_d(&mut raw, kind.raw()) };
+        check_status("data-analytics", status)?;
+        if raw.is_null() {
+            return Err(Error::AllocationFailed("data-analytics"));
+        }
+        Ok(Self { raw, kind, precision: Precision::Double })
+    }
+
+    /// Create an `f32` handle.
+    pub fn new_single(kind: HandleKind) -> Result<Self> {
+        let mut raw: sys::da_handle = std::ptr::null_mut();
+        let status = unsafe { sys::da_handle_init_s(&mut raw, kind.raw()) };
+        check_status("data-analytics", status)?;
+        if raw.is_null() {
+            return Err(Error::AllocationFailed("data-analytics"));
+        }
+        Ok(Self { raw, kind, precision: Precision::Single })
+    }
+
+    /// Set an integer-valued option.
+    pub fn set_int_option(&mut self, name: &str, value: i64) -> Result<()> {
+        let cs = std::ffi::CString::new(name).map_err(|e| {
+            Error::InvalidArgument(format!("set_int_option: {e}"))
+        })?;
+        let status = unsafe {
+            sys::da_options_set_int(self.raw, cs.as_ptr(), value as sys::da_int)
+        };
+        check_status("data-analytics", status)
+    }
+
+    /// Set a string-valued option.
+    pub fn set_string_option(&mut self, name: &str, value: &str) -> Result<()> {
+        let n = std::ffi::CString::new(name).map_err(|e| {
+            Error::InvalidArgument(format!("set_string_option: {e}"))
+        })?;
+        let v = std::ffi::CString::new(value).map_err(|e| {
+            Error::InvalidArgument(format!("set_string_option: {e}"))
+        })?;
+        let status = unsafe {
+            sys::da_options_set_string(self.raw, n.as_ptr(), v.as_ptr())
+        };
+        check_status("data-analytics", status)
+    }
+
+    /// Borrow the raw handle for routines this crate doesn't yet wrap.
+    pub fn as_raw(&self) -> sys::da_handle {
+        self.raw
+    }
+
+    /// Returns `(kind, precision)`.
+    pub fn info(&self) -> (HandleKind, Precision) {
+        (self.kind, self.precision)
+    }
+}
+
+impl Drop for Handle {
+    fn drop(&mut self) {
+        if !self.raw.is_null() {
+            unsafe { sys::da_handle_destroy(&mut self.raw) };
+            self.raw = std::ptr::null_mut();
+        }
+    }
+}
+
+impl std::fmt::Debug for Handle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Handle")
+            .field("kind", &self.kind)
+            .field("precision", &self.precision)
+            .finish_non_exhaustive()
+    }
+}
+
+/// k-means clustering wrapper. Holds an [`Handle`] specialised for
+/// `da_handle_kmeans` and exposes the typical fit/predict interface.
+pub struct KMeans {
+    handle: Handle,
+}
+
+impl KMeans {
+    /// Build a new k-means model with `n_clusters` clusters in `f64`
+    /// precision.
+    pub fn new(n_clusters: usize) -> Result<Self> {
+        let mut handle = Handle::new_double(HandleKind::Kmeans)?;
+        handle.set_int_option("n_clusters", n_clusters as i64)?;
+        Ok(Self { handle })
+    }
+
+    /// Fit on `n_samples × n_features` data matrix in **column-major**
+    /// layout (one column per feature; `lda = n_samples`). This matches
+    /// AOCL-DA's default storage convention.
+    pub fn fit(&mut self, n_samples: usize, n_features: usize, data: &[f64]) -> Result<()> {
+        if data.len() < n_samples * n_features {
+            return Err(Error::InvalidArgument(format!(
+                "fit: data length {} < n_samples·n_features = {}",
+                data.len(), n_samples * n_features
+            )));
+        }
+        let lda = n_samples;
+        let status = unsafe {
+            sys::da_kmeans_set_data_d(
+                self.handle.raw,
+                n_samples as sys::da_int,
+                n_features as sys::da_int,
+                data.as_ptr(),
+                lda as sys::da_int,
+            )
+        };
+        check_status("data-analytics", status)?;
+        let status = unsafe { sys::da_kmeans_compute_d(self.handle.raw) };
+        check_status("data-analytics", status)
+    }
+
+    /// Predict cluster labels for new samples in column-major layout.
+    pub fn predict(
+        &mut self,
+        k_samples: usize,
+        k_features: usize,
+        y: &[f64],
+        labels: &mut [i32],
+    ) -> Result<()> {
+        if labels.len() < k_samples {
+            return Err(Error::InvalidArgument(format!(
+                "predict: labels length {} < k_samples = {k_samples}",
+                labels.len()
+            )));
+        }
+        let status = unsafe {
+            sys::da_kmeans_predict_d(
+                self.handle.raw,
+                k_samples as sys::da_int,
+                k_features as sys::da_int,
+                y.as_ptr(),
+                k_samples as sys::da_int,
+                labels.as_mut_ptr() as *mut sys::da_int,
+            )
+        };
+        check_status("data-analytics", status)
+    }
+}
+
+impl std::fmt::Debug for KMeans {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KMeans").field("handle", &self.handle).finish()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -290,5 +494,38 @@ mod tests {
         let mut out = [0.0_f64; 3];
         let err = mean(Axis::Col, 2, 3, &x, &mut out).unwrap_err();
         matches!(err, Error::InvalidArgument(_));
+    }
+
+    #[test]
+    fn handle_init_destroy() {
+        // Smoke test: handle creation + drop on each algorithm kind.
+        let _h1 = Handle::new_double(HandleKind::Kmeans).unwrap();
+        let _h2 = Handle::new_double(HandleKind::Pca).unwrap();
+        let _h3 = Handle::new_single(HandleKind::Linmod).unwrap();
+    }
+
+    #[test]
+    fn kmeans_two_clusters() {
+        // Two well-separated clusters: rows 0..=2 near (0, 0); rows
+        // 3..=5 near (10, 10). Stored column-major: feature 0 first,
+        // then feature 1.
+        let data: Vec<f64> = vec![
+            // feature 0 (column 0)
+            0.0, 0.1, 0.2, 10.0, 10.1, 10.2,
+            // feature 1 (column 1)
+            0.1, 0.0, 0.1, 10.1, 10.0, 10.1,
+        ];
+        let mut km = KMeans::new(2).unwrap();
+        km.fit(6, 2, &data).unwrap();
+
+        // Predict on the same six samples; rows 0..=2 should share a
+        // label, rows 3..=5 the other.
+        let mut labels = vec![0_i32; 6];
+        km.predict(6, 2, &data, &mut labels).unwrap();
+        assert_eq!(labels[0], labels[1]);
+        assert_eq!(labels[1], labels[2]);
+        assert_eq!(labels[3], labels[4]);
+        assert_eq!(labels[4], labels[5]);
+        assert_ne!(labels[0], labels[3]);
     }
 }
