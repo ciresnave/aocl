@@ -266,6 +266,120 @@ fn check_trxxm(
     check_matrix(&format!("{name}: B"), layout, m, n, ldb, b_len)
 }
 
+// --- Banded / packed validators ------------------------------------------
+
+#[allow(clippy::too_many_arguments)]
+fn check_gbmv(
+    trans_a: Trans,
+    m: usize,
+    n: usize,
+    kl: usize,
+    ku: usize,
+    a_len: usize,
+    lda: usize,
+    x_len: usize,
+    inc_x: usize,
+    y_len: usize,
+    inc_y: usize,
+) -> Result<()> {
+    let bandwidth = kl + ku + 1;
+    if lda < bandwidth {
+        return Err(Error::InvalidArgument(format!(
+            "gbmv: lda={lda} < kl+ku+1 = {bandwidth}"
+        )));
+    }
+    if a_len < lda * n.max(1) - (lda - bandwidth) {
+        // Simpler conservative check.
+        let need = lda * n;
+        if a_len < need {
+            return Err(Error::InvalidArgument(format!(
+                "gbmv: A slice {a_len} too small (need {need})"
+            )));
+        }
+    }
+    let (x_n, y_n) = match trans_a {
+        Trans::No => (n, m),
+        Trans::T | Trans::C => (m, n),
+    };
+    check_strided_len("gbmv: x", x_len, x_n, inc_x)?;
+    check_strided_len("gbmv: y", y_len, y_n, inc_y)
+}
+
+fn check_band_n_square(
+    name: &str,
+    n: usize,
+    k: usize,
+    a_len: usize,
+    lda: usize,
+    x_len: usize,
+    inc_x: usize,
+) -> Result<()> {
+    let bandwidth = k + 1;
+    if lda < bandwidth {
+        return Err(Error::InvalidArgument(format!(
+            "{name}: lda={lda} < k+1 = {bandwidth}"
+        )));
+    }
+    if a_len < lda * n {
+        return Err(Error::InvalidArgument(format!(
+            "{name}: A slice {a_len} too small (need lda·n = {})",
+            lda * n
+        )));
+    }
+    check_strided_len(&format!("{name}: x"), x_len, n, inc_x)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn check_band_n_square_xy(
+    name: &str,
+    n: usize,
+    k: usize,
+    a_len: usize,
+    lda: usize,
+    x_len: usize,
+    inc_x: usize,
+    y_len: usize,
+    inc_y: usize,
+) -> Result<()> {
+    check_band_n_square(name, n, k, a_len, lda, x_len, inc_x)?;
+    check_strided_len(&format!("{name}: y"), y_len, n, inc_y)
+}
+
+/// Number of entries in an `n × n` packed triangular matrix.
+fn packed_len(n: usize) -> usize {
+    n * (n + 1) / 2
+}
+
+fn check_packed_n_square(
+    name: &str,
+    n: usize,
+    ap_len: usize,
+    x_len: usize,
+    inc_x: usize,
+) -> Result<()> {
+    let need = packed_len(n);
+    if ap_len < need {
+        return Err(Error::InvalidArgument(format!(
+            "{name}: packed A length {ap_len} < n(n+1)/2 = {need}"
+        )));
+    }
+    check_strided_len(&format!("{name}: x"), x_len, n, inc_x)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn check_packed_n_square_xy(
+    name: &str,
+    n: usize,
+    ap_len: usize,
+    x_len: usize,
+    inc_x: usize,
+    y_len: usize,
+    inc_y: usize,
+) -> Result<()> {
+    check_packed_n_square(name, n, ap_len, x_len, inc_x)?;
+    check_strided_len(&format!("{name}: y"), y_len, n, inc_y)
+}
+
 // ===========================================================================
 //   Slice / dimension validation
 // ===========================================================================
@@ -549,6 +663,85 @@ pub trait Scalar: Copy + Sized + Sealed {
         ldc: usize,
     ) -> Result<()>;
 
+    /// `Y := α · op(A) · X + β · Y` for general banded `A`. `kl` is the
+    /// number of subdiagonals and `ku` the number of superdiagonals. `A`
+    /// is stored in band-storage layout with `lda ≥ kl + ku + 1`.
+    #[allow(clippy::too_many_arguments)]
+    fn gbmv(
+        layout: Layout,
+        trans_a: Trans,
+        m: usize,
+        n: usize,
+        kl: usize,
+        ku: usize,
+        alpha: Self,
+        a: &[Self],
+        lda: usize,
+        x: &[Self],
+        inc_x: usize,
+        beta: Self,
+        y: &mut [Self],
+        inc_y: usize,
+    ) -> Result<()>;
+
+    /// `X := op(A) · X` for triangular banded `A`. `k` is the number of
+    /// super- (Upper) or sub-diagonals (Lower); `lda ≥ k + 1`.
+    #[allow(clippy::too_many_arguments)]
+    fn tbmv(
+        layout: Layout,
+        uplo: Uplo,
+        trans_a: Trans,
+        diag: Diag,
+        n: usize,
+        k: usize,
+        a: &[Self],
+        lda: usize,
+        x: &mut [Self],
+        inc_x: usize,
+    ) -> Result<()>;
+
+    /// Solve `op(A) · X' = X` for triangular banded `A`.
+    #[allow(clippy::too_many_arguments)]
+    fn tbsv(
+        layout: Layout,
+        uplo: Uplo,
+        trans_a: Trans,
+        diag: Diag,
+        n: usize,
+        k: usize,
+        a: &[Self],
+        lda: usize,
+        x: &mut [Self],
+        inc_x: usize,
+    ) -> Result<()>;
+
+    /// `X := op(A) · X` for triangular packed `A`. `Ap` is the column
+    /// (Upper) or row (Lower) packed `n(n+1)/2`-element storage.
+    #[allow(clippy::too_many_arguments)]
+    fn tpmv(
+        layout: Layout,
+        uplo: Uplo,
+        trans_a: Trans,
+        diag: Diag,
+        n: usize,
+        ap: &[Self],
+        x: &mut [Self],
+        inc_x: usize,
+    ) -> Result<()>;
+
+    /// Solve `op(A) · X' = X` for triangular packed `A`.
+    #[allow(clippy::too_many_arguments)]
+    fn tpsv(
+        layout: Layout,
+        uplo: Uplo,
+        trans_a: Trans,
+        diag: Diag,
+        n: usize,
+        ap: &[Self],
+        x: &mut [Self],
+        inc_x: usize,
+    ) -> Result<()>;
+
     /// `B := α · op(A) · B` (Side::Left) or `B := α · B · op(A)`
     /// (Side::Right) where `A` is triangular.
     #[allow(clippy::too_many_arguments)]
@@ -659,6 +852,65 @@ pub trait RealScalar: Scalar<Real = Self> {
         inc_y: usize,
         a: &mut [Self],
         lda: usize,
+    ) -> Result<()>;
+
+    /// `Y := α · A · X + β · Y` for symmetric banded `A` (`n × n` with `k`
+    /// off-diagonals). `lda ≥ k + 1`.
+    #[allow(clippy::too_many_arguments)]
+    fn sbmv(
+        layout: Layout,
+        uplo: Uplo,
+        n: usize,
+        k: usize,
+        alpha: Self,
+        a: &[Self],
+        lda: usize,
+        x: &[Self],
+        inc_x: usize,
+        beta: Self,
+        y: &mut [Self],
+        inc_y: usize,
+    ) -> Result<()>;
+
+    /// `Y := α · A · X + β · Y` for symmetric packed `A`.
+    #[allow(clippy::too_many_arguments)]
+    fn spmv(
+        layout: Layout,
+        uplo: Uplo,
+        n: usize,
+        alpha: Self,
+        ap: &[Self],
+        x: &[Self],
+        inc_x: usize,
+        beta: Self,
+        y: &mut [Self],
+        inc_y: usize,
+    ) -> Result<()>;
+
+    /// Symmetric packed rank-1 update `Ap := α · X · Xᵀ + Ap`.
+    #[allow(clippy::too_many_arguments)]
+    fn spr(
+        layout: Layout,
+        uplo: Uplo,
+        n: usize,
+        alpha: Self,
+        x: &[Self],
+        inc_x: usize,
+        ap: &mut [Self],
+    ) -> Result<()>;
+
+    /// Symmetric packed rank-2 update `Ap := α · X · Yᵀ + α · Y · Xᵀ + Ap`.
+    #[allow(clippy::too_many_arguments)]
+    fn spr2(
+        layout: Layout,
+        uplo: Uplo,
+        n: usize,
+        alpha: Self,
+        x: &[Self],
+        inc_x: usize,
+        y: &[Self],
+        inc_y: usize,
+        ap: &mut [Self],
     ) -> Result<()>;
 }
 
@@ -802,6 +1054,64 @@ pub trait ComplexScalar: Scalar {
         c: &mut [Self],
         ldc: usize,
     ) -> Result<()>;
+
+    /// `Y := α · A · X + β · Y` for Hermitian banded `A`.
+    #[allow(clippy::too_many_arguments)]
+    fn hbmv(
+        layout: Layout,
+        uplo: Uplo,
+        n: usize,
+        k: usize,
+        alpha: Self,
+        a: &[Self],
+        lda: usize,
+        x: &[Self],
+        inc_x: usize,
+        beta: Self,
+        y: &mut [Self],
+        inc_y: usize,
+    ) -> Result<()>;
+
+    /// `Y := α · A · X + β · Y` for Hermitian packed `A`.
+    #[allow(clippy::too_many_arguments)]
+    fn hpmv(
+        layout: Layout,
+        uplo: Uplo,
+        n: usize,
+        alpha: Self,
+        ap: &[Self],
+        x: &[Self],
+        inc_x: usize,
+        beta: Self,
+        y: &mut [Self],
+        inc_y: usize,
+    ) -> Result<()>;
+
+    /// Hermitian packed rank-1 update `Ap := α · X · Xᴴ + Ap` (real `α`).
+    #[allow(clippy::too_many_arguments)]
+    fn hpr(
+        layout: Layout,
+        uplo: Uplo,
+        n: usize,
+        alpha: Self::Real,
+        x: &[Self],
+        inc_x: usize,
+        ap: &mut [Self],
+    ) -> Result<()>;
+
+    /// Hermitian packed rank-2 update.
+    #[allow(clippy::too_many_arguments)]
+    fn hpr2(
+        layout: Layout,
+        uplo: Uplo,
+        n: usize,
+        alpha: Self,
+        x: &[Self],
+        inc_x: usize,
+        y: &[Self],
+        inc_y: usize,
+        ap: &mut [Self],
+    ) -> Result<()>;
 }
 
 // ===========================================================================
@@ -835,7 +1145,16 @@ macro_rules! impl_real_scalar {
         syrk = $syrk:ident,
         syr2k = $syr2k:ident,
         trmm = $trmm:ident,
-        trsm = $trsm:ident
+        trsm = $trsm:ident,
+        gbmv = $gbmv:ident,
+        tbmv = $tbmv:ident,
+        tbsv = $tbsv:ident,
+        tpmv = $tpmv:ident,
+        tpsv = $tpsv:ident,
+        sbmv = $sbmv:ident,
+        spmv = $spmv:ident,
+        spr  = $spr:ident,
+        spr2 = $spr2:ident
     ) => {
         impl Scalar for $t {
             type Real = $t;
@@ -1114,6 +1433,96 @@ macro_rules! impl_real_scalar {
                 }
                 Ok(())
             }
+
+            #[allow(clippy::too_many_arguments)]
+            fn gbmv(
+                layout: Layout, trans_a: Trans,
+                m: usize, n: usize, kl: usize, ku: usize,
+                alpha: Self, a: &[Self], lda: usize,
+                x: &[Self], inc_x: usize,
+                beta: Self, y: &mut [Self], inc_y: usize,
+            ) -> Result<()> {
+                check_gbmv(trans_a, m, n, kl, ku, a.len(), lda, x.len(), inc_x, y.len(), inc_y)?;
+                unsafe {
+                    sys::$gbmv(
+                        layout_raw(layout), trans_raw(trans_a),
+                        m as sys::f77_int, n as sys::f77_int,
+                        kl as sys::f77_int, ku as sys::f77_int,
+                        alpha, a.as_ptr(), lda as sys::f77_int,
+                        x.as_ptr(), inc_x as sys::f77_int,
+                        beta, y.as_mut_ptr(), inc_y as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn tbmv(
+                layout: Layout, uplo: Uplo, trans_a: Trans, diag: Diag,
+                n: usize, k: usize, a: &[Self], lda: usize,
+                x: &mut [Self], inc_x: usize,
+            ) -> Result<()> {
+                check_band_n_square("tbmv: A", n, k, a.len(), lda, x.len(), inc_x)?;
+                unsafe {
+                    sys::$tbmv(
+                        layout_raw(layout), uplo_raw(uplo), trans_raw(trans_a), diag_raw(diag),
+                        n as sys::f77_int, k as sys::f77_int,
+                        a.as_ptr(), lda as sys::f77_int,
+                        x.as_mut_ptr(), inc_x as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn tbsv(
+                layout: Layout, uplo: Uplo, trans_a: Trans, diag: Diag,
+                n: usize, k: usize, a: &[Self], lda: usize,
+                x: &mut [Self], inc_x: usize,
+            ) -> Result<()> {
+                check_band_n_square("tbsv: A", n, k, a.len(), lda, x.len(), inc_x)?;
+                unsafe {
+                    sys::$tbsv(
+                        layout_raw(layout), uplo_raw(uplo), trans_raw(trans_a), diag_raw(diag),
+                        n as sys::f77_int, k as sys::f77_int,
+                        a.as_ptr(), lda as sys::f77_int,
+                        x.as_mut_ptr(), inc_x as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn tpmv(
+                layout: Layout, uplo: Uplo, trans_a: Trans, diag: Diag,
+                n: usize, ap: &[Self], x: &mut [Self], inc_x: usize,
+            ) -> Result<()> {
+                check_packed_n_square("tpmv: Ap", n, ap.len(), x.len(), inc_x)?;
+                unsafe {
+                    sys::$tpmv(
+                        layout_raw(layout), uplo_raw(uplo), trans_raw(trans_a), diag_raw(diag),
+                        n as sys::f77_int, ap.as_ptr(),
+                        x.as_mut_ptr(), inc_x as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn tpsv(
+                layout: Layout, uplo: Uplo, trans_a: Trans, diag: Diag,
+                n: usize, ap: &[Self], x: &mut [Self], inc_x: usize,
+            ) -> Result<()> {
+                check_packed_n_square("tpsv: Ap", n, ap.len(), x.len(), inc_x)?;
+                unsafe {
+                    sys::$tpsv(
+                        layout_raw(layout), uplo_raw(uplo), trans_raw(trans_a), diag_raw(diag),
+                        n as sys::f77_int, ap.as_ptr(),
+                        x.as_mut_ptr(), inc_x as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
         }
 
         impl RealScalar for $t {
@@ -1220,6 +1629,83 @@ macro_rules! impl_real_scalar {
                 }
                 Ok(())
             }
+
+            #[allow(clippy::too_many_arguments)]
+            fn sbmv(
+                layout: Layout, uplo: Uplo, n: usize, k: usize,
+                alpha: Self, a: &[Self], lda: usize,
+                x: &[Self], inc_x: usize,
+                beta: Self, y: &mut [Self], inc_y: usize,
+            ) -> Result<()> {
+                check_band_n_square_xy("sbmv: A", n, k, a.len(), lda, x.len(), inc_x, y.len(), inc_y)?;
+                unsafe {
+                    sys::$sbmv(
+                        layout_raw(layout), uplo_raw(uplo),
+                        n as sys::f77_int, k as sys::f77_int,
+                        alpha, a.as_ptr(), lda as sys::f77_int,
+                        x.as_ptr(), inc_x as sys::f77_int,
+                        beta, y.as_mut_ptr(), inc_y as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn spmv(
+                layout: Layout, uplo: Uplo, n: usize,
+                alpha: Self, ap: &[Self],
+                x: &[Self], inc_x: usize,
+                beta: Self, y: &mut [Self], inc_y: usize,
+            ) -> Result<()> {
+                check_packed_n_square_xy("spmv: Ap", n, ap.len(), x.len(), inc_x, y.len(), inc_y)?;
+                unsafe {
+                    sys::$spmv(
+                        layout_raw(layout), uplo_raw(uplo),
+                        n as sys::f77_int, alpha, ap.as_ptr(),
+                        x.as_ptr(), inc_x as sys::f77_int,
+                        beta, y.as_mut_ptr(), inc_y as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn spr(
+                layout: Layout, uplo: Uplo, n: usize,
+                alpha: Self, x: &[Self], inc_x: usize,
+                ap: &mut [Self],
+            ) -> Result<()> {
+                check_packed_n_square("spr: Ap", n, ap.len(), x.len(), inc_x)?;
+                unsafe {
+                    sys::$spr(
+                        layout_raw(layout), uplo_raw(uplo),
+                        n as sys::f77_int, alpha,
+                        x.as_ptr(), inc_x as sys::f77_int,
+                        ap.as_mut_ptr(),
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn spr2(
+                layout: Layout, uplo: Uplo, n: usize,
+                alpha: Self, x: &[Self], inc_x: usize,
+                y: &[Self], inc_y: usize,
+                ap: &mut [Self],
+            ) -> Result<()> {
+                check_packed_n_square_xy("spr2: Ap", n, ap.len(), x.len(), inc_x, y.len(), inc_y)?;
+                unsafe {
+                    sys::$spr2(
+                        layout_raw(layout), uplo_raw(uplo),
+                        n as sys::f77_int, alpha,
+                        x.as_ptr(), inc_x as sys::f77_int,
+                        y.as_ptr(), inc_y as sys::f77_int,
+                        ap.as_mut_ptr(),
+                    );
+                }
+                Ok(())
+            }
         }
     };
 }
@@ -1234,7 +1720,11 @@ impl_real_scalar!(
     gemv = cblas_sgemv, trmv = cblas_strmv, trsv = cblas_strsv,
     symv = cblas_ssymv, syr = cblas_ssyr, syr2 = cblas_ssyr2, ger = cblas_sger,
     symm = cblas_ssymm, syrk = cblas_ssyrk, syr2k = cblas_ssyr2k,
-    trmm = cblas_strmm, trsm = cblas_strsm
+    trmm = cblas_strmm, trsm = cblas_strsm,
+    gbmv = cblas_sgbmv, tbmv = cblas_stbmv, tbsv = cblas_stbsv,
+    tpmv = cblas_stpmv, tpsv = cblas_stpsv,
+    sbmv = cblas_ssbmv, spmv = cblas_sspmv,
+    spr = cblas_sspr, spr2 = cblas_sspr2
 );
 impl_real_scalar!(
     f64,
@@ -1247,7 +1737,11 @@ impl_real_scalar!(
     gemv = cblas_dgemv, trmv = cblas_dtrmv, trsv = cblas_dtrsv,
     symv = cblas_dsymv, syr = cblas_dsyr, syr2 = cblas_dsyr2, ger = cblas_dger,
     symm = cblas_dsymm, syrk = cblas_dsyrk, syr2k = cblas_dsyr2k,
-    trmm = cblas_dtrmm, trsm = cblas_dtrsm
+    trmm = cblas_dtrmm, trsm = cblas_dtrsm,
+    gbmv = cblas_dgbmv, tbmv = cblas_dtbmv, tbsv = cblas_dtbsv,
+    tpmv = cblas_dtpmv, tpsv = cblas_dtpsv,
+    sbmv = cblas_dsbmv, spmv = cblas_dspmv,
+    spr = cblas_dspr, spr2 = cblas_dspr2
 );
 
 // ===========================================================================
@@ -1269,7 +1763,11 @@ macro_rules! impl_complex_scalar {
         geru = $geru:ident, gerc = $gerc:ident,
         symm = $symm:ident, syrk = $syrk:ident, syr2k = $syr2k:ident,
         trmm = $trmm:ident, trsm = $trsm:ident,
-        hemm = $hemm:ident, herk = $herk:ident, her2k = $her2k:ident
+        hemm = $hemm:ident, herk = $herk:ident, her2k = $her2k:ident,
+        gbmv = $gbmv:ident, tbmv = $tbmv:ident, tbsv = $tbsv:ident,
+        tpmv = $tpmv:ident, tpsv = $tpsv:ident,
+        hbmv = $hbmv:ident, hpmv = $hpmv:ident,
+        hpr  = $hpr:ident, hpr2 = $hpr2:ident
     ) => {
         impl Scalar for $t {
             type Real = $real;
@@ -1639,6 +2137,98 @@ macro_rules! impl_complex_scalar {
                 }
                 Ok(())
             }
+
+            #[allow(clippy::too_many_arguments)]
+            fn gbmv(
+                layout: Layout, trans_a: Trans,
+                m: usize, n: usize, kl: usize, ku: usize,
+                alpha: Self, a: &[Self], lda: usize,
+                x: &[Self], inc_x: usize,
+                beta: Self, y: &mut [Self], inc_y: usize,
+            ) -> Result<()> {
+                check_gbmv(trans_a, m, n, kl, ku, a.len(), lda, x.len(), inc_x, y.len(), inc_y)?;
+                unsafe {
+                    sys::$gbmv(
+                        layout_raw(layout), trans_raw(trans_a),
+                        m as sys::f77_int, n as sys::f77_int,
+                        kl as sys::f77_int, ku as sys::f77_int,
+                        &alpha as *const Self as *const std::os::raw::c_void,
+                        a.as_ptr() as *const std::os::raw::c_void, lda as sys::f77_int,
+                        x.as_ptr() as *const std::os::raw::c_void, inc_x as sys::f77_int,
+                        &beta as *const Self as *const std::os::raw::c_void,
+                        y.as_mut_ptr() as *mut std::os::raw::c_void, inc_y as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn tbmv(
+                layout: Layout, uplo: Uplo, trans_a: Trans, diag: Diag,
+                n: usize, k: usize, a: &[Self], lda: usize,
+                x: &mut [Self], inc_x: usize,
+            ) -> Result<()> {
+                check_band_n_square("tbmv: A", n, k, a.len(), lda, x.len(), inc_x)?;
+                unsafe {
+                    sys::$tbmv(
+                        layout_raw(layout), uplo_raw(uplo), trans_raw(trans_a), diag_raw(diag),
+                        n as sys::f77_int, k as sys::f77_int,
+                        a.as_ptr() as *const std::os::raw::c_void, lda as sys::f77_int,
+                        x.as_mut_ptr() as *mut std::os::raw::c_void, inc_x as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn tbsv(
+                layout: Layout, uplo: Uplo, trans_a: Trans, diag: Diag,
+                n: usize, k: usize, a: &[Self], lda: usize,
+                x: &mut [Self], inc_x: usize,
+            ) -> Result<()> {
+                check_band_n_square("tbsv: A", n, k, a.len(), lda, x.len(), inc_x)?;
+                unsafe {
+                    sys::$tbsv(
+                        layout_raw(layout), uplo_raw(uplo), trans_raw(trans_a), diag_raw(diag),
+                        n as sys::f77_int, k as sys::f77_int,
+                        a.as_ptr() as *const std::os::raw::c_void, lda as sys::f77_int,
+                        x.as_mut_ptr() as *mut std::os::raw::c_void, inc_x as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn tpmv(
+                layout: Layout, uplo: Uplo, trans_a: Trans, diag: Diag,
+                n: usize, ap: &[Self], x: &mut [Self], inc_x: usize,
+            ) -> Result<()> {
+                check_packed_n_square("tpmv: Ap", n, ap.len(), x.len(), inc_x)?;
+                unsafe {
+                    sys::$tpmv(
+                        layout_raw(layout), uplo_raw(uplo), trans_raw(trans_a), diag_raw(diag),
+                        n as sys::f77_int, ap.as_ptr() as *const std::os::raw::c_void,
+                        x.as_mut_ptr() as *mut std::os::raw::c_void, inc_x as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn tpsv(
+                layout: Layout, uplo: Uplo, trans_a: Trans, diag: Diag,
+                n: usize, ap: &[Self], x: &mut [Self], inc_x: usize,
+            ) -> Result<()> {
+                check_packed_n_square("tpsv: Ap", n, ap.len(), x.len(), inc_x)?;
+                unsafe {
+                    sys::$tpsv(
+                        layout_raw(layout), uplo_raw(uplo), trans_raw(trans_a), diag_raw(diag),
+                        n as sys::f77_int, ap.as_ptr() as *const std::os::raw::c_void,
+                        x.as_mut_ptr() as *mut std::os::raw::c_void, inc_x as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
         }
 
         impl ComplexScalar for $t {
@@ -1821,6 +2411,89 @@ macro_rules! impl_complex_scalar {
                 }
                 Ok(())
             }
+
+            #[allow(clippy::too_many_arguments)]
+            fn hbmv(
+                layout: Layout, uplo: Uplo, n: usize, k: usize,
+                alpha: Self, a: &[Self], lda: usize,
+                x: &[Self], inc_x: usize,
+                beta: Self, y: &mut [Self], inc_y: usize,
+            ) -> Result<()> {
+                check_band_n_square_xy("hbmv: A", n, k, a.len(), lda, x.len(), inc_x, y.len(), inc_y)?;
+                unsafe {
+                    sys::$hbmv(
+                        layout_raw(layout), uplo_raw(uplo),
+                        n as sys::f77_int, k as sys::f77_int,
+                        &alpha as *const Self as *const std::os::raw::c_void,
+                        a.as_ptr() as *const std::os::raw::c_void, lda as sys::f77_int,
+                        x.as_ptr() as *const std::os::raw::c_void, inc_x as sys::f77_int,
+                        &beta as *const Self as *const std::os::raw::c_void,
+                        y.as_mut_ptr() as *mut std::os::raw::c_void, inc_y as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn hpmv(
+                layout: Layout, uplo: Uplo, n: usize,
+                alpha: Self, ap: &[Self],
+                x: &[Self], inc_x: usize,
+                beta: Self, y: &mut [Self], inc_y: usize,
+            ) -> Result<()> {
+                check_packed_n_square_xy("hpmv: Ap", n, ap.len(), x.len(), inc_x, y.len(), inc_y)?;
+                unsafe {
+                    sys::$hpmv(
+                        layout_raw(layout), uplo_raw(uplo),
+                        n as sys::f77_int,
+                        &alpha as *const Self as *const std::os::raw::c_void,
+                        ap.as_ptr() as *const std::os::raw::c_void,
+                        x.as_ptr() as *const std::os::raw::c_void, inc_x as sys::f77_int,
+                        &beta as *const Self as *const std::os::raw::c_void,
+                        y.as_mut_ptr() as *mut std::os::raw::c_void, inc_y as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn hpr(
+                layout: Layout, uplo: Uplo, n: usize,
+                alpha: Self::Real, x: &[Self], inc_x: usize,
+                ap: &mut [Self],
+            ) -> Result<()> {
+                check_packed_n_square("hpr: Ap", n, ap.len(), x.len(), inc_x)?;
+                unsafe {
+                    sys::$hpr(
+                        layout_raw(layout), uplo_raw(uplo),
+                        n as sys::f77_int, alpha,
+                        x.as_ptr() as *const std::os::raw::c_void, inc_x as sys::f77_int,
+                        ap.as_mut_ptr() as *mut std::os::raw::c_void,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn hpr2(
+                layout: Layout, uplo: Uplo, n: usize,
+                alpha: Self, x: &[Self], inc_x: usize,
+                y: &[Self], inc_y: usize,
+                ap: &mut [Self],
+            ) -> Result<()> {
+                check_packed_n_square_xy("hpr2: Ap", n, ap.len(), x.len(), inc_x, y.len(), inc_y)?;
+                unsafe {
+                    sys::$hpr2(
+                        layout_raw(layout), uplo_raw(uplo),
+                        n as sys::f77_int,
+                        &alpha as *const Self as *const std::os::raw::c_void,
+                        x.as_ptr() as *const std::os::raw::c_void, inc_x as sys::f77_int,
+                        y.as_ptr() as *const std::os::raw::c_void, inc_y as sys::f77_int,
+                        ap.as_mut_ptr() as *mut std::os::raw::c_void,
+                    );
+                }
+                Ok(())
+            }
         }
     };
 }
@@ -1838,7 +2511,11 @@ impl_complex_scalar!(
     geru = cblas_cgeru, gerc = cblas_cgerc,
     symm = cblas_csymm, syrk = cblas_csyrk, syr2k = cblas_csyr2k,
     trmm = cblas_ctrmm, trsm = cblas_ctrsm,
-    hemm = cblas_chemm, herk = cblas_cherk, her2k = cblas_cher2k
+    hemm = cblas_chemm, herk = cblas_cherk, her2k = cblas_cher2k,
+    gbmv = cblas_cgbmv, tbmv = cblas_ctbmv, tbsv = cblas_ctbsv,
+    tpmv = cblas_ctpmv, tpsv = cblas_ctpsv,
+    hbmv = cblas_chbmv, hpmv = cblas_chpmv,
+    hpr = cblas_chpr, hpr2 = cblas_chpr2
 );
 impl_complex_scalar!(
     Complex64, f64,
@@ -1853,7 +2530,11 @@ impl_complex_scalar!(
     geru = cblas_zgeru, gerc = cblas_zgerc,
     symm = cblas_zsymm, syrk = cblas_zsyrk, syr2k = cblas_zsyr2k,
     trmm = cblas_ztrmm, trsm = cblas_ztrsm,
-    hemm = cblas_zhemm, herk = cblas_zherk, her2k = cblas_zher2k
+    hemm = cblas_zhemm, herk = cblas_zherk, her2k = cblas_zher2k,
+    gbmv = cblas_zgbmv, tbmv = cblas_ztbmv, tbsv = cblas_ztbsv,
+    tpmv = cblas_ztpmv, tpsv = cblas_ztpsv,
+    hbmv = cblas_zhbmv, hpmv = cblas_zhpmv,
+    hpr = cblas_zhpr, hpr2 = cblas_zhpr2
 );
 
 // ===========================================================================
@@ -2303,6 +2984,192 @@ pub fn her2k<T: ComplexScalar>(
     };
     let ldb = lda;
     T::her2k(Layout::RowMajor, uplo, trans, n, k, alpha, a, lda, b, ldb, beta, c, n)
+}
+
+// ===========================================================================
+//   Banded / packed Level-2 free-function wrappers
+// ===========================================================================
+
+/// Banded mat-vec `Y := α · op(A) · X + β · Y`. `A` uses BLAS band
+/// storage with leading dimension `kl + ku + 1`.
+#[allow(clippy::too_many_arguments)]
+pub fn gbmv<T: Scalar>(
+    layout: Layout,
+    trans_a: Trans,
+    m: usize,
+    n: usize,
+    kl: usize,
+    ku: usize,
+    alpha: T,
+    a: &[T],
+    lda: usize,
+    x: &[T],
+    beta: T,
+    y: &mut [T],
+) -> Result<()> {
+    T::gbmv(layout, trans_a, m, n, kl, ku, alpha, a, lda, x, 1, beta, y, 1)
+}
+
+/// Triangular banded mat-vec `X := op(A) · X`.
+#[allow(clippy::too_many_arguments)]
+pub fn tbmv<T: Scalar>(
+    layout: Layout,
+    uplo: Uplo,
+    trans_a: Trans,
+    diag: Diag,
+    n: usize,
+    k: usize,
+    a: &[T],
+    lda: usize,
+    x: &mut [T],
+) -> Result<()> {
+    T::tbmv(layout, uplo, trans_a, diag, n, k, a, lda, x, 1)
+}
+
+/// Triangular banded solve `op(A) · X' = X`.
+#[allow(clippy::too_many_arguments)]
+pub fn tbsv<T: Scalar>(
+    layout: Layout,
+    uplo: Uplo,
+    trans_a: Trans,
+    diag: Diag,
+    n: usize,
+    k: usize,
+    a: &[T],
+    lda: usize,
+    x: &mut [T],
+) -> Result<()> {
+    T::tbsv(layout, uplo, trans_a, diag, n, k, a, lda, x, 1)
+}
+
+/// Triangular packed mat-vec `X := op(A) · X`.
+pub fn tpmv<T: Scalar>(
+    uplo: Uplo,
+    trans_a: Trans,
+    diag: Diag,
+    n: usize,
+    ap: &[T],
+    x: &mut [T],
+) -> Result<()> {
+    T::tpmv(Layout::RowMajor, uplo, trans_a, diag, n, ap, x, 1)
+}
+
+/// Triangular packed solve `op(A) · X' = X`.
+pub fn tpsv<T: Scalar>(
+    uplo: Uplo,
+    trans_a: Trans,
+    diag: Diag,
+    n: usize,
+    ap: &[T],
+    x: &mut [T],
+) -> Result<()> {
+    T::tpsv(Layout::RowMajor, uplo, trans_a, diag, n, ap, x, 1)
+}
+
+/// Symmetric banded mat-vec.
+#[allow(clippy::too_many_arguments)]
+pub fn sbmv<T: RealScalar>(
+    uplo: Uplo,
+    n: usize,
+    k: usize,
+    alpha: T,
+    a: &[T],
+    lda: usize,
+    x: &[T],
+    beta: T,
+    y: &mut [T],
+) -> Result<()> {
+    T::sbmv(Layout::RowMajor, uplo, n, k, alpha, a, lda, x, 1, beta, y, 1)
+}
+
+/// Symmetric packed mat-vec.
+#[allow(clippy::too_many_arguments)]
+pub fn spmv<T: RealScalar>(
+    uplo: Uplo,
+    n: usize,
+    alpha: T,
+    ap: &[T],
+    x: &[T],
+    beta: T,
+    y: &mut [T],
+) -> Result<()> {
+    T::spmv(Layout::RowMajor, uplo, n, alpha, ap, x, 1, beta, y, 1)
+}
+
+/// Symmetric packed rank-1 update `Ap := α · X · Xᵀ + Ap`.
+pub fn spr<T: RealScalar>(
+    uplo: Uplo,
+    n: usize,
+    alpha: T,
+    x: &[T],
+    ap: &mut [T],
+) -> Result<()> {
+    T::spr(Layout::RowMajor, uplo, n, alpha, x, 1, ap)
+}
+
+/// Symmetric packed rank-2 update.
+pub fn spr2<T: RealScalar>(
+    uplo: Uplo,
+    n: usize,
+    alpha: T,
+    x: &[T],
+    y: &[T],
+    ap: &mut [T],
+) -> Result<()> {
+    T::spr2(Layout::RowMajor, uplo, n, alpha, x, 1, y, 1, ap)
+}
+
+/// Hermitian banded mat-vec.
+#[allow(clippy::too_many_arguments)]
+pub fn hbmv<T: ComplexScalar>(
+    uplo: Uplo,
+    n: usize,
+    k: usize,
+    alpha: T,
+    a: &[T],
+    lda: usize,
+    x: &[T],
+    beta: T,
+    y: &mut [T],
+) -> Result<()> {
+    T::hbmv(Layout::RowMajor, uplo, n, k, alpha, a, lda, x, 1, beta, y, 1)
+}
+
+/// Hermitian packed mat-vec.
+#[allow(clippy::too_many_arguments)]
+pub fn hpmv<T: ComplexScalar>(
+    uplo: Uplo,
+    n: usize,
+    alpha: T,
+    ap: &[T],
+    x: &[T],
+    beta: T,
+    y: &mut [T],
+) -> Result<()> {
+    T::hpmv(Layout::RowMajor, uplo, n, alpha, ap, x, 1, beta, y, 1)
+}
+
+/// Hermitian packed rank-1 update `Ap := α · X · Xᴴ + Ap` (real `α`).
+pub fn hpr<T: ComplexScalar>(
+    uplo: Uplo,
+    n: usize,
+    alpha: T::Real,
+    x: &[T],
+    ap: &mut [T],
+) -> Result<()> {
+    T::hpr(Layout::RowMajor, uplo, n, alpha, x, 1, ap)
+}
+
+/// Hermitian packed rank-2 update.
+pub fn hpr2<T: ComplexScalar>(
+    uplo: Uplo,
+    n: usize,
+    alpha: T,
+    x: &[T],
+    y: &[T],
+    ap: &mut [T],
+) -> Result<()> {
+    T::hpr2(Layout::RowMajor, uplo, n, alpha, x, 1, y, 1, ap)
 }
 
 // ===========================================================================
@@ -2819,5 +3686,52 @@ mod tests {
         let mut c = [Complex64::ZERO; 1];
         her2k(Uplo::Upper, Trans::No, 1, 1, Complex64::ONE, &a, &b, 0.0, &mut c).unwrap();
         assert!((c[0].re - 2.0).abs() < 1e-12);
+    }
+
+    // --- Banded / packed -------------------------------------------------
+
+    #[test]
+    fn gbmv_diagonal() {
+        // 3×3 diagonal A = diag(2, 4, 6), kl=ku=0 → lda = 1.
+        // y := A·x where x = [1, 2, 3] → [2, 8, 18]
+        let a = [2.0_f64, 4.0, 6.0];
+        let x = [1.0_f64, 2.0, 3.0];
+        let mut y = [0.0_f64; 3];
+        gbmv(Layout::ColMajor, Trans::No, 3, 3, 0, 0, 1.0, &a, 1, &x, 0.0, &mut y).unwrap();
+        assert_eq!(y, [2.0, 8.0, 18.0]);
+    }
+
+    #[test]
+    fn tpsv_then_tpmv_round_trip() {
+        // Upper-triangular packed n=2: U = [[2, 1],[0, 3]] → packed
+        // (column-major upper): [u00, u01, u11] = [2, 1, 3]
+        // Solve U·x = b for b=[3, 6]; expected x=[3/2 - 1/2·2, 6/3] = [0.5, 2]
+        let mut x = [3.0_f64, 6.0];
+        let ap = [2.0_f64, 1.0, 3.0];
+        tpsv::<f64>(Uplo::Upper, Trans::No, Diag::NonUnit, 2, &ap, &mut x).unwrap();
+        // Multiply back to recover b.
+        let mut b_back = x;
+        tpmv::<f64>(Uplo::Upper, Trans::No, Diag::NonUnit, 2, &ap, &mut b_back).unwrap();
+        assert!((b_back[0] - 3.0).abs() < 1e-12);
+        assert!((b_back[1] - 6.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn spr_packed_rank1_real() {
+        // n=2, x=[1, 2], α=1, Ap=0 → after spr (upper): packed=[1, 2, 4]
+        let mut ap = [0.0_f64; 3];
+        let x = [1.0_f64, 2.0];
+        spr(Uplo::Upper, 2, 1.0, &x, &mut ap).unwrap();
+        assert_eq!(ap, [1.0, 2.0, 4.0]);
+    }
+
+    #[test]
+    fn hpr_packed_rank1_complex() {
+        // n=1, x=[1+i], α=1.0 (real) → Ap_packed = α·|x|² = 1·(1+1) = 2
+        let mut ap = [Complex64::ZERO];
+        let x = [Complex64::new(1.0, 1.0)];
+        hpr(Uplo::Upper, 1, 1.0_f64, &x, &mut ap).unwrap();
+        assert!((ap[0].re - 2.0).abs() < 1e-12);
+        assert!(ap[0].im.abs() < 1e-12);
     }
 }
