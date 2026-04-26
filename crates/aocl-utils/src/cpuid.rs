@@ -115,6 +115,68 @@ pub fn x86_64_level(cpu: Cpu) -> Option<X86_64Level> {
     }
 }
 
+/// Returns `true` if the queried CPU supports the named feature flag
+/// (e.g. `"avx2"`, `"avx512f"`, `"sha"`, `"vaes"`).
+///
+/// **Caveat:** AOCL throws a C++ exception when given an unknown flag
+/// name, which Rust cannot catch — pass only flag names AOCL recognises.
+/// See `<AOCL_ROOT>/amd-utils/include/Au/Cpuid/Enum.hh` for the full
+/// list (representative subset: `sse`, `sse2`, `sse3`, `sse4_1`,
+/// `sse4_2`, `avx`, `avx2`, `avx512f`, `avx512vl`, `fma`, `aes`, `vaes`,
+/// `sha`, `bmi1`, `bmi2`, `popcnt`).
+pub fn has_flag(cpu: Cpu, flag: &str) -> bool {
+    has_flags_all(cpu, &[flag])
+}
+
+/// Returns `true` if the queried CPU supports **all** of the named flags.
+pub fn has_flags_all(cpu: Cpu, flags: &[&str]) -> bool {
+    if flags.is_empty() {
+        return true;
+    }
+    let cstrings: Vec<std::ffi::CString> = flags
+        .iter()
+        .filter_map(|s| std::ffi::CString::new(*s).ok())
+        .collect();
+    if cstrings.len() != flags.len() {
+        // A flag with an interior NUL is malformed; treat as "not supported".
+        return false;
+    }
+    let pointers: Vec<*const std::os::raw::c_char> =
+        cstrings.iter().map(|c| c.as_ptr()).collect();
+    // SAFETY: AOCL reads `count` C-string pointers; the cstrings stay
+    // alive for the duration of this call.
+    unsafe {
+        sys::au_cpuid_has_flags_all(
+            cpu.as_raw(),
+            pointers.as_ptr(),
+            pointers.len() as std::os::raw::c_int,
+        )
+    }
+}
+
+/// Returns `true` if the queried CPU supports **any** of the named flags.
+pub fn has_flags_any(cpu: Cpu, flags: &[&str]) -> bool {
+    if flags.is_empty() {
+        return false;
+    }
+    let cstrings: Vec<std::ffi::CString> = flags
+        .iter()
+        .filter_map(|s| std::ffi::CString::new(*s).ok())
+        .collect();
+    if cstrings.len() != flags.len() {
+        return false;
+    }
+    let pointers: Vec<*const std::os::raw::c_char> =
+        cstrings.iter().map(|c| c.as_ptr()).collect();
+    unsafe {
+        sys::au_cpuid_has_flags_any(
+            cpu.as_raw(),
+            pointers.as_ptr(),
+            pointers.len() as std::os::raw::c_int,
+        )
+    }
+}
+
 /// Fetch vendor / family / model / stepping / uarch identifiers for the
 /// queried CPU.
 pub fn vendor_info(cpu: Cpu) -> VendorInfo {
@@ -152,5 +214,19 @@ mod tests {
         let _ = is_zen_family(Cpu::Current);
         let _ = zen_arch(Cpu::Current);
         let _ = x86_64_level(Cpu::Current);
+    }
+
+    #[test]
+    fn has_flag_queries_run() {
+        // AOCL throws a C++ exception on unknown flag names, which would
+        // abort the process under Rust's panic-from-foreign-exception
+        // handling — so use only flag names AOCL recognises.
+        // SSE2 is universal on x86-64 since 2003.
+        let _ = has_flag(Cpu::Current, "sse2");
+        let _ = has_flags_all(Cpu::Current, &["sse2", "sse4_2"]);
+        let _ = has_flags_any(Cpu::Current, &["avx2", "avx512f"]);
+        // Empty list of flags
+        assert!(has_flags_all(Cpu::Current, &[]));
+        assert!(!has_flags_any(Cpu::Current, &[]));
     }
 }
