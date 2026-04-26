@@ -221,6 +221,163 @@ pub trait Scalar: Copy + Sized + Sealed {
     /// LQ factorization.
     fn gelqf(layout: Layout, m: usize, n: usize,
              a: &mut [Self], lda: usize, tau: &mut [Self]) -> Result<()>;
+
+    // --- Singular Value Decomposition -----------------------------------
+
+    /// SVD via the QR-iteration algorithm. `s` receives `min(m, n)`
+    /// singular values in descending order. The job parameters specify
+    /// how much of `U` and `V^H` to compute.
+    #[allow(clippy::too_many_arguments)]
+    fn gesvd(
+        layout: Layout,
+        jobu: SvdJob,
+        jobvt: SvdJob,
+        m: usize,
+        n: usize,
+        a: &mut [Self],
+        lda: usize,
+        s: &mut [Self::Real],
+        u: &mut [Self],
+        ldu: usize,
+        vt: &mut [Self],
+        ldvt: usize,
+        superb: &mut [Self::Real],
+    ) -> Result<()>;
+
+    /// SVD via the divide-and-conquer algorithm (typically faster than
+    /// gesvd for large matrices).
+    #[allow(clippy::too_many_arguments)]
+    fn gesdd(
+        layout: Layout,
+        jobz: SvdJob,
+        m: usize,
+        n: usize,
+        a: &mut [Self],
+        lda: usize,
+        s: &mut [Self::Real],
+        u: &mut [Self],
+        ldu: usize,
+        vt: &mut [Self],
+        ldvt: usize,
+    ) -> Result<()>;
+
+    // --- Advanced least squares -----------------------------------------
+
+    /// Least squares using SVD (handles rank-deficient `A`). On exit
+    /// `rank` is the effective numerical rank.
+    #[allow(clippy::too_many_arguments)]
+    fn gelsd(
+        layout: Layout,
+        m: usize,
+        n: usize,
+        nrhs: usize,
+        a: &mut [Self],
+        lda: usize,
+        b: &mut [Self],
+        ldb: usize,
+        s: &mut [Self::Real],
+        rcond: Self::Real,
+        rank: &mut i32,
+    ) -> Result<()>;
+
+    /// Least squares using QR with column pivoting.
+    #[allow(clippy::too_many_arguments)]
+    fn gelsy(
+        layout: Layout,
+        m: usize,
+        n: usize,
+        nrhs: usize,
+        a: &mut [Self],
+        lda: usize,
+        b: &mut [Self],
+        ldb: usize,
+        jpvt: &mut [i32],
+        rcond: Self::Real,
+        rank: &mut i32,
+    ) -> Result<()>;
+}
+
+/// Whether eigendecomposition / SVD routines compute vectors as well
+/// as the values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Compute {
+    /// Compute eigenvalues / singular values only.
+    ValuesOnly,
+    /// Compute both values and the corresponding vectors.
+    ValuesAndVectors,
+}
+
+impl Compute {
+    fn job_char(self) -> c_char {
+        match self {
+            Compute::ValuesOnly => b'N' as c_char,
+            Compute::ValuesAndVectors => b'V' as c_char,
+        }
+    }
+}
+
+/// Variant for `gesvd` / `gesdd` controlling how much of `U` and `V^H`
+/// is computed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SvdJob {
+    /// Compute the full square `U` (m × m) or `V^H` (n × n) matrices.
+    All,
+    /// Compute only the leading `min(m, n)` columns of `U` / rows of `V^H`.
+    Singular,
+    /// Compute the corresponding factor in-place inside `A`.
+    Overwrite,
+    /// Do not compute that factor.
+    None,
+}
+
+impl SvdJob {
+    fn job_char(self) -> c_char {
+        match self {
+            SvdJob::All => b'A' as c_char,
+            SvdJob::Singular => b'S' as c_char,
+            SvdJob::Overwrite => b'O' as c_char,
+            SvdJob::None => b'N' as c_char,
+        }
+    }
+}
+
+/// Operations defined only for real precisions.
+pub trait RealScalar: Scalar<Real = Self> {
+    /// Symmetric eigendecomposition: compute eigenvalues (and optionally
+    /// eigenvectors) of an `n × n` symmetric matrix.
+    /// On exit, `a` contains the eigenvectors when `compute = ValuesAndVectors`.
+    /// `w` receives the eigenvalues in ascending order.
+    #[allow(clippy::too_many_arguments)]
+    fn syev(
+        layout: Layout,
+        compute: Compute,
+        uplo: Uplo,
+        n: usize,
+        a: &mut [Self],
+        lda: usize,
+        w: &mut [Self],
+    ) -> Result<()>;
+
+    /// Non-symmetric eigendecomposition for an `n × n` real matrix.
+    /// Eigenvalues come back as `wr + i·wi` (real and imaginary parts);
+    /// complex conjugate pairs share consecutive entries.
+    /// `vl` and `vr` receive left/right eigenvectors when their respective
+    /// `compute_*` flags request them; pass empty slices when not needed.
+    #[allow(clippy::too_many_arguments)]
+    fn geev(
+        layout: Layout,
+        compute_left: Compute,
+        compute_right: Compute,
+        n: usize,
+        a: &mut [Self],
+        lda: usize,
+        wr: &mut [Self],
+        wi: &mut [Self],
+        vl: &mut [Self],
+        ldvl: usize,
+        vr: &mut [Self],
+        ldvr: usize,
+    ) -> Result<()>;
 }
 
 /// Operations defined only for complex precisions.
@@ -240,6 +397,36 @@ pub trait ComplexScalar: Scalar {
     fn hetrs(layout: Layout, uplo: Uplo, n: usize, nrhs: usize,
              a: &[Self], lda: usize, ipiv: &[i32],
              b: &mut [Self], ldb: usize) -> Result<()>;
+
+    /// Hermitian eigendecomposition: compute eigenvalues (real) and
+    /// optionally eigenvectors of an `n × n` Hermitian matrix.
+    #[allow(clippy::too_many_arguments)]
+    fn heev(
+        layout: Layout,
+        compute: Compute,
+        uplo: Uplo,
+        n: usize,
+        a: &mut [Self],
+        lda: usize,
+        w: &mut [Self::Real],
+    ) -> Result<()>;
+
+    /// Non-symmetric complex eigendecomposition.
+    /// `w` is the array of complex eigenvalues.
+    #[allow(clippy::too_many_arguments)]
+    fn geev(
+        layout: Layout,
+        compute_left: Compute,
+        compute_right: Compute,
+        n: usize,
+        a: &mut [Self],
+        lda: usize,
+        w: &mut [Self],
+        vl: &mut [Self],
+        ldvl: usize,
+        vr: &mut [Self],
+        ldvr: usize,
+    ) -> Result<()>;
 }
 
 // =========================================================================
@@ -254,7 +441,10 @@ macro_rules! impl_real {
         sysv = $sysv:ident, sytrf = $sytrf:ident, sytrs = $sytrs:ident,
         gbsv = $gbsv:ident, gbtrf = $gbtrf:ident, gbtrs = $gbtrs:ident,
         gtsv = $gtsv:ident, ptsv = $ptsv:ident,
-        gels = $gels:ident, geqrf = $geqrf:ident, gelqf = $gelqf:ident
+        gels = $gels:ident, geqrf = $geqrf:ident, gelqf = $gelqf:ident,
+        syev = $syev:ident, geev = $geev:ident,
+        gesvd = $gesvd:ident, gesdd = $gesdd:ident,
+        gelsd = $gelsd:ident, gelsy = $gelsy:ident
     ) => {
         impl Scalar for $t {
             type Real = $t;
@@ -509,6 +699,140 @@ macro_rules! impl_real {
                 };
                 map_info("lapack", info)
             }
+
+            #[allow(clippy::too_many_arguments)]
+            fn gesvd(
+                layout: Layout,
+                jobu: SvdJob, jobvt: SvdJob,
+                m: usize, n: usize,
+                a: &mut [Self], lda: usize,
+                s: &mut [Self::Real],
+                u: &mut [Self], ldu: usize,
+                vt: &mut [Self], ldvt: usize,
+                superb: &mut [Self::Real],
+            ) -> Result<()> {
+                let info = unsafe {
+                    sys::$gesvd(
+                        layout_raw(layout),
+                        jobu.job_char(), jobvt.job_char(),
+                        m as i32, n as i32,
+                        a.as_mut_ptr(), lda as i32,
+                        s.as_mut_ptr(),
+                        u.as_mut_ptr(), ldu as i32,
+                        vt.as_mut_ptr(), ldvt as i32,
+                        superb.as_mut_ptr(),
+                    )
+                };
+                map_info("lapack", info)
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn gesdd(
+                layout: Layout,
+                jobz: SvdJob,
+                m: usize, n: usize,
+                a: &mut [Self], lda: usize,
+                s: &mut [Self::Real],
+                u: &mut [Self], ldu: usize,
+                vt: &mut [Self], ldvt: usize,
+            ) -> Result<()> {
+                let info = unsafe {
+                    sys::$gesdd(
+                        layout_raw(layout),
+                        jobz.job_char(),
+                        m as i32, n as i32,
+                        a.as_mut_ptr(), lda as i32,
+                        s.as_mut_ptr(),
+                        u.as_mut_ptr(), ldu as i32,
+                        vt.as_mut_ptr(), ldvt as i32,
+                    )
+                };
+                map_info("lapack", info)
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn gelsd(
+                layout: Layout,
+                m: usize, n: usize, nrhs: usize,
+                a: &mut [Self], lda: usize,
+                b: &mut [Self], ldb: usize,
+                s: &mut [Self::Real],
+                rcond: Self::Real,
+                rank: &mut i32,
+            ) -> Result<()> {
+                let info = unsafe {
+                    sys::$gelsd(
+                        layout_raw(layout),
+                        m as i32, n as i32, nrhs as i32,
+                        a.as_mut_ptr(), lda as i32,
+                        b.as_mut_ptr(), ldb as i32,
+                        s.as_mut_ptr(), rcond, rank,
+                    )
+                };
+                map_info("lapack", info)
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn gelsy(
+                layout: Layout,
+                m: usize, n: usize, nrhs: usize,
+                a: &mut [Self], lda: usize,
+                b: &mut [Self], ldb: usize,
+                jpvt: &mut [i32],
+                rcond: Self::Real,
+                rank: &mut i32,
+            ) -> Result<()> {
+                let info = unsafe {
+                    sys::$gelsy(
+                        layout_raw(layout),
+                        m as i32, n as i32, nrhs as i32,
+                        a.as_mut_ptr(), lda as i32,
+                        b.as_mut_ptr(), ldb as i32,
+                        jpvt.as_mut_ptr(), rcond, rank,
+                    )
+                };
+                map_info("lapack", info)
+            }
+        }
+
+        impl RealScalar for $t {
+            #[allow(clippy::too_many_arguments)]
+            fn syev(
+                layout: Layout, compute: Compute, uplo: Uplo, n: usize,
+                a: &mut [Self], lda: usize, w: &mut [Self],
+            ) -> Result<()> {
+                let info = unsafe {
+                    sys::$syev(
+                        layout_raw(layout), compute.job_char(), uplo_char(uplo),
+                        n as i32, a.as_mut_ptr(), lda as i32, w.as_mut_ptr(),
+                    )
+                };
+                map_info("lapack", info)
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn geev(
+                layout: Layout,
+                compute_left: Compute, compute_right: Compute,
+                n: usize,
+                a: &mut [Self], lda: usize,
+                wr: &mut [Self], wi: &mut [Self],
+                vl: &mut [Self], ldvl: usize,
+                vr: &mut [Self], ldvr: usize,
+            ) -> Result<()> {
+                let info = unsafe {
+                    sys::$geev(
+                        layout_raw(layout),
+                        compute_left.job_char(), compute_right.job_char(),
+                        n as i32,
+                        a.as_mut_ptr(), lda as i32,
+                        wr.as_mut_ptr(), wi.as_mut_ptr(),
+                        vl.as_mut_ptr(), ldvl as i32,
+                        vr.as_mut_ptr(), ldvr as i32,
+                    )
+                };
+                map_info("lapack", info)
+            }
         }
     };
 }
@@ -520,7 +844,10 @@ impl_real!(
     sysv = LAPACKE_ssysv, sytrf = LAPACKE_ssytrf, sytrs = LAPACKE_ssytrs,
     gbsv = LAPACKE_sgbsv, gbtrf = LAPACKE_sgbtrf, gbtrs = LAPACKE_sgbtrs,
     gtsv = LAPACKE_sgtsv, ptsv = LAPACKE_sptsv,
-    gels = LAPACKE_sgels, geqrf = LAPACKE_sgeqrf, gelqf = LAPACKE_sgelqf
+    gels = LAPACKE_sgels, geqrf = LAPACKE_sgeqrf, gelqf = LAPACKE_sgelqf,
+    syev = LAPACKE_ssyev, geev = LAPACKE_sgeev,
+    gesvd = LAPACKE_sgesvd, gesdd = LAPACKE_sgesdd,
+    gelsd = LAPACKE_sgelsd, gelsy = LAPACKE_sgelsy
 );
 impl_real!(
     f64,
@@ -529,7 +856,10 @@ impl_real!(
     sysv = LAPACKE_dsysv, sytrf = LAPACKE_dsytrf, sytrs = LAPACKE_dsytrs,
     gbsv = LAPACKE_dgbsv, gbtrf = LAPACKE_dgbtrf, gbtrs = LAPACKE_dgbtrs,
     gtsv = LAPACKE_dgtsv, ptsv = LAPACKE_dptsv,
-    gels = LAPACKE_dgels, geqrf = LAPACKE_dgeqrf, gelqf = LAPACKE_dgelqf
+    gels = LAPACKE_dgels, geqrf = LAPACKE_dgeqrf, gelqf = LAPACKE_dgelqf,
+    syev = LAPACKE_dsyev, geev = LAPACKE_dgeev,
+    gesvd = LAPACKE_dgesvd, gesdd = LAPACKE_dgesdd,
+    gelsd = LAPACKE_dgelsd, gelsy = LAPACKE_dgelsy
 );
 
 // =========================================================================
@@ -549,7 +879,10 @@ macro_rules! impl_complex {
         hesv = $hesv:ident, hetrf = $hetrf:ident, hetrs = $hetrs:ident,
         gbsv = $gbsv:ident, gbtrf = $gbtrf:ident, gbtrs = $gbtrs:ident,
         gtsv = $gtsv:ident, ptsv = $ptsv:ident,
-        gels = $gels:ident, geqrf = $geqrf:ident, gelqf = $gelqf:ident
+        gels = $gels:ident, geqrf = $geqrf:ident, gelqf = $gelqf:ident,
+        heev = $heev:ident, geev = $geev:ident,
+        gesvd = $gesvd:ident, gesdd = $gesdd:ident,
+        gelsd = $gelsd:ident, gelsy = $gelsy:ident
     ) => {
         impl Scalar for $t {
             type Real = $real;
@@ -770,6 +1103,100 @@ macro_rules! impl_complex {
                 };
                 map_info("lapack", info)
             }
+
+            #[allow(clippy::too_many_arguments)]
+            fn gesvd(
+                layout: Layout,
+                jobu: SvdJob, jobvt: SvdJob,
+                m: usize, n: usize,
+                a: &mut [Self], lda: usize,
+                s: &mut [Self::Real],
+                u: &mut [Self], ldu: usize,
+                vt: &mut [Self], ldvt: usize,
+                superb: &mut [Self::Real],
+            ) -> Result<()> {
+                let info = unsafe {
+                    sys::$gesvd(
+                        layout_raw(layout),
+                        jobu.job_char(), jobvt.job_char(),
+                        m as i32, n as i32,
+                        a.as_mut_ptr() as *mut $cc, lda as i32,
+                        s.as_mut_ptr(),
+                        u.as_mut_ptr() as *mut $cc, ldu as i32,
+                        vt.as_mut_ptr() as *mut $cc, ldvt as i32,
+                        superb.as_mut_ptr(),
+                    )
+                };
+                map_info("lapack", info)
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn gesdd(
+                layout: Layout,
+                jobz: SvdJob,
+                m: usize, n: usize,
+                a: &mut [Self], lda: usize,
+                s: &mut [Self::Real],
+                u: &mut [Self], ldu: usize,
+                vt: &mut [Self], ldvt: usize,
+            ) -> Result<()> {
+                let info = unsafe {
+                    sys::$gesdd(
+                        layout_raw(layout),
+                        jobz.job_char(),
+                        m as i32, n as i32,
+                        a.as_mut_ptr() as *mut $cc, lda as i32,
+                        s.as_mut_ptr(),
+                        u.as_mut_ptr() as *mut $cc, ldu as i32,
+                        vt.as_mut_ptr() as *mut $cc, ldvt as i32,
+                    )
+                };
+                map_info("lapack", info)
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn gelsd(
+                layout: Layout,
+                m: usize, n: usize, nrhs: usize,
+                a: &mut [Self], lda: usize,
+                b: &mut [Self], ldb: usize,
+                s: &mut [Self::Real],
+                rcond: Self::Real,
+                rank: &mut i32,
+            ) -> Result<()> {
+                let info = unsafe {
+                    sys::$gelsd(
+                        layout_raw(layout),
+                        m as i32, n as i32, nrhs as i32,
+                        a.as_mut_ptr() as *mut $cc, lda as i32,
+                        b.as_mut_ptr() as *mut $cc, ldb as i32,
+                        s.as_mut_ptr(), rcond, rank,
+                    )
+                };
+                map_info("lapack", info)
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn gelsy(
+                layout: Layout,
+                m: usize, n: usize, nrhs: usize,
+                a: &mut [Self], lda: usize,
+                b: &mut [Self], ldb: usize,
+                jpvt: &mut [i32],
+                rcond: Self::Real,
+                rank: &mut i32,
+            ) -> Result<()> {
+                let info = unsafe {
+                    sys::$gelsy(
+                        layout_raw(layout),
+                        m as i32, n as i32, nrhs as i32,
+                        a.as_mut_ptr() as *mut $cc, lda as i32,
+                        b.as_mut_ptr() as *mut $cc, ldb as i32,
+                        jpvt.as_mut_ptr(), rcond, rank,
+                    )
+                };
+                map_info("lapack", info)
+            }
         }
 
         impl ComplexScalar for $t {
@@ -806,6 +1233,45 @@ macro_rules! impl_complex {
                 };
                 map_info("lapack", info)
             }
+
+            #[allow(clippy::too_many_arguments)]
+            fn heev(
+                layout: Layout, compute: Compute, uplo: Uplo, n: usize,
+                a: &mut [Self], lda: usize, w: &mut [Self::Real],
+            ) -> Result<()> {
+                let info = unsafe {
+                    sys::$heev(
+                        layout_raw(layout), compute.job_char(), uplo_char(uplo),
+                        n as i32, a.as_mut_ptr() as *mut $cc, lda as i32,
+                        w.as_mut_ptr(),
+                    )
+                };
+                map_info("lapack", info)
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn geev(
+                layout: Layout,
+                compute_left: Compute, compute_right: Compute,
+                n: usize,
+                a: &mut [Self], lda: usize,
+                w: &mut [Self],
+                vl: &mut [Self], ldvl: usize,
+                vr: &mut [Self], ldvr: usize,
+            ) -> Result<()> {
+                let info = unsafe {
+                    sys::$geev(
+                        layout_raw(layout),
+                        compute_left.job_char(), compute_right.job_char(),
+                        n as i32,
+                        a.as_mut_ptr() as *mut $cc, lda as i32,
+                        w.as_mut_ptr() as *mut $cc,
+                        vl.as_mut_ptr() as *mut $cc, ldvl as i32,
+                        vr.as_mut_ptr() as *mut $cc, ldvr as i32,
+                    )
+                };
+                map_info("lapack", info)
+            }
         }
     };
 }
@@ -818,7 +1284,10 @@ impl_complex!(
     hesv = LAPACKE_chesv, hetrf = LAPACKE_chetrf, hetrs = LAPACKE_chetrs,
     gbsv = LAPACKE_cgbsv, gbtrf = LAPACKE_cgbtrf, gbtrs = LAPACKE_cgbtrs,
     gtsv = LAPACKE_cgtsv, ptsv = LAPACKE_cptsv,
-    gels = LAPACKE_cgels, geqrf = LAPACKE_cgeqrf, gelqf = LAPACKE_cgelqf
+    gels = LAPACKE_cgels, geqrf = LAPACKE_cgeqrf, gelqf = LAPACKE_cgelqf,
+    heev = LAPACKE_cheev, geev = LAPACKE_cgeev,
+    gesvd = LAPACKE_cgesvd, gesdd = LAPACKE_cgesdd,
+    gelsd = LAPACKE_cgelsd, gelsy = LAPACKE_cgelsy
 );
 impl_complex!(
     Complex64, f64, CC64,
@@ -828,7 +1297,10 @@ impl_complex!(
     hesv = LAPACKE_zhesv, hetrf = LAPACKE_zhetrf, hetrs = LAPACKE_zhetrs,
     gbsv = LAPACKE_zgbsv, gbtrf = LAPACKE_zgbtrf, gbtrs = LAPACKE_zgbtrs,
     gtsv = LAPACKE_zgtsv, ptsv = LAPACKE_zptsv,
-    gels = LAPACKE_zgels, geqrf = LAPACKE_zgeqrf, gelqf = LAPACKE_zgelqf
+    gels = LAPACKE_zgels, geqrf = LAPACKE_zgeqrf, gelqf = LAPACKE_zgelqf,
+    heev = LAPACKE_zheev, geev = LAPACKE_zgeev,
+    gesvd = LAPACKE_zgesvd, gesdd = LAPACKE_zgesdd,
+    gelsd = LAPACKE_zgelsd, gelsy = LAPACKE_zgelsy
 );
 
 // =========================================================================
@@ -907,6 +1379,99 @@ pub fn geqrf<T: Scalar>(m: usize, n: usize, a: &mut [T], tau: &mut [T]) -> Resul
 
 pub fn gelqf<T: Scalar>(m: usize, n: usize, a: &mut [T], tau: &mut [T]) -> Result<()> {
     T::gelqf(Layout::RowMajor, m, n, a, n, tau)
+}
+
+/// Symmetric eigendecomposition (real precisions). On exit, `a` holds
+/// the eigenvectors when `compute = ValuesAndVectors`; `w` holds
+/// eigenvalues in ascending order.
+pub fn syev<T: RealScalar>(
+    compute: Compute,
+    uplo: Uplo,
+    n: usize,
+    a: &mut [T],
+    w: &mut [T],
+) -> Result<()> {
+    T::syev(Layout::RowMajor, compute, uplo, n, a, n, w)
+}
+
+/// Hermitian eigendecomposition (complex precisions). `w` is real.
+pub fn heev<T: ComplexScalar>(
+    compute: Compute,
+    uplo: Uplo,
+    n: usize,
+    a: &mut [T],
+    w: &mut [T::Real],
+) -> Result<()> {
+    T::heev(Layout::RowMajor, compute, uplo, n, a, n, w)
+}
+
+/// SVD via the QR-iteration algorithm. Returns the count of converged
+/// singular values; pass `superb` of size `min(m, n) - 1`.
+#[allow(clippy::too_many_arguments)]
+pub fn gesvd<T: Scalar>(
+    jobu: SvdJob,
+    jobvt: SvdJob,
+    m: usize,
+    n: usize,
+    a: &mut [T],
+    s: &mut [T::Real],
+    u: &mut [T],
+    ldu: usize,
+    vt: &mut [T],
+    ldvt: usize,
+    superb: &mut [T::Real],
+) -> Result<()> {
+    T::gesvd(Layout::RowMajor, jobu, jobvt, m, n, a, n, s, u, ldu, vt, ldvt, superb)
+}
+
+/// SVD via divide-and-conquer.
+#[allow(clippy::too_many_arguments)]
+pub fn gesdd<T: Scalar>(
+    jobz: SvdJob,
+    m: usize,
+    n: usize,
+    a: &mut [T],
+    s: &mut [T::Real],
+    u: &mut [T],
+    ldu: usize,
+    vt: &mut [T],
+    ldvt: usize,
+) -> Result<()> {
+    T::gesdd(Layout::RowMajor, jobz, m, n, a, n, s, u, ldu, vt, ldvt)
+}
+
+/// SVD-based least squares (handles rank-deficient `A`).
+#[allow(clippy::too_many_arguments)]
+pub fn gelsd<T: Scalar>(
+    m: usize,
+    n: usize,
+    a: &mut [T],
+    b: &mut [T],
+    s: &mut [T::Real],
+    rcond: T::Real,
+) -> Result<i32> {
+    let max_mn = m.max(n);
+    let nrhs = if max_mn == 0 { 0 } else { b.len() / max_mn };
+    let mut rank: i32 = 0;
+    T::gelsd(Layout::RowMajor, m, n, nrhs, a, n, b, nrhs.max(1), s, rcond, &mut rank)?;
+    Ok(rank)
+}
+
+/// QR-with-column-pivoting least squares.
+#[allow(clippy::too_many_arguments)]
+pub fn gelsy<T: Scalar>(
+    m: usize,
+    n: usize,
+    a: &mut [T],
+    b: &mut [T],
+    jpvt: &mut [i32],
+    rcond: T::Real,
+) -> Result<i32> {
+    let max_mn = m.max(n);
+    let nrhs = if max_mn == 0 { 0 } else { b.len() / max_mn };
+    let mut rank: i32 = 0;
+    T::gelsy(Layout::RowMajor, m, n, nrhs, a, n, b, nrhs.max(1), jpvt, rcond, &mut rank)?;
+    Ok(rank)
 }
 
 // =========================================================================
@@ -1062,5 +1627,86 @@ mod tests {
         let mut b = [1.0_f64, 2.0];
         let err = gesv(2, &mut a, &mut ipiv, &mut b).unwrap_err();
         assert!(matches!(err, Error::InvalidArgument(_)));
+    }
+
+    // --- Eigenvalues / SVD / advanced least squares -----------------------
+
+    #[test]
+    fn syev_diagonal_eigenvalues() {
+        // A = diag(3, 1, 2) symmetric; eigenvalues sorted ascending: 1, 2, 3.
+        let mut a = [
+            3.0_f64, 0.0, 0.0,
+            0.0,     1.0, 0.0,
+            0.0,     0.0, 2.0,
+        ];
+        let mut w = [0.0_f64; 3];
+        syev(Compute::ValuesOnly, Uplo::Upper, 3, &mut a, &mut w).unwrap();
+        approx(w[0], 1.0, 1e-10);
+        approx(w[1], 2.0, 1e-10);
+        approx(w[2], 3.0, 1e-10);
+    }
+
+    #[test]
+    fn heev_real_eigenvalues_for_hermitian() {
+        // 2×2 Hermitian: [[2, i], [-i, 2]]. Eigenvalues = 1, 3.
+        let mut a = [
+            Complex64::new(2.0, 0.0), Complex64::new(0.0, 1.0),
+            Complex64::ZERO,          Complex64::new(2.0, 0.0),
+        ];
+        let mut w = [0.0_f64; 2];
+        heev(Compute::ValuesOnly, Uplo::Upper, 2, &mut a, &mut w).unwrap();
+        approx(w[0], 1.0, 1e-10);
+        approx(w[1], 3.0, 1e-10);
+    }
+
+    #[test]
+    fn gesvd_diagonal_singular_values() {
+        // A = diag(2, 3) singular values are [3, 2] (descending).
+        let mut a = [2.0_f64, 0.0, 0.0, 3.0];
+        let mut s = [0.0_f64; 2];
+        let mut u = [0.0_f64; 4];
+        let mut vt = [0.0_f64; 4];
+        let mut superb = [0.0_f64; 2];
+        gesvd::<f64>(
+            SvdJob::All, SvdJob::All, 2, 2, &mut a, &mut s,
+            &mut u, 2, &mut vt, 2, &mut superb,
+        ).unwrap();
+        approx(s[0], 3.0, 1e-10);
+        approx(s[1], 2.0, 1e-10);
+    }
+
+    #[test]
+    fn gesdd_diagonal() {
+        let mut a = [4.0_f64, 0.0, 0.0, 1.0];
+        let mut s = [0.0_f64; 2];
+        let mut u = [0.0_f64; 4];
+        let mut vt = [0.0_f64; 4];
+        gesdd::<f64>(SvdJob::All, 2, 2, &mut a, &mut s, &mut u, 2, &mut vt, 2).unwrap();
+        approx(s[0], 4.0, 1e-10);
+        approx(s[1], 1.0, 1e-10);
+    }
+
+    #[test]
+    fn gelsd_full_rank() {
+        // m=3, n=2 overdetermined least squares. A = [[1,0],[0,1],[0,0]],
+        // b = [1, 2, 3] → solution [1, 2], singular values [1, 1], rank 2.
+        let mut a = [1.0_f64, 0.0, 0.0, 1.0, 0.0, 0.0];
+        let mut b = [1.0_f64, 2.0, 3.0];
+        let mut s = [0.0_f64; 2];
+        let rank = gelsd::<f64>(3, 2, &mut a, &mut b, &mut s, -1.0).unwrap();
+        assert_eq!(rank, 2);
+        approx(b[0], 1.0, 1e-10);
+        approx(b[1], 2.0, 1e-10);
+    }
+
+    #[test]
+    fn gelsy_full_rank() {
+        let mut a = [1.0_f64, 0.0, 0.0, 1.0, 0.0, 0.0];
+        let mut b = [1.0_f64, 2.0, 3.0];
+        let mut jpvt = [0_i32; 2];
+        let rank = gelsy::<f64>(3, 2, &mut a, &mut b, &mut jpvt, -1.0).unwrap();
+        assert_eq!(rank, 2);
+        approx(b[0], 1.0, 1e-10);
+        approx(b[1], 2.0, 1e-10);
     }
 }
