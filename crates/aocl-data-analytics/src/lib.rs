@@ -925,6 +925,157 @@ impl std::fmt::Debug for Linmod {
     }
 }
 
+// =========================================================================
+//   DBSCAN clustering
+// =========================================================================
+
+/// DBSCAN density-based clustering. Unlike k-means it does not require
+/// the number of clusters in advance and can mark points as noise
+/// (label `-1`).
+///
+/// Configure with options like `"eps"` and `"min_samples"` via
+/// [`Dbscan::handle_mut`] before [`Dbscan::fit`]; defaults follow
+/// scikit-learn's conventions.
+pub struct Dbscan {
+    handle: Handle,
+    n_samples_at_fit: Option<usize>,
+}
+
+impl Dbscan {
+    /// Build a new DBSCAN handle in `f64` precision.
+    pub fn new() -> Result<Self> {
+        let handle = Handle::new_double(HandleKind::Dbscan)?;
+        Ok(Self { handle, n_samples_at_fit: None })
+    }
+
+    /// Borrow the underlying handle to set DBSCAN-specific options:
+    /// e.g. `set_string_option("metric", "euclidean")`,
+    /// `set_int_option("min samples", 5)`, or for the real-valued
+    /// `eps` use `da_options_set_real_d` directly via [`Handle::as_raw`].
+    pub fn handle_mut(&mut self) -> &mut Handle {
+        &mut self.handle
+    }
+
+    /// Fit on column-major `n_samples × n_features` data matrix.
+    pub fn fit(&mut self, n_samples: usize, n_features: usize, data: &[f64]) -> Result<()> {
+        if data.len() < n_samples * n_features {
+            return Err(Error::InvalidArgument(format!(
+                "dbscan fit: data length {} < n_samples·n_features = {}",
+                data.len(), n_samples * n_features
+            )));
+        }
+        let lda = n_samples;
+        let status = unsafe {
+            sys::da_dbscan_set_data_d(
+                self.handle.raw,
+                n_samples as sys::da_int,
+                n_features as sys::da_int,
+                data.as_ptr(),
+                lda as sys::da_int,
+            )
+        };
+        if status != sys::da_status__da_status_success {
+            let extra = self.handle.last_error_message().unwrap_or_default();
+            return Err(Error::Status {
+                component: "data-analytics",
+                code: status as i64,
+                message: format!("dbscan set_data failed: {extra}"),
+            });
+        }
+        let status = unsafe { sys::da_dbscan_compute_d(self.handle.raw) };
+        if status != sys::da_status__da_status_success {
+            let extra = self.handle.last_error_message().unwrap_or_default();
+            return Err(Error::Status {
+                component: "data-analytics",
+                code: status as i64,
+                message: format!("dbscan compute failed: {extra}"),
+            });
+        }
+        self.n_samples_at_fit = Some(n_samples);
+        Ok(())
+    }
+
+    /// Number of clusters discovered (excludes noise).
+    pub fn n_clusters(&self) -> Result<usize> {
+        let mut dim: sys::da_int = 1;
+        let mut buf = [0_i64 as sys::da_int; 1];
+        let status = unsafe {
+            sys::da_handle_get_result_int(
+                self.handle.raw,
+                sys::da_result__da_dbscan_n_clusters,
+                &mut dim,
+                buf.as_mut_ptr(),
+            )
+        };
+        check_status("data-analytics", status)?;
+        Ok(buf[0] as usize)
+    }
+
+    /// Number of *core* samples (points that have at least `min_samples`
+    /// neighbours within distance `eps`).
+    pub fn n_core_samples(&self) -> Result<usize> {
+        let mut dim: sys::da_int = 1;
+        let mut buf = [0_i64 as sys::da_int; 1];
+        let status = unsafe {
+            sys::da_handle_get_result_int(
+                self.handle.raw,
+                sys::da_result__da_dbscan_n_core_samples,
+                &mut dim,
+                buf.as_mut_ptr(),
+            )
+        };
+        check_status("data-analytics", status)?;
+        Ok(buf[0] as usize)
+    }
+
+    /// Labels assigned to each input sample. `-1` indicates noise; other
+    /// values index a cluster `0 .. n_clusters()`.
+    pub fn labels(&self) -> Result<Vec<i32>> {
+        let n = self.n_samples_at_fit.ok_or_else(|| Error::InvalidArgument(
+            "dbscan labels: model has not been fit yet".into()))?;
+        let mut dim: sys::da_int = n as sys::da_int;
+        let mut out: Vec<sys::da_int> = vec![0; n];
+        let status = unsafe {
+            sys::da_handle_get_result_int(
+                self.handle.raw,
+                sys::da_result__da_dbscan_labels,
+                &mut dim,
+                out.as_mut_ptr(),
+            )
+        };
+        check_status("data-analytics", status)?;
+        out.truncate(dim as usize);
+        Ok(out.into_iter().map(|v| v as i32).collect())
+    }
+
+    /// Indices of the core samples (length = `n_core_samples()`).
+    pub fn core_sample_indices(&self) -> Result<Vec<i32>> {
+        let n_core = self.n_core_samples()?;
+        let mut dim: sys::da_int = n_core as sys::da_int;
+        let mut out: Vec<sys::da_int> = vec![0; n_core];
+        if n_core == 0 {
+            return Ok(Vec::new());
+        }
+        let status = unsafe {
+            sys::da_handle_get_result_int(
+                self.handle.raw,
+                sys::da_result__da_dbscan_core_sample_indices,
+                &mut dim,
+                out.as_mut_ptr(),
+            )
+        };
+        check_status("data-analytics", status)?;
+        out.truncate(dim as usize);
+        Ok(out.into_iter().map(|v| v as i32).collect())
+    }
+}
+
+impl std::fmt::Debug for Dbscan {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Dbscan").field("handle", &self.handle).finish()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1028,6 +1179,38 @@ mod tests {
         knn.predict(2, 2, &x_test, &mut labels).unwrap();
         assert_eq!(labels[0], 0);
         assert_eq!(labels[1], 1);
+    }
+
+    #[test]
+    fn dbscan_two_clusters() {
+        // Two well-separated clusters; should yield n_clusters = 2 and
+        // each cluster's samples sharing a positive label.
+        let data: Vec<f64> = vec![
+            // feature 0 (column 0): cluster A near 0, cluster B near 10
+            0.0, 0.1, 0.2, 0.0, 0.1, 10.0, 10.1, 10.0, 10.2, 10.1,
+            // feature 1 (column 1)
+            0.0, 0.1, 0.0, 0.2, 0.1, 10.0, 10.1, 10.2, 10.0, 10.1,
+        ];
+        let mut db = Dbscan::new().unwrap();
+        // Set min_samples small so a 5-point cluster qualifies; eps the
+        // default (which is ~0.5 in AOCL) is not enough so widen it.
+        // We use the underlying real-valued setter directly.
+        let cs = std::ffi::CString::new("eps").unwrap();
+        let status = unsafe {
+            sys::da_options_set_real_d(db.handle_mut().as_raw(), cs.as_ptr(), 1.0)
+        };
+        assert_eq!(status, sys::da_status__da_status_success);
+        db.handle_mut().set_int_option("min samples", 3).unwrap();
+        db.fit(10, 2, &data).unwrap();
+        assert_eq!(db.n_clusters().unwrap(), 2);
+        let labels = db.labels().unwrap();
+        // First five samples share a label, last five share another.
+        assert_eq!(labels[0], labels[1]);
+        assert_eq!(labels[1], labels[2]);
+        assert_eq!(labels[5], labels[6]);
+        assert_eq!(labels[6], labels[9]);
+        assert_ne!(labels[0], labels[5]);
+        assert!(db.n_core_samples().unwrap() > 0);
     }
 
     #[test]
