@@ -14,6 +14,7 @@ keywords = ["aocl", "amd", "libm", "math"]
 [dependencies]
 aocl-math-sys = { version = "0.1", path = "../aocl-math-sys" }
 aocl-error = { version = "0.1", path = "../aocl-error" }
+aocl-types = { version = "0.1", path = "../aocl-types" }
 
 [features]
 default = []
