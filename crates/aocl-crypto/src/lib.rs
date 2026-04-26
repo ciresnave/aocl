@@ -14,6 +14,8 @@
 pub mod aead;
 pub mod cipher;
 pub mod digest;
+pub mod drbg;
+pub mod ec;
 pub mod mac;
 
 pub use aocl_error::{Error, Result};
