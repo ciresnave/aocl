@@ -694,6 +694,122 @@ pub fn correlation_matrix<T: Scalar>(
 }
 
 // =========================================================================
+//   Pairwise distances
+// =========================================================================
+
+/// Distance metric for [`pairwise_distances`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum Metric {
+    /// Euclidean distance (`L2`).
+    Euclidean,
+    /// Squared Euclidean distance (`Σ (xᵢ-yᵢ)²` without the square root).
+    SqEuclidean,
+    /// Minkowski distance with parameter `p` (defaults to L2 at p=2).
+    Minkowski,
+    /// Manhattan / `L1` / cityblock distance.
+    Manhattan,
+    /// Cosine distance: `1 - cos(angle)`.
+    Cosine,
+}
+
+impl Metric {
+    fn raw(self) -> sys::da_metric {
+        match self {
+            Metric::Euclidean => sys::da_metric__da_euclidean,
+            Metric::SqEuclidean => sys::da_metric__da_sqeuclidean,
+            Metric::Minkowski => sys::da_metric__da_minkowski,
+            Metric::Manhattan => sys::da_metric__da_manhattan,
+            Metric::Cosine => sys::da_metric__da_cosine,
+        }
+    }
+}
+
+/// Scalar element type usable with [`pairwise_distances`].
+pub trait DistScalar: Scalar {
+    /// Compute the pairwise distance matrix `D[i,j] = metric(X[i], Y[j])`.
+    /// If `y` is `None`, distances are computed within `x` (so `D` is
+    /// `m × m`); otherwise `D` is `m × n`.
+    #[allow(clippy::too_many_arguments)]
+    fn pairwise_distances(
+        layout: Layout,
+        m: usize,
+        n: usize,
+        k: usize,
+        x: &[Self],
+        ldx: usize,
+        y: Option<&[Self]>,
+        ldy: usize,
+        d: &mut [Self],
+        ldd: usize,
+        p: Self,
+        metric: Metric,
+    ) -> Result<()>;
+}
+
+macro_rules! impl_dist_scalar {
+    ($t:ty, $fn:ident) => {
+        impl DistScalar for $t {
+            fn pairwise_distances(
+                layout: Layout,
+                m: usize,
+                n: usize,
+                k: usize,
+                x: &[Self],
+                ldx: usize,
+                y: Option<&[Self]>,
+                ldy: usize,
+                d: &mut [Self],
+                ldd: usize,
+                p: Self,
+                metric: Metric,
+            ) -> Result<()> {
+                let y_ptr = y.map(|s| s.as_ptr()).unwrap_or(std::ptr::null());
+                let status = unsafe {
+                    sys::$fn(
+                        layout_raw(layout),
+                        m as sys::da_int,
+                        n as sys::da_int,
+                        k as sys::da_int,
+                        x.as_ptr(), ldx as sys::da_int,
+                        y_ptr, ldy as sys::da_int,
+                        d.as_mut_ptr(), ldd as sys::da_int,
+                        p, metric.raw(),
+                    )
+                };
+                check_status("data-analytics", status)
+            }
+        }
+    };
+}
+
+impl_dist_scalar!(f32, da_pairwise_distances_s);
+impl_dist_scalar!(f64, da_pairwise_distances_d);
+
+/// Compute the pairwise distance matrix between rows of `x` (and
+/// optionally rows of `y`) under the given `metric`.
+///
+/// `x` is `m × k` row-major; `y` (optional) is `n × k` row-major. When
+/// `y` is `None`, distances are computed *within* `x` and the output
+/// `d` is `m × m`. Otherwise `d` is `m × n`. `p` is the Minkowski
+/// exponent (ignored for non-Minkowski metrics).
+#[allow(clippy::too_many_arguments)]
+pub fn pairwise_distances<T: DistScalar>(
+    m: usize,
+    n: usize,
+    k: usize,
+    x: &[T],
+    y: Option<&[T]>,
+    d: &mut [T],
+    p: T,
+    metric: Metric,
+) -> Result<()> {
+    let ldd = if y.is_none() { m } else { n };
+    let ldy = k; // row-major: ldy = k regardless of y being None
+    T::pairwise_distances(Layout::RowMajor, m, n, k, x, k, y, ldy, d, ldd, p, metric)
+}
+
+// =========================================================================
 //   da_handle + k-means safe wrapper
 // =========================================================================
 
@@ -2184,6 +2300,27 @@ mod tests {
 
         let acc = forest.score(6, 2, &x_train, &y_train).unwrap();
         assert!((acc - 1.0).abs() < 1e-9, "score = {acc}");
+    }
+
+    #[test]
+    fn pairwise_distances_within_set() {
+        // Three 2-D points on the corners of a 3-4-5 right triangle:
+        // p0 = (0, 0); p1 = (3, 0); p2 = (0, 4)
+        // Row-major 3×2 matrix.
+        let x = [
+            0.0_f64, 0.0,
+            3.0, 0.0,
+            0.0, 4.0,
+        ];
+        let mut d = [0.0_f64; 9];
+        pairwise_distances::<f64>(3, 0, 2, &x, None, &mut d, 2.0, Metric::Euclidean).unwrap();
+        // d is 3×3 row-major; diagonal = 0, off-diagonals are 3, 4, 5.
+        assert!(d[0].abs() < 1e-12);
+        assert!((d[1] - 3.0).abs() < 1e-9, "d[0,1] = {}", d[1]);
+        assert!((d[2] - 4.0).abs() < 1e-9, "d[0,2] = {}", d[2]);
+        assert!((d[3] - 3.0).abs() < 1e-9);
+        assert!(d[4].abs() < 1e-12);
+        assert!((d[5] - 5.0).abs() < 1e-9, "d[1,2] = {}", d[5]);
     }
 
     #[test]
