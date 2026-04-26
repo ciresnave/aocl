@@ -152,30 +152,186 @@ impl Rng {
                 "exponential: mean must be positive, got {mean}"
             )));
         }
+        self.fill_real("exponential", out, |n, st, p, info| unsafe {
+            sys::drandexponential(n, mean, st, p, info)
+        })
+    }
+
+    /// Beta distribution `B(a, b)`. Both shape parameters must be positive.
+    pub fn beta(&mut self, a: f64, b: f64, out: &mut [f64]) -> Result<()> {
+        self.fill_real("beta", out, |n, st, p, info| unsafe {
+            sys::drandbeta(n, a, b, st, p, info)
+        })
+    }
+
+    /// Cauchy distribution with median `med` and scale `scale`.
+    pub fn cauchy(&mut self, med: f64, scale: f64, out: &mut [f64]) -> Result<()> {
+        self.fill_real("cauchy", out, |n, st, p, info| unsafe {
+            sys::drandcauchy(n, med, scale, st, p, info)
+        })
+    }
+
+    /// χ² distribution with `df` degrees of freedom.
+    pub fn chi_squared(&mut self, df: i32, out: &mut [f64]) -> Result<()> {
+        self.fill_real("chi_squared", out, |n, st, p, info| unsafe {
+            sys::drandchisquared(n, df as sys::rng_int_t, st, p, info)
+        })
+    }
+
+    /// F distribution with `df1`, `df2` degrees of freedom.
+    pub fn f_dist(&mut self, df1: i32, df2: i32, out: &mut [f64]) -> Result<()> {
+        self.fill_real("f_dist", out, |n, st, p, info| unsafe {
+            sys::drandf(n, df1 as sys::rng_int_t, df2 as sys::rng_int_t, st, p, info)
+        })
+    }
+
+    /// Gamma distribution with shape `a` and scale `b`.
+    pub fn gamma(&mut self, a: f64, b: f64, out: &mut [f64]) -> Result<()> {
+        self.fill_real("gamma", out, |n, st, p, info| unsafe {
+            sys::drandgamma(n, a, b, st, p, info)
+        })
+    }
+
+    /// Logistic distribution with location `a` and scale `b`.
+    pub fn logistic(&mut self, a: f64, b: f64, out: &mut [f64]) -> Result<()> {
+        self.fill_real("logistic", out, |n, st, p, info| unsafe {
+            sys::drandlogistic(n, a, b, st, p, info)
+        })
+    }
+
+    /// Lognormal with underlying-normal mean `mean_ln` and variance `var_ln`.
+    pub fn lognormal(&mut self, mean_ln: f64, var_ln: f64, out: &mut [f64]) -> Result<()> {
+        self.fill_real("lognormal", out, |n, st, p, info| unsafe {
+            sys::drandlognormal(n, mean_ln, var_ln, st, p, info)
+        })
+    }
+
+    /// Student's t distribution with `df` degrees of freedom.
+    pub fn students_t(&mut self, df: i32, out: &mut [f64]) -> Result<()> {
+        self.fill_real("students_t", out, |n, st, p, info| unsafe {
+            sys::drandstudentst(n, df as sys::rng_int_t, st, p, info)
+        })
+    }
+
+    /// Triangular distribution on `[xmin, xmax]` with mode `xmed`.
+    pub fn triangular(&mut self, xmin: f64, xmed: f64, xmax: f64, out: &mut [f64]) -> Result<()> {
+        if !(xmin <= xmed && xmed <= xmax) {
+            return Err(Error::InvalidArgument(format!(
+                "triangular: require xmin <= xmed <= xmax, got {xmin}, {xmed}, {xmax}"
+            )));
+        }
+        self.fill_real("triangular", out, |n, st, p, info| unsafe {
+            sys::drandtriangular(n, xmin, xmed, xmax, st, p, info)
+        })
+    }
+
+    /// Von Mises (circular normal) distribution with concentration `kappa`.
+    pub fn von_mises(&mut self, kappa: f64, out: &mut [f64]) -> Result<()> {
+        self.fill_real("von_mises", out, |n, st, p, info| unsafe {
+            sys::drandvonmises(n, kappa, st, p, info)
+        })
+    }
+
+    /// Weibull distribution with shape `a` and scale `b`.
+    pub fn weibull(&mut self, a: f64, b: f64, out: &mut [f64]) -> Result<()> {
+        self.fill_real("weibull", out, |n, st, p, info| unsafe {
+            sys::drandweibull(n, a, b, st, p, info)
+        })
+    }
+
+    // ---- Discrete distributions (integer-valued) -----------------------
+
+    /// Binomial(`m`, `p`).
+    pub fn binomial(&mut self, m: i32, p: f64, out: &mut [i32]) -> Result<()> {
+        self.fill_int("binomial", out, |n, st, ptr, info| unsafe {
+            sys::drandbinomial(n, m as sys::rng_int_t, p, st, ptr, info)
+        })
+    }
+
+    /// Geometric distribution with success probability `p`.
+    pub fn geometric(&mut self, p: f64, out: &mut [i32]) -> Result<()> {
+        self.fill_int("geometric", out, |n, st, ptr, info| unsafe {
+            sys::drandgeometric(n, p, st, ptr, info)
+        })
+    }
+
+    /// Negative-binomial: number of failures before `m` successes, each
+    /// with success probability `p`.
+    pub fn negative_binomial(&mut self, m: i32, p: f64, out: &mut [i32]) -> Result<()> {
+        self.fill_int("negative_binomial", out, |n, st, ptr, info| unsafe {
+            sys::drandnegativebinomial(n, m as sys::rng_int_t, p, st, ptr, info)
+        })
+    }
+
+    /// Poisson with mean `lambda`.
+    pub fn poisson(&mut self, lambda: f64, out: &mut [i32]) -> Result<()> {
+        self.fill_int("poisson", out, |n, st, ptr, info| unsafe {
+            sys::drandpoisson(n, lambda, st, ptr, info)
+        })
+    }
+
+    /// Discrete uniform on the inclusive integer range `[a, b]`.
+    pub fn discrete_uniform(&mut self, a: i32, b: i32, out: &mut [i32]) -> Result<()> {
+        if a > b {
+            return Err(Error::InvalidArgument(format!(
+                "discrete_uniform: require a <= b, got a={a} b={b}"
+            )));
+        }
+        self.fill_int("discrete_uniform", out, |n, st, ptr, info| unsafe {
+            sys::dranddiscreteuniform(n, a as sys::rng_int_t, b as sys::rng_int_t, st, ptr, info)
+        })
+    }
+
+    // ---- internal helpers ----------------------------------------------
+
+    fn fill_real<F>(&mut self, op: &'static str, out: &mut [f64], call: F) -> Result<()>
+    where
+        F: FnOnce(sys::rng_int_t, *mut sys::rng_int_t, *mut f64, *mut sys::rng_int_t),
+    {
         let n = out.len();
         if n == 0 {
             return Ok(());
         }
         let n_int: sys::rng_int_t = n.try_into().map_err(|_| {
-            Error::InvalidArgument(format!(
-                "exponential: n={n} exceeds rng_int_t range"
-            ))
+            Error::InvalidArgument(format!("{op}: n={n} exceeds rng_int_t range"))
         })?;
         let mut info: sys::rng_int_t = 0;
-        unsafe {
-            sys::drandexponential(
-                n_int,
-                mean,
-                self.state.as_mut_ptr(),
-                out.as_mut_ptr(),
-                &mut info,
-            );
-        }
+        call(n_int, self.state.as_mut_ptr(), out.as_mut_ptr(), &mut info);
         if info != 0 {
             return Err(Error::Status {
                 component: "rng",
                 code: info as i64,
-                message: format!("drandexponential returned info={info}"),
+                message: format!("{op} returned info={info}"),
+            });
+        }
+        Ok(())
+    }
+
+    fn fill_int<F>(&mut self, op: &'static str, out: &mut [i32], call: F) -> Result<()>
+    where
+        F: FnOnce(sys::rng_int_t, *mut sys::rng_int_t, *mut sys::rng_int_t, *mut sys::rng_int_t),
+    {
+        let n = out.len();
+        if n == 0 {
+            return Ok(());
+        }
+        let n_int: sys::rng_int_t = n.try_into().map_err(|_| {
+            Error::InvalidArgument(format!("{op}: n={n} exceeds rng_int_t range"))
+        })?;
+        // rng_int_t is i32 in LP64 (matches our i32 output buffer); in
+        // ILP64 it is i64 — that variant would need widening here.
+        let mut info: sys::rng_int_t = 0;
+        call(
+            n_int,
+            self.state.as_mut_ptr(),
+            out.as_mut_ptr() as *mut sys::rng_int_t,
+            &mut info,
+        );
+        if info != 0 {
+            return Err(Error::Status {
+                component: "rng",
+                code: info as i64,
+                message: format!("{op} returned info={info}"),
             });
         }
         Ok(())
@@ -230,6 +386,73 @@ mod tests {
         a.uniform(0.0, 1.0, &mut va).unwrap();
         b.uniform(0.0, 1.0, &mut vb).unwrap();
         assert_eq!(va, vb);
+    }
+
+    #[test]
+    fn beta_in_unit_interval() {
+        let mut rng = Rng::new(BaseGenerator::MersenneTwister, 13).unwrap();
+        let mut out = vec![0.0_f64; 5_000];
+        rng.beta(2.0, 5.0, &mut out).unwrap();
+        assert!(out.iter().all(|&x| (0.0..=1.0).contains(&x)));
+        // Beta(2,5) mean = 2/(2+5) ≈ 0.2857
+        let mu = mean(&out);
+        assert!((mu - 2.0 / 7.0).abs() < 0.05, "mean={mu}");
+    }
+
+    #[test]
+    fn gamma_positive_and_mean() {
+        let mut rng = Rng::new(BaseGenerator::MersenneTwister, 17).unwrap();
+        let mut out = vec![0.0_f64; 5_000];
+        rng.gamma(3.0, 2.0, &mut out).unwrap();
+        // Gamma(shape=3, scale=2) is positive, mean = 6.
+        assert!(out.iter().all(|&x| x > 0.0));
+        let mu = mean(&out);
+        assert!((mu - 6.0).abs() < 0.5, "mean={mu}");
+    }
+
+    #[test]
+    fn weibull_positive() {
+        let mut rng = Rng::new(BaseGenerator::MersenneTwister, 23).unwrap();
+        let mut out = vec![0.0_f64; 1_000];
+        rng.weibull(1.5, 1.0, &mut out).unwrap();
+        assert!(out.iter().all(|&x| x >= 0.0));
+    }
+
+    #[test]
+    fn poisson_non_negative_with_mean() {
+        let mut rng = Rng::new(BaseGenerator::MersenneTwister, 29).unwrap();
+        let mut out = vec![0_i32; 5_000];
+        rng.poisson(4.5, &mut out).unwrap();
+        assert!(out.iter().all(|&x| x >= 0));
+        let mu = out.iter().map(|&x| x as f64).sum::<f64>() / out.len() as f64;
+        assert!((mu - 4.5).abs() < 0.2, "mean={mu}");
+    }
+
+    #[test]
+    fn discrete_uniform_in_range() {
+        let mut rng = Rng::new(BaseGenerator::MersenneTwister, 31).unwrap();
+        let mut out = vec![0_i32; 1_000];
+        rng.discrete_uniform(10, 20, &mut out).unwrap();
+        assert!(out.iter().all(|&x| (10..=20).contains(&x)));
+    }
+
+    #[test]
+    fn binomial_in_range() {
+        let mut rng = Rng::new(BaseGenerator::MersenneTwister, 41).unwrap();
+        let mut out = vec![0_i32; 2_000];
+        rng.binomial(10, 0.3, &mut out).unwrap();
+        assert!(out.iter().all(|&x| (0..=10).contains(&x)));
+        // Mean = 10·0.3 = 3
+        let mu = out.iter().map(|&x| x as f64).sum::<f64>() / out.len() as f64;
+        assert!((mu - 3.0).abs() < 0.2, "mean={mu}");
+    }
+
+    #[test]
+    fn triangular_in_range() {
+        let mut rng = Rng::new(BaseGenerator::MersenneTwister, 47).unwrap();
+        let mut out = vec![0.0_f64; 2_000];
+        rng.triangular(-1.0, 0.0, 1.0, &mut out).unwrap();
+        assert!(out.iter().all(|&x| (-1.0..=1.0).contains(&x)));
     }
 
     #[test]
