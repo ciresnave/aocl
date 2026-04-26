@@ -24,7 +24,7 @@
 
 use aocl_blas_sys as sys;
 pub use aocl_error::{Error, Result};
-pub use aocl_types::{Complex32, Complex64, Diag, Layout, Trans, Uplo};
+pub use aocl_types::{Complex32, Complex64, Diag, Layout, Side, Trans, Uplo};
 use aocl_types::sealed::Sealed;
 
 // ===========================================================================
@@ -173,6 +173,97 @@ fn check_ger(
     check_matrix("ger: A", layout, m, n, lda, a_len)?;
     check_strided_len("ger: x", x_len, m, inc_x)?;
     check_strided_len("ger: y", y_len, n, inc_y)
+}
+
+fn side_to_n(side: Side, m: usize, n: usize) -> usize {
+    match side {
+        Side::Left => m,
+        Side::Right => n,
+    }
+}
+
+fn side_raw(s: Side) -> sys::CBLAS_SIDE {
+    match s {
+        Side::Left => sys::CBLAS_SIDE_CblasLeft as sys::CBLAS_SIDE,
+        Side::Right => sys::CBLAS_SIDE_CblasRight as sys::CBLAS_SIDE,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn check_symm(
+    layout: Layout,
+    side: Side,
+    m: usize,
+    n: usize,
+    a_len: usize,
+    lda: usize,
+    b_len: usize,
+    ldb: usize,
+    c_len: usize,
+    ldc: usize,
+) -> Result<()> {
+    let a_n = side_to_n(side, m, n);
+    check_matrix("symm: A", layout, a_n, a_n, lda, a_len)?;
+    check_matrix("symm: B", layout, m, n, ldb, b_len)?;
+    check_matrix("symm: C", layout, m, n, ldc, c_len)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn check_syrk(
+    layout: Layout,
+    trans: Trans,
+    n: usize,
+    k: usize,
+    a_len: usize,
+    lda: usize,
+    c_len: usize,
+    ldc: usize,
+) -> Result<()> {
+    let (a_rows, a_cols) = match trans {
+        Trans::No => (n, k),
+        Trans::T | Trans::C => (k, n),
+    };
+    check_matrix("syrk: A", layout, a_rows, a_cols, lda, a_len)?;
+    check_matrix("syrk: C", layout, n, n, ldc, c_len)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn check_syr2k(
+    layout: Layout,
+    trans: Trans,
+    n: usize,
+    k: usize,
+    a_len: usize,
+    lda: usize,
+    b_len: usize,
+    ldb: usize,
+    c_len: usize,
+    ldc: usize,
+) -> Result<()> {
+    let (a_rows, a_cols) = match trans {
+        Trans::No => (n, k),
+        Trans::T | Trans::C => (k, n),
+    };
+    check_matrix("syr2k: A", layout, a_rows, a_cols, lda, a_len)?;
+    check_matrix("syr2k: B", layout, a_rows, a_cols, ldb, b_len)?;
+    check_matrix("syr2k: C", layout, n, n, ldc, c_len)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn check_trxxm(
+    name: &str,
+    layout: Layout,
+    side: Side,
+    m: usize,
+    n: usize,
+    a_len: usize,
+    lda: usize,
+    b_len: usize,
+    ldb: usize,
+) -> Result<()> {
+    let a_n = side_to_n(side, m, n);
+    check_matrix(&format!("{name}: A"), layout, a_n, a_n, lda, a_len)?;
+    check_matrix(&format!("{name}: B"), layout, m, n, ldb, b_len)
 }
 
 // ===========================================================================
@@ -381,7 +472,7 @@ pub trait Scalar: Copy + Sized + Sealed {
         inc_x: usize,
     ) -> Result<()>;
 
-    // --- Level-3 (GEMM only for now) -------------------------------------
+    // --- Level-3 ---------------------------------------------------------
 
     /// `C := α · op(A) · op(B) + β · C`.
     #[allow(clippy::too_many_arguments)]
@@ -400,6 +491,98 @@ pub trait Scalar: Copy + Sized + Sealed {
         beta: Self,
         c: &mut [Self],
         ldc: usize,
+    ) -> Result<()>;
+
+    /// `C := α · A · B + β · C` (Side::Left) or `C := α · B · A + β · C`
+    /// (Side::Right) where `A` is symmetric (`m × m` for Left, `n × n`
+    /// for Right). Only the `uplo` triangle of `A` is referenced.
+    #[allow(clippy::too_many_arguments)]
+    fn symm(
+        layout: Layout,
+        side: Side,
+        uplo: Uplo,
+        m: usize,
+        n: usize,
+        alpha: Self,
+        a: &[Self],
+        lda: usize,
+        b: &[Self],
+        ldb: usize,
+        beta: Self,
+        c: &mut [Self],
+        ldc: usize,
+    ) -> Result<()>;
+
+    /// Symmetric rank-k update: `C := α · op(A) · op(A)ᵀ + β · C`.
+    /// `op(A)` is `n × k`. Only the `uplo` triangle of `C` is updated.
+    #[allow(clippy::too_many_arguments)]
+    fn syrk(
+        layout: Layout,
+        uplo: Uplo,
+        trans: Trans,
+        n: usize,
+        k: usize,
+        alpha: Self,
+        a: &[Self],
+        lda: usize,
+        beta: Self,
+        c: &mut [Self],
+        ldc: usize,
+    ) -> Result<()>;
+
+    /// Symmetric rank-2k update:
+    /// `C := α · op(A) · op(B)ᵀ + α · op(B) · op(A)ᵀ + β · C`.
+    #[allow(clippy::too_many_arguments)]
+    fn syr2k(
+        layout: Layout,
+        uplo: Uplo,
+        trans: Trans,
+        n: usize,
+        k: usize,
+        alpha: Self,
+        a: &[Self],
+        lda: usize,
+        b: &[Self],
+        ldb: usize,
+        beta: Self,
+        c: &mut [Self],
+        ldc: usize,
+    ) -> Result<()>;
+
+    /// `B := α · op(A) · B` (Side::Left) or `B := α · B · op(A)`
+    /// (Side::Right) where `A` is triangular.
+    #[allow(clippy::too_many_arguments)]
+    fn trmm(
+        layout: Layout,
+        side: Side,
+        uplo: Uplo,
+        trans_a: Trans,
+        diag: Diag,
+        m: usize,
+        n: usize,
+        alpha: Self,
+        a: &[Self],
+        lda: usize,
+        b: &mut [Self],
+        ldb: usize,
+    ) -> Result<()>;
+
+    /// Solve `op(A) · X = α · B` (Side::Left) or `X · op(A) = α · B`
+    /// (Side::Right) for triangular `A`, overwriting `B` with `X`.
+    #[allow(clippy::too_many_arguments)]
+    fn trsm(
+        layout: Layout,
+        side: Side,
+        uplo: Uplo,
+        trans_a: Trans,
+        diag: Diag,
+        m: usize,
+        n: usize,
+        alpha: Self,
+        a: &[Self],
+        lda: usize,
+        b: &mut [Self],
+        ldb: usize,
     ) -> Result<()>;
 }
 
@@ -559,6 +742,66 @@ pub trait ComplexScalar: Scalar {
         a: &mut [Self],
         lda: usize,
     ) -> Result<()>;
+
+    // --- Level-3 Hermitian -----------------------------------------------
+
+    /// `C := α · A · B + β · C` (Side::Left) or `C := α · B · A + β · C`
+    /// (Side::Right) where `A` is Hermitian.
+    #[allow(clippy::too_many_arguments)]
+    fn hemm(
+        layout: Layout,
+        side: Side,
+        uplo: Uplo,
+        m: usize,
+        n: usize,
+        alpha: Self,
+        a: &[Self],
+        lda: usize,
+        b: &[Self],
+        ldb: usize,
+        beta: Self,
+        c: &mut [Self],
+        ldc: usize,
+    ) -> Result<()>;
+
+    /// Hermitian rank-k update: `C := α · op(A) · op(A)ᴴ + β · C`.
+    /// Both `α` and `β` are real (the diagonal of `C` is enforced real).
+    /// For Hermitian, `Trans::T` is illegal; use `Trans::No` or
+    /// `Trans::C`.
+    #[allow(clippy::too_many_arguments)]
+    fn herk(
+        layout: Layout,
+        uplo: Uplo,
+        trans: Trans,
+        n: usize,
+        k: usize,
+        alpha: Self::Real,
+        a: &[Self],
+        lda: usize,
+        beta: Self::Real,
+        c: &mut [Self],
+        ldc: usize,
+    ) -> Result<()>;
+
+    /// Hermitian rank-2k update:
+    /// `C := α · op(A) · op(B)ᴴ + conj(α) · op(B) · op(A)ᴴ + β · C`,
+    /// where `β` is real.
+    #[allow(clippy::too_many_arguments)]
+    fn her2k(
+        layout: Layout,
+        uplo: Uplo,
+        trans: Trans,
+        n: usize,
+        k: usize,
+        alpha: Self,
+        a: &[Self],
+        lda: usize,
+        b: &[Self],
+        ldb: usize,
+        beta: Self::Real,
+        c: &mut [Self],
+        ldc: usize,
+    ) -> Result<()>;
 }
 
 // ===========================================================================
@@ -587,7 +830,12 @@ macro_rules! impl_real_scalar {
         symv = $symv:ident,
         syr  = $syr:ident,
         syr2 = $syr2:ident,
-        ger  = $ger:ident
+        ger  = $ger:ident,
+        symm = $symm:ident,
+        syrk = $syrk:ident,
+        syr2k = $syr2k:ident,
+        trmm = $trmm:ident,
+        trsm = $trsm:ident
     ) => {
         impl Scalar for $t {
             type Real = $t;
@@ -763,6 +1011,109 @@ macro_rules! impl_real_scalar {
                 }
                 Ok(())
             }
+
+            #[allow(clippy::too_many_arguments)]
+            fn symm(
+                layout: Layout, side: Side, uplo: Uplo,
+                m: usize, n: usize,
+                alpha: Self, a: &[Self], lda: usize,
+                b: &[Self], ldb: usize,
+                beta: Self, c: &mut [Self], ldc: usize,
+            ) -> Result<()> {
+                check_symm(layout, side, m, n, a.len(), lda, b.len(), ldb, c.len(), ldc)?;
+                unsafe {
+                    sys::$symm(
+                        layout_raw(layout), side_raw(side), uplo_raw(uplo),
+                        m as sys::f77_int, n as sys::f77_int,
+                        alpha, a.as_ptr(), lda as sys::f77_int,
+                        b.as_ptr(), ldb as sys::f77_int,
+                        beta, c.as_mut_ptr(), ldc as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn syrk(
+                layout: Layout, uplo: Uplo, trans: Trans,
+                n: usize, k: usize,
+                alpha: Self, a: &[Self], lda: usize,
+                beta: Self, c: &mut [Self], ldc: usize,
+            ) -> Result<()> {
+                check_syrk(layout, trans, n, k, a.len(), lda, c.len(), ldc)?;
+                unsafe {
+                    sys::$syrk(
+                        layout_raw(layout), uplo_raw(uplo), trans_raw(trans),
+                        n as sys::f77_int, k as sys::f77_int,
+                        alpha, a.as_ptr(), lda as sys::f77_int,
+                        beta, c.as_mut_ptr(), ldc as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn syr2k(
+                layout: Layout, uplo: Uplo, trans: Trans,
+                n: usize, k: usize,
+                alpha: Self, a: &[Self], lda: usize,
+                b: &[Self], ldb: usize,
+                beta: Self, c: &mut [Self], ldc: usize,
+            ) -> Result<()> {
+                check_syr2k(layout, trans, n, k, a.len(), lda, b.len(), ldb, c.len(), ldc)?;
+                unsafe {
+                    sys::$syr2k(
+                        layout_raw(layout), uplo_raw(uplo), trans_raw(trans),
+                        n as sys::f77_int, k as sys::f77_int,
+                        alpha, a.as_ptr(), lda as sys::f77_int,
+                        b.as_ptr(), ldb as sys::f77_int,
+                        beta, c.as_mut_ptr(), ldc as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn trmm(
+                layout: Layout, side: Side, uplo: Uplo,
+                trans_a: Trans, diag: Diag,
+                m: usize, n: usize,
+                alpha: Self, a: &[Self], lda: usize,
+                b: &mut [Self], ldb: usize,
+            ) -> Result<()> {
+                check_trxxm("trmm", layout, side, m, n, a.len(), lda, b.len(), ldb)?;
+                unsafe {
+                    sys::$trmm(
+                        layout_raw(layout), side_raw(side), uplo_raw(uplo),
+                        trans_raw(trans_a), diag_raw(diag),
+                        m as sys::f77_int, n as sys::f77_int,
+                        alpha, a.as_ptr(), lda as sys::f77_int,
+                        b.as_mut_ptr(), ldb as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn trsm(
+                layout: Layout, side: Side, uplo: Uplo,
+                trans_a: Trans, diag: Diag,
+                m: usize, n: usize,
+                alpha: Self, a: &[Self], lda: usize,
+                b: &mut [Self], ldb: usize,
+            ) -> Result<()> {
+                check_trxxm("trsm", layout, side, m, n, a.len(), lda, b.len(), ldb)?;
+                unsafe {
+                    sys::$trsm(
+                        layout_raw(layout), side_raw(side), uplo_raw(uplo),
+                        trans_raw(trans_a), diag_raw(diag),
+                        m as sys::f77_int, n as sys::f77_int,
+                        alpha, a.as_ptr(), lda as sys::f77_int,
+                        b.as_mut_ptr(), ldb as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
         }
 
         impl RealScalar for $t {
@@ -881,7 +1232,9 @@ impl_real_scalar!(
     rotg = cblas_srotg, rot = cblas_srot,
     dsdot_fn = (|n, x, ix, y, iy| unsafe { sys::cblas_dsdot(n, x, ix, y, iy) }),
     gemv = cblas_sgemv, trmv = cblas_strmv, trsv = cblas_strsv,
-    symv = cblas_ssymv, syr = cblas_ssyr, syr2 = cblas_ssyr2, ger = cblas_sger
+    symv = cblas_ssymv, syr = cblas_ssyr, syr2 = cblas_ssyr2, ger = cblas_sger,
+    symm = cblas_ssymm, syrk = cblas_ssyrk, syr2k = cblas_ssyr2k,
+    trmm = cblas_strmm, trsm = cblas_strsm
 );
 impl_real_scalar!(
     f64,
@@ -892,7 +1245,9 @@ impl_real_scalar!(
     // For f64 dsdot semantically equals dot on f64 inputs; we forward to ddot.
     dsdot_fn = (|n, x, ix, y, iy| unsafe { sys::cblas_ddot(n, x, ix, y, iy) }),
     gemv = cblas_dgemv, trmv = cblas_dtrmv, trsv = cblas_dtrsv,
-    symv = cblas_dsymv, syr = cblas_dsyr, syr2 = cblas_dsyr2, ger = cblas_dger
+    symv = cblas_dsymv, syr = cblas_dsyr, syr2 = cblas_dsyr2, ger = cblas_dger,
+    symm = cblas_dsymm, syrk = cblas_dsyrk, syr2k = cblas_dsyr2k,
+    trmm = cblas_dtrmm, trsm = cblas_dtrsm
 );
 
 // ===========================================================================
@@ -911,7 +1266,10 @@ macro_rules! impl_complex_scalar {
         gemm = $gemm:ident,
         gemv = $gemv:ident, trmv = $trmv:ident, trsv = $trsv:ident,
         hemv = $hemv:ident, her = $her:ident, her2 = $her2:ident,
-        geru = $geru:ident, gerc = $gerc:ident
+        geru = $geru:ident, gerc = $gerc:ident,
+        symm = $symm:ident, syrk = $syrk:ident, syr2k = $syr2k:ident,
+        trmm = $trmm:ident, trsm = $trsm:ident,
+        hemm = $hemm:ident, herk = $herk:ident, her2k = $her2k:ident
     ) => {
         impl Scalar for $t {
             type Real = $real;
@@ -1170,6 +1528,117 @@ macro_rules! impl_complex_scalar {
                 }
                 Ok(())
             }
+
+            #[allow(clippy::too_many_arguments)]
+            fn symm(
+                layout: Layout, side: Side, uplo: Uplo,
+                m: usize, n: usize,
+                alpha: Self, a: &[Self], lda: usize,
+                b: &[Self], ldb: usize,
+                beta: Self, c: &mut [Self], ldc: usize,
+            ) -> Result<()> {
+                check_symm(layout, side, m, n, a.len(), lda, b.len(), ldb, c.len(), ldc)?;
+                unsafe {
+                    sys::$symm(
+                        layout_raw(layout), side_raw(side), uplo_raw(uplo),
+                        m as sys::f77_int, n as sys::f77_int,
+                        &alpha as *const Self as *const std::os::raw::c_void,
+                        a.as_ptr() as *const std::os::raw::c_void, lda as sys::f77_int,
+                        b.as_ptr() as *const std::os::raw::c_void, ldb as sys::f77_int,
+                        &beta as *const Self as *const std::os::raw::c_void,
+                        c.as_mut_ptr() as *mut std::os::raw::c_void, ldc as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn syrk(
+                layout: Layout, uplo: Uplo, trans: Trans,
+                n: usize, k: usize,
+                alpha: Self, a: &[Self], lda: usize,
+                beta: Self, c: &mut [Self], ldc: usize,
+            ) -> Result<()> {
+                check_syrk(layout, trans, n, k, a.len(), lda, c.len(), ldc)?;
+                unsafe {
+                    sys::$syrk(
+                        layout_raw(layout), uplo_raw(uplo), trans_raw(trans),
+                        n as sys::f77_int, k as sys::f77_int,
+                        &alpha as *const Self as *const std::os::raw::c_void,
+                        a.as_ptr() as *const std::os::raw::c_void, lda as sys::f77_int,
+                        &beta as *const Self as *const std::os::raw::c_void,
+                        c.as_mut_ptr() as *mut std::os::raw::c_void, ldc as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn syr2k(
+                layout: Layout, uplo: Uplo, trans: Trans,
+                n: usize, k: usize,
+                alpha: Self, a: &[Self], lda: usize,
+                b: &[Self], ldb: usize,
+                beta: Self, c: &mut [Self], ldc: usize,
+            ) -> Result<()> {
+                check_syr2k(layout, trans, n, k, a.len(), lda, b.len(), ldb, c.len(), ldc)?;
+                unsafe {
+                    sys::$syr2k(
+                        layout_raw(layout), uplo_raw(uplo), trans_raw(trans),
+                        n as sys::f77_int, k as sys::f77_int,
+                        &alpha as *const Self as *const std::os::raw::c_void,
+                        a.as_ptr() as *const std::os::raw::c_void, lda as sys::f77_int,
+                        b.as_ptr() as *const std::os::raw::c_void, ldb as sys::f77_int,
+                        &beta as *const Self as *const std::os::raw::c_void,
+                        c.as_mut_ptr() as *mut std::os::raw::c_void, ldc as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn trmm(
+                layout: Layout, side: Side, uplo: Uplo,
+                trans_a: Trans, diag: Diag,
+                m: usize, n: usize,
+                alpha: Self, a: &[Self], lda: usize,
+                b: &mut [Self], ldb: usize,
+            ) -> Result<()> {
+                check_trxxm("trmm", layout, side, m, n, a.len(), lda, b.len(), ldb)?;
+                unsafe {
+                    sys::$trmm(
+                        layout_raw(layout), side_raw(side), uplo_raw(uplo),
+                        trans_raw(trans_a), diag_raw(diag),
+                        m as sys::f77_int, n as sys::f77_int,
+                        &alpha as *const Self as *const std::os::raw::c_void,
+                        a.as_ptr() as *const std::os::raw::c_void, lda as sys::f77_int,
+                        b.as_mut_ptr() as *mut std::os::raw::c_void, ldb as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn trsm(
+                layout: Layout, side: Side, uplo: Uplo,
+                trans_a: Trans, diag: Diag,
+                m: usize, n: usize,
+                alpha: Self, a: &[Self], lda: usize,
+                b: &mut [Self], ldb: usize,
+            ) -> Result<()> {
+                check_trxxm("trsm", layout, side, m, n, a.len(), lda, b.len(), ldb)?;
+                unsafe {
+                    sys::$trsm(
+                        layout_raw(layout), side_raw(side), uplo_raw(uplo),
+                        trans_raw(trans_a), diag_raw(diag),
+                        m as sys::f77_int, n as sys::f77_int,
+                        &alpha as *const Self as *const std::os::raw::c_void,
+                        a.as_ptr() as *const std::os::raw::c_void, lda as sys::f77_int,
+                        b.as_mut_ptr() as *mut std::os::raw::c_void, ldb as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
         }
 
         impl ComplexScalar for $t {
@@ -1275,6 +1744,83 @@ macro_rules! impl_complex_scalar {
                 }
                 Ok(())
             }
+
+            #[allow(clippy::too_many_arguments)]
+            fn hemm(
+                layout: Layout, side: Side, uplo: Uplo,
+                m: usize, n: usize,
+                alpha: Self, a: &[Self], lda: usize,
+                b: &[Self], ldb: usize,
+                beta: Self, c: &mut [Self], ldc: usize,
+            ) -> Result<()> {
+                check_symm(layout, side, m, n, a.len(), lda, b.len(), ldb, c.len(), ldc)?;
+                unsafe {
+                    sys::$hemm(
+                        layout_raw(layout), side_raw(side), uplo_raw(uplo),
+                        m as sys::f77_int, n as sys::f77_int,
+                        &alpha as *const Self as *const std::os::raw::c_void,
+                        a.as_ptr() as *const std::os::raw::c_void, lda as sys::f77_int,
+                        b.as_ptr() as *const std::os::raw::c_void, ldb as sys::f77_int,
+                        &beta as *const Self as *const std::os::raw::c_void,
+                        c.as_mut_ptr() as *mut std::os::raw::c_void, ldc as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn herk(
+                layout: Layout, uplo: Uplo, trans: Trans,
+                n: usize, k: usize,
+                alpha: Self::Real, a: &[Self], lda: usize,
+                beta: Self::Real, c: &mut [Self], ldc: usize,
+            ) -> Result<()> {
+                if matches!(trans, Trans::T) {
+                    return Err(Error::InvalidArgument(
+                        "herk: Trans::T is not allowed for Hermitian rank-k; use Trans::No or Trans::C".into()
+                    ));
+                }
+                check_syrk(layout, trans, n, k, a.len(), lda, c.len(), ldc)?;
+                unsafe {
+                    sys::$herk(
+                        layout_raw(layout), uplo_raw(uplo), trans_raw(trans),
+                        n as sys::f77_int, k as sys::f77_int,
+                        alpha,
+                        a.as_ptr() as *const std::os::raw::c_void, lda as sys::f77_int,
+                        beta,
+                        c.as_mut_ptr() as *mut std::os::raw::c_void, ldc as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn her2k(
+                layout: Layout, uplo: Uplo, trans: Trans,
+                n: usize, k: usize,
+                alpha: Self, a: &[Self], lda: usize,
+                b: &[Self], ldb: usize,
+                beta: Self::Real, c: &mut [Self], ldc: usize,
+            ) -> Result<()> {
+                if matches!(trans, Trans::T) {
+                    return Err(Error::InvalidArgument(
+                        "her2k: Trans::T is not allowed for Hermitian rank-2k; use Trans::No or Trans::C".into()
+                    ));
+                }
+                check_syr2k(layout, trans, n, k, a.len(), lda, b.len(), ldb, c.len(), ldc)?;
+                unsafe {
+                    sys::$her2k(
+                        layout_raw(layout), uplo_raw(uplo), trans_raw(trans),
+                        n as sys::f77_int, k as sys::f77_int,
+                        &alpha as *const Self as *const std::os::raw::c_void,
+                        a.as_ptr() as *const std::os::raw::c_void, lda as sys::f77_int,
+                        b.as_ptr() as *const std::os::raw::c_void, ldb as sys::f77_int,
+                        beta,
+                        c.as_mut_ptr() as *mut std::os::raw::c_void, ldc as sys::f77_int,
+                    );
+                }
+                Ok(())
+            }
         }
     };
 }
@@ -1289,7 +1835,10 @@ impl_complex_scalar!(
     gemm = cblas_cgemm,
     gemv = cblas_cgemv, trmv = cblas_ctrmv, trsv = cblas_ctrsv,
     hemv = cblas_chemv, her = cblas_cher, her2 = cblas_cher2,
-    geru = cblas_cgeru, gerc = cblas_cgerc
+    geru = cblas_cgeru, gerc = cblas_cgerc,
+    symm = cblas_csymm, syrk = cblas_csyrk, syr2k = cblas_csyr2k,
+    trmm = cblas_ctrmm, trsm = cblas_ctrsm,
+    hemm = cblas_chemm, herk = cblas_cherk, her2k = cblas_cher2k
 );
 impl_complex_scalar!(
     Complex64, f64,
@@ -1301,7 +1850,10 @@ impl_complex_scalar!(
     gemm = cblas_zgemm,
     gemv = cblas_zgemv, trmv = cblas_ztrmv, trsv = cblas_ztrsv,
     hemv = cblas_zhemv, her = cblas_zher, her2 = cblas_zher2,
-    geru = cblas_zgeru, gerc = cblas_zgerc
+    geru = cblas_zgeru, gerc = cblas_zgerc,
+    symm = cblas_zsymm, syrk = cblas_zsyrk, syr2k = cblas_zsyr2k,
+    trmm = cblas_ztrmm, trsm = cblas_ztrsm,
+    hemm = cblas_zhemm, herk = cblas_zherk, her2k = cblas_zher2k
 );
 
 // ===========================================================================
@@ -1595,6 +2147,162 @@ pub fn gerc<T: ComplexScalar>(
     a: &mut [T],
 ) -> Result<()> {
     T::gerc(Layout::RowMajor, m, n, alpha, x, 1, y, 1, a, n)
+}
+
+// ===========================================================================
+//   Level-3 free-function convenience entry points
+// ===========================================================================
+
+/// `C := α · A · B + β · C` (Side::Left) or `C := α · B · A + β · C`
+/// (Side::Right) where `A` is symmetric, row-major tightly-packed.
+#[allow(clippy::too_many_arguments)]
+pub fn symm<T: Scalar>(
+    side: Side,
+    uplo: Uplo,
+    m: usize,
+    n: usize,
+    alpha: T,
+    a: &[T],
+    b: &[T],
+    beta: T,
+    c: &mut [T],
+) -> Result<()> {
+    let a_n = side_to_n(side, m, n);
+    T::symm(Layout::RowMajor, side, uplo, m, n, alpha, a, a_n, b, n, beta, c, n)
+}
+
+/// Symmetric rank-k update `C := α · op(A) · op(A)ᵀ + β · C`,
+/// row-major tightly-packed.
+#[allow(clippy::too_many_arguments)]
+pub fn syrk<T: Scalar>(
+    uplo: Uplo,
+    trans: Trans,
+    n: usize,
+    k: usize,
+    alpha: T,
+    a: &[T],
+    beta: T,
+    c: &mut [T],
+) -> Result<()> {
+    let lda = match trans {
+        Trans::No => k,
+        _ => n,
+    };
+    T::syrk(Layout::RowMajor, uplo, trans, n, k, alpha, a, lda, beta, c, n)
+}
+
+/// Symmetric rank-2k update.
+#[allow(clippy::too_many_arguments)]
+pub fn syr2k<T: Scalar>(
+    uplo: Uplo,
+    trans: Trans,
+    n: usize,
+    k: usize,
+    alpha: T,
+    a: &[T],
+    b: &[T],
+    beta: T,
+    c: &mut [T],
+) -> Result<()> {
+    let lda = match trans {
+        Trans::No => k,
+        _ => n,
+    };
+    let ldb = lda;
+    T::syr2k(Layout::RowMajor, uplo, trans, n, k, alpha, a, lda, b, ldb, beta, c, n)
+}
+
+/// Triangular matrix-matrix multiply `B := α · op(A) · B` (Side::Left)
+/// or `B := α · B · op(A)` (Side::Right). Row-major tightly-packed.
+#[allow(clippy::too_many_arguments)]
+pub fn trmm<T: Scalar>(
+    side: Side,
+    uplo: Uplo,
+    trans_a: Trans,
+    diag: Diag,
+    m: usize,
+    n: usize,
+    alpha: T,
+    a: &[T],
+    b: &mut [T],
+) -> Result<()> {
+    let a_n = side_to_n(side, m, n);
+    T::trmm(Layout::RowMajor, side, uplo, trans_a, diag, m, n, alpha, a, a_n, b, n)
+}
+
+/// Triangular solve with multiple right-hand sides.
+#[allow(clippy::too_many_arguments)]
+pub fn trsm<T: Scalar>(
+    side: Side,
+    uplo: Uplo,
+    trans_a: Trans,
+    diag: Diag,
+    m: usize,
+    n: usize,
+    alpha: T,
+    a: &[T],
+    b: &mut [T],
+) -> Result<()> {
+    let a_n = side_to_n(side, m, n);
+    T::trsm(Layout::RowMajor, side, uplo, trans_a, diag, m, n, alpha, a, a_n, b, n)
+}
+
+/// Hermitian matrix-matrix multiply (complex precisions).
+#[allow(clippy::too_many_arguments)]
+pub fn hemm<T: ComplexScalar>(
+    side: Side,
+    uplo: Uplo,
+    m: usize,
+    n: usize,
+    alpha: T,
+    a: &[T],
+    b: &[T],
+    beta: T,
+    c: &mut [T],
+) -> Result<()> {
+    let a_n = side_to_n(side, m, n);
+    T::hemm(Layout::RowMajor, side, uplo, m, n, alpha, a, a_n, b, n, beta, c, n)
+}
+
+/// Hermitian rank-k update `C := α · op(A) · op(A)ᴴ + β · C` with
+/// real `α` and `β`. `trans` must be `Trans::No` or `Trans::C`.
+#[allow(clippy::too_many_arguments)]
+pub fn herk<T: ComplexScalar>(
+    uplo: Uplo,
+    trans: Trans,
+    n: usize,
+    k: usize,
+    alpha: T::Real,
+    a: &[T],
+    beta: T::Real,
+    c: &mut [T],
+) -> Result<()> {
+    let lda = match trans {
+        Trans::No => k,
+        _ => n,
+    };
+    T::herk(Layout::RowMajor, uplo, trans, n, k, alpha, a, lda, beta, c, n)
+}
+
+/// Hermitian rank-2k update.
+#[allow(clippy::too_many_arguments)]
+pub fn her2k<T: ComplexScalar>(
+    uplo: Uplo,
+    trans: Trans,
+    n: usize,
+    k: usize,
+    alpha: T,
+    a: &[T],
+    b: &[T],
+    beta: T::Real,
+    c: &mut [T],
+) -> Result<()> {
+    let lda = match trans {
+        Trans::No => k,
+        _ => n,
+    };
+    let ldb = lda;
+    T::her2k(Layout::RowMajor, uplo, trans, n, k, alpha, a, lda, b, ldb, beta, c, n)
 }
 
 // ===========================================================================
@@ -2005,5 +2713,111 @@ mod tests {
         let y = [Complex64::new(1.0, 1.0)];
         gerc(1, 1, Complex64::ONE, &x, &y, &mut a).unwrap();
         assert_eq!(a[0], Complex64::new(2.0, 0.0));
+    }
+
+    // --- Level 3: symm / syrk / syr2k / trmm / trsm ---------------------
+
+    #[test]
+    fn symm_left_f64() {
+        // A symmetric 2×2 = [[1,2],[2,3]], B = [[1, 0],[0, 1]] = I_2
+        // C = A·B = A.
+        let a = [1.0_f64, 2.0, 0.0, 3.0]; // upper triangle
+        let b = [1.0_f64, 0.0, 0.0, 1.0];
+        let mut c = [0.0_f64; 4];
+        symm(Side::Left, Uplo::Upper, 2, 2, 1.0, &a, &b, 0.0, &mut c).unwrap();
+        // C should be symmetric reconstruction of A.
+        assert_eq!(c[0], 1.0);
+        assert_eq!(c[1], 2.0);
+        assert_eq!(c[2], 2.0);
+        assert_eq!(c[3], 3.0);
+    }
+
+    #[test]
+    fn syrk_rank_k_update() {
+        // A = [[1, 2],[3, 4]] (2×2), C = 0
+        // syrk: C := A · Aᵀ. A·Aᵀ = [[1+4, 3+8],[3+8, 9+16]] = [[5, 11],[11, 25]]
+        // Only upper triangle of C is updated.
+        let a = [1.0_f64, 2.0, 3.0, 4.0];
+        let mut c = [0.0_f64; 4];
+        syrk(Uplo::Upper, Trans::No, 2, 2, 1.0, &a, 0.0, &mut c).unwrap();
+        assert_eq!(c[0], 5.0);  // (0,0)
+        assert_eq!(c[1], 11.0); // (0,1)
+        assert_eq!(c[3], 25.0); // (1,1)
+    }
+
+    #[test]
+    fn syr2k_rank_2k_update() {
+        // A = [[1, 0]], B = [[0, 1]], n=1, k=2, α=1, β=0
+        // syr2k: C = A·Bᵀ + B·Aᵀ = (1·0 + 0·1) + (0·1 + 1·0) = 0
+        let a = [1.0_f64, 0.0];
+        let b = [0.0_f64, 1.0];
+        let mut c = [99.0_f64];
+        syr2k(Uplo::Upper, Trans::No, 1, 2, 1.0, &a, &b, 0.0, &mut c).unwrap();
+        assert_eq!(c[0], 0.0);
+    }
+
+    #[test]
+    fn trmm_left_lower_unit() {
+        // L = [[1, 0],[2, 1]] (lower-unit triangular row-major), B = [[3],[4]]
+        // trmm Side::Left: B := L·B = [[3],[2*3+4]] = [[3],[10]]
+        let l = [0.0_f64, 0.0, 2.0, 0.0]; // diag implicit
+        let mut b = [3.0_f64, 4.0];
+        trmm(Side::Left, Uplo::Lower, Trans::No, Diag::Unit, 2, 1, 1.0, &l, &mut b).unwrap();
+        assert_eq!(b, [3.0, 10.0]);
+    }
+
+    #[test]
+    fn trsm_solves_unit_lower() {
+        // L · X = B, L = [[1, 0],[2, 1]], B = [[3],[10]] → X = [[3],[4]]
+        let l = [0.0_f64, 0.0, 2.0, 0.0];
+        let mut b = [3.0_f64, 10.0];
+        trsm(Side::Left, Uplo::Lower, Trans::No, Diag::Unit, 2, 1, 1.0, &l, &mut b).unwrap();
+        assert_eq!(b, [3.0, 4.0]);
+    }
+
+    #[test]
+    fn hemm_complex64() {
+        // A = [[2, 0],[0, 2]] Hermitian (real entries), B = I_2 = [[1,0],[0,1]]
+        // C = α·A·B = 2·I_2.
+        let a = [
+            Complex64::new(2.0, 0.0), Complex64::ZERO,
+            Complex64::ZERO, Complex64::new(2.0, 0.0),
+        ];
+        let b = [Complex64::ONE, Complex64::ZERO, Complex64::ZERO, Complex64::ONE];
+        let mut c = [Complex64::ZERO; 4];
+        hemm(Side::Left, Uplo::Upper, 2, 2, Complex64::ONE, &a, &b, Complex64::ZERO, &mut c).unwrap();
+        assert_eq!(c[0], Complex64::new(2.0, 0.0));
+        assert_eq!(c[3], Complex64::new(2.0, 0.0));
+    }
+
+    #[test]
+    fn herk_complex64() {
+        // A = [[1, i]], n=1, k=2, real α=1, β=0
+        // herk Trans::No: C := A·Aᴴ = 1·1 + i·conj(i) = 1 + 1 = 2
+        let a = [Complex64::ONE, Complex64::I];
+        let mut c = [Complex64::ZERO; 1];
+        herk(Uplo::Upper, Trans::No, 1, 2, 1.0_f64, &a, 0.0_f64, &mut c).unwrap();
+        // c[0] should be real-valued 2.
+        assert!((c[0].re - 2.0).abs() < 1e-12, "got {:?}", c[0]);
+        assert!(c[0].im.abs() < 1e-12);
+    }
+
+    #[test]
+    fn herk_rejects_trans_t() {
+        let a = [Complex64::ONE];
+        let mut c = [Complex64::ZERO; 1];
+        let err = herk(Uplo::Upper, Trans::T, 1, 1, 1.0, &a, 0.0, &mut c).unwrap_err();
+        assert!(matches!(err, Error::InvalidArgument(_)));
+    }
+
+    #[test]
+    fn her2k_complex64() {
+        // A = [[1+0i]], B = [[1+0i]], n=1, k=1, α=1, β=0
+        // her2k: C = α·A·Bᴴ + conj(α)·B·Aᴴ = 1·1 + 1·1 = 2
+        let a = [Complex64::ONE];
+        let b = [Complex64::ONE];
+        let mut c = [Complex64::ZERO; 1];
+        her2k(Uplo::Upper, Trans::No, 1, 1, Complex64::ONE, &a, &b, 0.0, &mut c).unwrap();
+        assert!((c[0].re - 2.0).abs() < 1e-12);
     }
 }
