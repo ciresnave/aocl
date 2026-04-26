@@ -448,6 +448,184 @@ impl std::fmt::Debug for KMeans {
     }
 }
 
+/// Principal Component Analysis. Reduces an `n_samples × n_features`
+/// matrix to a lower-dimensional representation.
+pub struct Pca {
+    handle: Handle,
+}
+
+impl Pca {
+    /// Build a new PCA handle that retains `n_components` principal
+    /// directions, in `f64` precision.
+    pub fn new(n_components: usize) -> Result<Self> {
+        let mut handle = Handle::new_double(HandleKind::Pca)?;
+        handle.set_int_option("n_components", n_components as i64)?;
+        Ok(Self { handle })
+    }
+
+    /// Fit on column-major `n_samples × n_features` data.
+    pub fn fit(&mut self, n_samples: usize, n_features: usize, data: &[f64]) -> Result<()> {
+        if data.len() < n_samples * n_features {
+            return Err(Error::InvalidArgument(format!(
+                "PCA fit: data length {} < n_samples·n_features = {}",
+                data.len(), n_samples * n_features
+            )));
+        }
+        let lda = n_samples;
+        let status = unsafe {
+            sys::da_pca_set_data_d(
+                self.handle.raw,
+                n_samples as sys::da_int,
+                n_features as sys::da_int,
+                data.as_ptr(),
+                lda as sys::da_int,
+            )
+        };
+        check_status("data-analytics", status)?;
+        let status = unsafe { sys::da_pca_compute_d(self.handle.raw) };
+        check_status("data-analytics", status)
+    }
+
+    /// Project `m_samples × m_features` new data into the fitted
+    /// principal-component space. `out` receives the transformed
+    /// `m_samples × n_components` matrix in column-major layout
+    /// (`ldx_transform = m_samples`).
+    pub fn transform(
+        &mut self,
+        m_samples: usize,
+        m_features: usize,
+        x: &[f64],
+        n_components: usize,
+        out: &mut [f64],
+    ) -> Result<()> {
+        if x.len() < m_samples * m_features {
+            return Err(Error::InvalidArgument(format!(
+                "PCA transform: x length {} < m_samples·m_features = {}",
+                x.len(), m_samples * m_features
+            )));
+        }
+        if out.len() < m_samples * n_components {
+            return Err(Error::InvalidArgument(format!(
+                "PCA transform: out length {} < m_samples·n_components = {}",
+                out.len(), m_samples * n_components
+            )));
+        }
+        let status = unsafe {
+            sys::da_pca_transform_d(
+                self.handle.raw,
+                m_samples as sys::da_int,
+                m_features as sys::da_int,
+                x.as_ptr(),
+                m_samples as sys::da_int,
+                out.as_mut_ptr(),
+                m_samples as sys::da_int,
+            )
+        };
+        check_status("data-analytics", status)
+    }
+}
+
+impl std::fmt::Debug for Pca {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Pca").field("handle", &self.handle).finish()
+    }
+}
+
+/// k-nearest-neighbours classifier.
+pub struct KNearestNeighbours {
+    handle: Handle,
+}
+
+impl KNearestNeighbours {
+    /// Build a new k-NN classifier in `f64` precision. The number of
+    /// neighbours `k` defaults to AOCL-DA's built-in default (commonly
+    /// 5); call [`KNearestNeighbours::handle_mut`] and
+    /// `set_int_option` to override it (the option name is AOCL-version
+    /// specific — try `"number of neighbours"`).
+    pub fn new() -> Result<Self> {
+        let handle = Handle::new_double(HandleKind::Knn)?;
+        Ok(Self { handle })
+    }
+
+    /// Borrow the underlying handle to set algorithm-specific options.
+    pub fn handle_mut(&mut self) -> &mut Handle {
+        &mut self.handle
+    }
+
+    /// Fit with `n_samples × n_features` training data (column-major)
+    /// and a `n_samples` integer label vector.
+    pub fn fit(
+        &mut self,
+        n_samples: usize,
+        n_features: usize,
+        x_train: &[f64],
+        y_train: &[i32],
+    ) -> Result<()> {
+        if x_train.len() < n_samples * n_features {
+            return Err(Error::InvalidArgument(format!(
+                "knn fit: x_train length {} < n_samples·n_features = {}",
+                x_train.len(), n_samples * n_features
+            )));
+        }
+        if y_train.len() < n_samples {
+            return Err(Error::InvalidArgument(format!(
+                "knn fit: y_train length {} < n_samples = {n_samples}",
+                y_train.len()
+            )));
+        }
+        let status = unsafe {
+            sys::da_knn_set_training_data_d(
+                self.handle.raw,
+                n_samples as sys::da_int,
+                n_features as sys::da_int,
+                x_train.as_ptr(),
+                n_samples as sys::da_int,
+                y_train.as_ptr() as *const sys::da_int,
+            )
+        };
+        check_status("data-analytics", status)
+    }
+
+    /// Predict labels for `n_queries × n_features` samples (column-major).
+    pub fn predict(
+        &mut self,
+        n_queries: usize,
+        n_features: usize,
+        x_test: &[f64],
+        labels: &mut [i32],
+    ) -> Result<()> {
+        if x_test.len() < n_queries * n_features {
+            return Err(Error::InvalidArgument(format!(
+                "knn predict: x_test length {} < n_queries·n_features = {}",
+                x_test.len(), n_queries * n_features
+            )));
+        }
+        if labels.len() < n_queries {
+            return Err(Error::InvalidArgument(format!(
+                "knn predict: labels length {} < n_queries = {n_queries}",
+                labels.len()
+            )));
+        }
+        let status = unsafe {
+            sys::da_knn_predict_d(
+                self.handle.raw,
+                n_queries as sys::da_int,
+                n_features as sys::da_int,
+                x_test.as_ptr(),
+                n_queries as sys::da_int,
+                labels.as_mut_ptr() as *mut sys::da_int,
+            )
+        };
+        check_status("data-analytics", status)
+    }
+}
+
+impl std::fmt::Debug for KNearestNeighbours {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KNearestNeighbours").field("handle", &self.handle).finish()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -502,6 +680,55 @@ mod tests {
         let _h1 = Handle::new_double(HandleKind::Kmeans).unwrap();
         let _h2 = Handle::new_double(HandleKind::Pca).unwrap();
         let _h3 = Handle::new_single(HandleKind::Linmod).unwrap();
+    }
+
+    #[test]
+    fn pca_two_components() {
+        // 4 points in 3-D forming a clear 2-D plane: x and y vary,
+        // z is small noise.
+        // Stored column-major (column = feature).
+        let data: Vec<f64> = vec![
+            // feature 0 (x): values 1, 2, 3, 4
+            1.0, 2.0, 3.0, 4.0,
+            // feature 1 (y): values 4, 3, 2, 1
+            4.0, 3.0, 2.0, 1.0,
+            // feature 2 (z): tiny noise
+            0.01, 0.02, 0.01, 0.02,
+        ];
+        let mut pca = Pca::new(2).unwrap();
+        pca.fit(4, 3, &data).unwrap();
+
+        let mut transformed = vec![0.0_f64; 4 * 2];
+        pca.transform(4, 3, &data, 2, &mut transformed).unwrap();
+        // First two PCs should capture nearly all the variance — the
+        // transformed values should be non-trivial (not all zero).
+        let nonzero = transformed.iter().any(|&v| v.abs() > 1e-6);
+        assert!(nonzero, "PCA-transformed coordinates were all zero");
+    }
+
+    #[test]
+    fn knn_two_class_separation() {
+        // Two clusters in 2-D (column-major): label 0 around (0,0),
+        // label 1 around (10,10).
+        let x_train: Vec<f64> = vec![
+            // feature 0
+            0.0, 0.1, 0.2, 10.0, 10.1, 10.2,
+            // feature 1
+            0.1, 0.0, 0.1, 10.1, 10.0, 10.1,
+        ];
+        let y_train = vec![0_i32, 0, 0, 1, 1, 1];
+        let mut knn = KNearestNeighbours::new().unwrap();
+        knn.fit(6, 2, &x_train, &y_train).unwrap();
+
+        // A query point near (0, 0) → label 0; near (10, 10) → label 1.
+        let x_test = vec![
+            0.05, 9.95,  // feature 0
+            0.05, 10.05, // feature 1
+        ];
+        let mut labels = vec![0_i32; 2];
+        knn.predict(2, 2, &x_test, &mut labels).unwrap();
+        assert_eq!(labels[0], 0);
+        assert_eq!(labels[1], 1);
     }
 
     #[test]
