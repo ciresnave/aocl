@@ -1,0 +1,23 @@
+[package]
+name = "aocl-securerng-sys"
+description = "Unsafe FFI bindings to AOCL-SecureRNG (RDRAND/RDSEED)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+build = "build.rs"
+links = "amd-securerng"
+categories = ["external-ffi-bindings", "cryptography"]
+keywords = ["aocl", "amd", "rdrand", "rdseed", "ffi"]
+
+[features]
+default = []
+static-link = []
+
+[dependencies]
+libc.workspace = true
+
+[build-dependencies]
+aocl-build = { version = "0.1", path = "../aocl-build" }

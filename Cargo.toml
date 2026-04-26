@@ -1,6 +1,40 @@
 [workspace]
 resolver = "2"
 members = [
+    # Shared infrastructure.
+    "crates/aocl-build",
+    "crates/aocl-error",
+    "crates/aocl-types",
+
+    # Per-component FFI crates.
+    "crates/aocl-blas-sys",
+    "crates/aocl-lapack-sys",
+    "crates/aocl-fft-sys",
+    "crates/aocl-math-sys",
+    "crates/aocl-sparse-sys",
+    "crates/aocl-rng-sys",
+    "crates/aocl-securerng-sys",
+    "crates/aocl-utils-sys",
+    "crates/aocl-compression-sys",
+    "crates/aocl-crypto-sys",
+    "crates/aocl-data-analytics-sys",
+    "crates/aocl-scalapack-sys",
+
+    # Per-component safe wrappers.
+    "crates/aocl-blas",
+    "crates/aocl-lapack",
+    "crates/aocl-fft",
+    "crates/aocl-math",
+    "crates/aocl-sparse",
+    "crates/aocl-rng",
+    "crates/aocl-securerng",
+    "crates/aocl-utils",
+    "crates/aocl-compression",
+    "crates/aocl-crypto",
+    "crates/aocl-data-analytics",
+    "crates/aocl-scalapack",
+
+    # Umbrella convenience crates.
     "crates/aocl-sys",
     "crates/aocl",
 ]

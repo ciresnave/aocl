@@ -1,0 +1,20 @@
+[package]
+name = "aocl-compression"
+description = "Safe Rust wrappers for AOCL-Compression (LZ4/ZLIB/ZSTD/LZMA/BZIP2/Snappy/LZ4HC)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+categories = ["api-bindings", "compression"]
+keywords = ["aocl", "amd", "lz4", "zstd", "compression"]
+
+[dependencies]
+aocl-compression-sys = { version = "0.1", path = "../aocl-compression-sys" }
+aocl-error = { version = "0.1", path = "../aocl-error" }
+
+[features]
+default = []
+static-link = ["aocl-compression-sys/static-link"]

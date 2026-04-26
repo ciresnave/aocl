@@ -1,0 +1,24 @@
+[package]
+name = "aocl-sparse-sys"
+description = "Unsafe FFI bindings to AOCL-Sparse"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+build = "build.rs"
+links = "amd-sparse"
+categories = ["external-ffi-bindings", "science", "mathematics"]
+keywords = ["aocl", "amd", "sparse", "ffi"]
+
+[features]
+default = []
+ilp64 = []
+static-link = []
+
+[dependencies]
+libc.workspace = true
+
+[build-dependencies]
+aocl-build = { version = "0.1", path = "../aocl-build" }

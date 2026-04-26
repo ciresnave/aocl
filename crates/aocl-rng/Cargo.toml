@@ -1,0 +1,21 @@
+[package]
+name = "aocl-rng"
+description = "Safe Rust wrappers for AOCL-RNG"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+categories = ["api-bindings", "science"]
+keywords = ["aocl", "amd", "rng", "random"]
+
+[dependencies]
+aocl-rng-sys = { version = "0.1", path = "../aocl-rng-sys" }
+aocl-error = { version = "0.1", path = "../aocl-error" }
+
+[features]
+default = []
+ilp64 = ["aocl-rng-sys/ilp64"]
+static-link = ["aocl-rng-sys/static-link"]

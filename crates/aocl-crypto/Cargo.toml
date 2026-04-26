@@ -1,0 +1,20 @@
+[package]
+name = "aocl-crypto"
+description = "Safe Rust wrappers for AOCL-Cryptography (ALCP)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+categories = ["api-bindings", "cryptography"]
+keywords = ["aocl", "amd", "alcp", "sha", "crypto"]
+
+[dependencies]
+aocl-crypto-sys = { version = "0.1", path = "../aocl-crypto-sys" }
+aocl-error = { version = "0.1", path = "../aocl-error" }
+
+[features]
+default = []
+static-link = ["aocl-crypto-sys/static-link"]

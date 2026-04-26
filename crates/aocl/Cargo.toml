@@ -1,6 +1,6 @@
 [package]
 name = "aocl"
-description = "Safe, idiomatic Rust wrappers for AMD AOCL (AMD Optimizing CPU Libraries)"
+description = "Umbrella crate re-exporting the per-component safe wrappers for AMD AOCL"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,30 +8,61 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 readme = "README.md"
-categories = ["science", "mathematics", "api-bindings"]
+categories = ["api-bindings", "science", "mathematics"]
 keywords = ["aocl", "amd", "blas", "lapack", "math"]
 
 [features]
-# Library-component features forward to aocl-sys.
 default = ["utils"]
 
-blis = ["aocl-sys/blis"]
-libflame = ["aocl-sys/libflame"]
-fftw = ["aocl-sys/fftw"]
-libm = ["aocl-sys/libm"]
-sparse = ["aocl-sys/sparse"]
-rng = ["aocl-sys/rng"]
-securerng = ["aocl-sys/securerng"]
-utils = ["aocl-sys/utils"]
-compression = ["aocl-sys/compression"]
-crypto = ["aocl-sys/crypto"]
-data-analytics = ["aocl-sys/data-analytics"]
-scalapack = ["aocl-sys/scalapack"]
+blas = ["dep:aocl-blas"]
+lapack = ["dep:aocl-lapack"]
+fft = ["dep:aocl-fft"]
+math = ["dep:aocl-math"]
+sparse = ["dep:aocl-sparse"]
+rng = ["dep:aocl-rng"]
+securerng = ["dep:aocl-securerng"]
+utils = ["dep:aocl-utils"]
+compression = ["dep:aocl-compression"]
+crypto = ["dep:aocl-crypto"]
+data-analytics = ["dep:aocl-data-analytics"]
+scalapack = ["dep:aocl-scalapack"]
 
-# Build modes (forwarded).
-ilp64 = ["aocl-sys/ilp64"]
-static-link = ["aocl-sys/static-link"]
+ilp64 = [
+    "aocl-blas?/ilp64",
+    "aocl-lapack?/ilp64",
+    "aocl-sparse?/ilp64",
+    "aocl-rng?/ilp64",
+    "aocl-data-analytics?/ilp64",
+    "aocl-scalapack?/ilp64",
+]
+static-link = [
+    "aocl-blas?/static-link",
+    "aocl-lapack?/static-link",
+    "aocl-fft?/static-link",
+    "aocl-math?/static-link",
+    "aocl-sparse?/static-link",
+    "aocl-rng?/static-link",
+    "aocl-securerng?/static-link",
+    "aocl-utils?/static-link",
+    "aocl-compression?/static-link",
+    "aocl-crypto?/static-link",
+    "aocl-data-analytics?/static-link",
+    "aocl-scalapack?/static-link",
+]
 
 [dependencies]
-aocl-sys = { path = "../aocl-sys", version = "0.1", default-features = false }
-thiserror.workspace = true
+aocl-error = { version = "0.1", path = "../aocl-error" }
+aocl-types = { version = "0.1", path = "../aocl-types" }
+
+aocl-blas           = { version = "0.1", path = "../aocl-blas",           optional = true }
+aocl-lapack         = { version = "0.1", path = "../aocl-lapack",         optional = true }
+aocl-fft            = { version = "0.1", path = "../aocl-fft",            optional = true }
+aocl-math           = { version = "0.1", path = "../aocl-math",           optional = true }
+aocl-sparse         = { version = "0.1", path = "../aocl-sparse",         optional = true }
+aocl-rng            = { version = "0.1", path = "../aocl-rng",            optional = true }
+aocl-securerng      = { version = "0.1", path = "../aocl-securerng",      optional = true }
+aocl-utils          = { version = "0.1", path = "../aocl-utils",          optional = true }
+aocl-compression    = { version = "0.1", path = "../aocl-compression",    optional = true }
+aocl-crypto         = { version = "0.1", path = "../aocl-crypto",         optional = true }
+aocl-data-analytics = { version = "0.1", path = "../aocl-data-analytics", optional = true }
+aocl-scalapack      = { version = "0.1", path = "../aocl-scalapack",      optional = true }

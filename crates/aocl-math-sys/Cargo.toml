@@ -1,0 +1,23 @@
+[package]
+name = "aocl-math-sys"
+description = "Unsafe FFI bindings to AOCL-LibM"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+build = "build.rs"
+links = "amd-libm"
+categories = ["external-ffi-bindings", "science", "mathematics"]
+keywords = ["aocl", "amd", "libm", "math", "ffi"]
+
+[features]
+default = []
+static-link = []
+
+[dependencies]
+libc.workspace = true
+
+[build-dependencies]
+aocl-build = { version = "0.1", path = "../aocl-build" }

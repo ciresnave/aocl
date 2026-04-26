@@ -1,0 +1,23 @@
+[package]
+name = "aocl-compression-sys"
+description = "Unsafe FFI bindings to AOCL-Compression"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+build = "build.rs"
+links = "amd-compression"
+categories = ["external-ffi-bindings", "compression"]
+keywords = ["aocl", "amd", "compression", "lz4", "zstd"]
+
+[features]
+default = []
+static-link = []
+
+[dependencies]
+libc.workspace = true
+
+[build-dependencies]
+aocl-build = { version = "0.1", path = "../aocl-build" }

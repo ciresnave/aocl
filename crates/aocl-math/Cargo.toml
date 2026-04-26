@@ -1,0 +1,20 @@
+[package]
+name = "aocl-math"
+description = "Safe Rust wrappers for AOCL-LibM (vectorized scalar math, AMD-tuned)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+categories = ["api-bindings", "mathematics", "science"]
+keywords = ["aocl", "amd", "libm", "math"]
+
+[dependencies]
+aocl-math-sys = { version = "0.1", path = "../aocl-math-sys" }
+aocl-error = { version = "0.1", path = "../aocl-error" }
+
+[features]
+default = []
+static-link = ["aocl-math-sys/static-link"]

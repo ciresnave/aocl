@@ -1,0 +1,15 @@
+[package]
+name = "aocl-error"
+description = "Shared error type for the aocl-* family of crates"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+categories = ["api-bindings"]
+keywords = ["aocl", "amd", "error"]
+
+[dependencies]
+thiserror.workspace = true

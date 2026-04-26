@@ -1,63 +1,59 @@
-//! `aocl` — safe, idiomatic Rust wrappers for the AMD Optimizing CPU Libraries.
+//! `aocl` — umbrella re-exporting the per-component safe AOCL wrappers
+//! under cargo features.
 //!
-//! Each AOCL component is exposed as a top-level module gated behind its
-//! Cargo feature. The crate forwards features to [`aocl-sys`], which provides
-//! the raw FFI bindings.
-//!
-//! See the workspace [README](https://github.com/ciresnave/aocl) for setup
-//! instructions (in particular: `AOCL_ROOT`, `LIBCLANG_PATH`).
+//! Most users will prefer to depend directly on the component crate they
+//! need (e.g. `aocl-blas`, `aocl-lapack`). This crate exists for "I want
+//! a bunch of AOCL components behind one dependency line" use-cases.
 
-#![warn(missing_debug_implementations)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-pub mod error;
+pub use aocl_error::{Error, Result};
+pub use aocl_types::{Diag, Layout, Side, Trans, Uplo};
 
-#[cfg(feature = "utils")]
-#[cfg_attr(docsrs, doc(cfg(feature = "utils")))]
-pub mod utils;
+#[cfg(feature = "blas")]
+#[cfg_attr(docsrs, doc(cfg(feature = "blas")))]
+pub use aocl_blas as blas;
 
-#[cfg(feature = "blis")]
-#[cfg_attr(docsrs, doc(cfg(feature = "blis")))]
-pub mod blas;
+#[cfg(feature = "lapack")]
+#[cfg_attr(docsrs, doc(cfg(feature = "lapack")))]
+pub use aocl_lapack as lapack;
 
-#[cfg(feature = "libflame")]
-#[cfg_attr(docsrs, doc(cfg(feature = "libflame")))]
-pub mod lapack;
+#[cfg(feature = "fft")]
+#[cfg_attr(docsrs, doc(cfg(feature = "fft")))]
+pub use aocl_fft as fft;
 
-#[cfg(feature = "libm")]
-#[cfg_attr(docsrs, doc(cfg(feature = "libm")))]
-pub mod math;
-
-#[cfg(feature = "fftw")]
-#[cfg_attr(docsrs, doc(cfg(feature = "fftw")))]
-pub mod fft;
+#[cfg(feature = "math")]
+#[cfg_attr(docsrs, doc(cfg(feature = "math")))]
+pub use aocl_math as math;
 
 #[cfg(feature = "sparse")]
 #[cfg_attr(docsrs, doc(cfg(feature = "sparse")))]
-pub mod sparse;
+pub use aocl_sparse as sparse;
 
 #[cfg(feature = "rng")]
 #[cfg_attr(docsrs, doc(cfg(feature = "rng")))]
-pub mod rng;
+pub use aocl_rng as rng;
 
 #[cfg(feature = "securerng")]
 #[cfg_attr(docsrs, doc(cfg(feature = "securerng")))]
-pub mod securerng;
+pub use aocl_securerng as securerng;
+
+#[cfg(feature = "utils")]
+#[cfg_attr(docsrs, doc(cfg(feature = "utils")))]
+pub use aocl_utils as utils;
 
 #[cfg(feature = "compression")]
 #[cfg_attr(docsrs, doc(cfg(feature = "compression")))]
-pub mod compression;
+pub use aocl_compression as compression;
 
 #[cfg(feature = "crypto")]
 #[cfg_attr(docsrs, doc(cfg(feature = "crypto")))]
-pub mod crypto;
+pub use aocl_crypto as crypto;
 
 #[cfg(feature = "data-analytics")]
 #[cfg_attr(docsrs, doc(cfg(feature = "data-analytics")))]
-pub mod data_analytics;
+pub use aocl_data_analytics as data_analytics;
 
-pub use error::{Error, Result};
-
-/// Re-export of the `aocl-sys` crate for users who need to drop down to the
-/// raw FFI for an operation not yet covered by a safe wrapper.
-pub use aocl_sys as sys;
+#[cfg(feature = "scalapack")]
+#[cfg_attr(docsrs, doc(cfg(feature = "scalapack")))]
+pub use aocl_scalapack as scalapack;

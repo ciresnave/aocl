@@ -1,0 +1,15 @@
+[package]
+name = "aocl-build"
+description = "Build-script helpers shared across AOCL FFI crates: AOCL_ROOT detection, libclang-path discovery, bindgen + linker driver"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+categories = ["development-tools::build-utils", "external-ffi-bindings"]
+keywords = ["aocl", "amd", "build", "bindgen"]
+
+[dependencies]
+bindgen.workspace = true

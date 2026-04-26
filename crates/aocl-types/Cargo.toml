@@ -1,0 +1,12 @@
+[package]
+name = "aocl-types"
+description = "Shared types and enums used by AOCL safe wrappers (Layout, Trans, Uplo, Diag, Side, ...)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+categories = ["api-bindings", "science"]
+keywords = ["aocl", "amd", "blas", "lapack"]

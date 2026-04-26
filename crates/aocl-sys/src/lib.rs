@@ -1,98 +1,56 @@
-//! `aocl-sys` — raw FFI bindings to AMD AOCL.
+//! `aocl-sys` — umbrella re-exporting the per-component `aocl-*-sys` FFI
+//! crates under cargo features.
 //!
-//! Each AOCL component is gated behind its own Cargo feature and exposed as a
-//! top-level module containing the `bindgen`-generated declarations. All items
-//! re-exported here are `unsafe extern "C"`; refer to the AMD AOCL API guide
-//! for semantics.
-//!
-//! For a safe, idiomatic Rust API on top of these bindings see the
-//! [`aocl`](https://docs.rs/aocl) crate.
+//! For most users the per-component crates are easier to depend on
+//! directly. This crate exists for "I want a bunch of AOCL components
+//! behind one dependency line" use-cases.
 
-#![allow(
-    non_upper_case_globals,
-    non_camel_case_types,
-    non_snake_case,
-    dead_code,
-    improper_ctypes,
-    clippy::all
-)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-#[cfg(feature = "blis")]
-#[cfg_attr(docsrs, doc(cfg(feature = "blis")))]
-pub mod blis {
-    //! AOCL-BLAS (BLIS) — Basic Linear Algebra Subprograms.
-    include!(concat!(env!("OUT_DIR"), "/blis.rs"));
-}
+#[cfg(feature = "blas")]
+#[cfg_attr(docsrs, doc(cfg(feature = "blas")))]
+pub use aocl_blas_sys as blas;
 
-#[cfg(feature = "libflame")]
-#[cfg_attr(docsrs, doc(cfg(feature = "libflame")))]
-pub mod libflame {
-    //! AOCL-LAPACK (libFLAME) — Linear Algebra PACKage.
-    include!(concat!(env!("OUT_DIR"), "/libflame.rs"));
-}
+#[cfg(feature = "lapack")]
+#[cfg_attr(docsrs, doc(cfg(feature = "lapack")))]
+pub use aocl_lapack_sys as lapack;
 
-#[cfg(feature = "utils")]
-#[cfg_attr(docsrs, doc(cfg(feature = "utils")))]
-pub mod utils {
-    //! AOCL-Utils — CPU identification, threading helpers.
-    include!(concat!(env!("OUT_DIR"), "/utils.rs"));
-}
+#[cfg(feature = "fft")]
+#[cfg_attr(docsrs, doc(cfg(feature = "fft")))]
+pub use aocl_fft_sys as fft;
 
-#[cfg(feature = "libm")]
-#[cfg_attr(docsrs, doc(cfg(feature = "libm")))]
-pub mod libm {
-    //! AOCL-LibM — vectorized math functions.
-    include!(concat!(env!("OUT_DIR"), "/libm.rs"));
-}
-
-#[cfg(feature = "fftw")]
-#[cfg_attr(docsrs, doc(cfg(feature = "fftw")))]
-pub mod fftw {
-    //! AOCL-FFTW — FFTW-compatible Fast Fourier Transform.
-    include!(concat!(env!("OUT_DIR"), "/fftw.rs"));
-}
+#[cfg(feature = "math")]
+#[cfg_attr(docsrs, doc(cfg(feature = "math")))]
+pub use aocl_math_sys as math;
 
 #[cfg(feature = "sparse")]
 #[cfg_attr(docsrs, doc(cfg(feature = "sparse")))]
-pub mod sparse {
-    //! AOCL-Sparse — sparse BLAS and solvers.
-    include!(concat!(env!("OUT_DIR"), "/sparse.rs"));
-}
+pub use aocl_sparse_sys as sparse;
 
 #[cfg(feature = "rng")]
 #[cfg_attr(docsrs, doc(cfg(feature = "rng")))]
-pub mod rng {
-    //! AOCL-RNG — random number generation.
-    include!(concat!(env!("OUT_DIR"), "/rng.rs"));
-}
+pub use aocl_rng_sys as rng;
 
 #[cfg(feature = "securerng")]
 #[cfg_attr(docsrs, doc(cfg(feature = "securerng")))]
-pub mod securerng {
-    //! AOCL-SecureRNG — hardware-backed random number generation.
-    include!(concat!(env!("OUT_DIR"), "/securerng.rs"));
-}
+pub use aocl_securerng_sys as securerng;
+
+#[cfg(feature = "utils")]
+#[cfg_attr(docsrs, doc(cfg(feature = "utils")))]
+pub use aocl_utils_sys as utils;
 
 #[cfg(feature = "compression")]
 #[cfg_attr(docsrs, doc(cfg(feature = "compression")))]
-pub mod compression {
-    //! AOCL-Compression — multi-algorithm compression library.
-    include!(concat!(env!("OUT_DIR"), "/compression.rs"));
-}
+pub use aocl_compression_sys as compression;
 
 #[cfg(feature = "crypto")]
 #[cfg_attr(docsrs, doc(cfg(feature = "crypto")))]
-pub mod crypto {
-    //! AOCL-Cryptography (ALCP) — cryptographic primitives.
-    include!(concat!(env!("OUT_DIR"), "/crypto.rs"));
-}
+pub use aocl_crypto_sys as crypto;
 
 #[cfg(feature = "data-analytics")]
 #[cfg_attr(docsrs, doc(cfg(feature = "data-analytics")))]
-pub mod data_analytics {
-    //! AOCL-DA — data analytics and ML primitives.
-    include!(concat!(env!("OUT_DIR"), "/data_analytics.rs"));
-}
+pub use aocl_data_analytics_sys as data_analytics;
 
-// `scalapack` is link-only: no public C bindings.
+#[cfg(feature = "scalapack")]
+#[cfg_attr(docsrs, doc(cfg(feature = "scalapack")))]
+pub use aocl_scalapack_sys as scalapack;

@@ -1,0 +1,22 @@
+[package]
+name = "aocl-lapack"
+description = "Safe Rust wrappers for AOCL-LAPACK (libFLAME) via the LAPACKE interface"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+categories = ["api-bindings", "mathematics", "science"]
+keywords = ["aocl", "amd", "lapack", "lapacke"]
+
+[dependencies]
+aocl-lapack-sys = { version = "0.1", path = "../aocl-lapack-sys" }
+aocl-error = { version = "0.1", path = "../aocl-error" }
+aocl-types = { version = "0.1", path = "../aocl-types" }
+
+[features]
+default = []
+ilp64 = ["aocl-lapack-sys/ilp64"]
+static-link = ["aocl-lapack-sys/static-link"]

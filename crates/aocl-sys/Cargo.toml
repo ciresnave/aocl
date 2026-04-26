@@ -1,6 +1,6 @@
 [package]
 name = "aocl-sys"
-description = "Unsafe FFI bindings to AMD AOCL (AMD Optimizing CPU Libraries)"
+description = "Umbrella crate re-exporting the per-component aocl-*-sys FFI bindings under cargo features"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,41 +8,62 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 readme = "README.md"
-build = "build.rs"
-links = "aocl"
 categories = ["external-ffi-bindings", "science", "mathematics"]
-keywords = ["aocl", "amd", "blas", "lapack", "ffi"]
+keywords = ["aocl", "amd", "ffi"]
 
 [features]
-# By default we wire up the most commonly-used AOCL components plus utils
-# (CPU identification — extremely lightweight). Users can disable defaults
-# and pick exactly what they need.
 default = ["utils"]
 
-# --- Library-component features ----------------------------------------------
-# Each gates bindings + linking for one AOCL component. Enabling the feature
-# requires the corresponding component to be present under $AOCL_ROOT.
-blis = []
-libflame = []
-fftw = []
-libm = []
-sparse = []
-rng = []
-securerng = []
-utils = []
-compression = []
-crypto = []
-data-analytics = []
-scalapack = []
+# One feature per AOCL component. Each enables the corresponding
+# aocl-*-sys crate, which is otherwise an optional dependency and not
+# pulled into the build tree.
+blas = ["dep:aocl-blas-sys"]
+lapack = ["dep:aocl-lapack-sys"]
+fft = ["dep:aocl-fft-sys"]
+math = ["dep:aocl-math-sys"]
+sparse = ["dep:aocl-sparse-sys"]
+rng = ["dep:aocl-rng-sys"]
+securerng = ["dep:aocl-securerng-sys"]
+utils = ["dep:aocl-utils-sys"]
+compression = ["dep:aocl-compression-sys"]
+crypto = ["dep:aocl-crypto-sys"]
+data-analytics = ["dep:aocl-data-analytics-sys"]
+scalapack = ["dep:aocl-scalapack-sys"]
 
-# --- Build-mode features -----------------------------------------------------
-# Use 64-bit integer indexing (LAPACK/BLAS "ILP64"). Default = LP64 (32-bit).
-ilp64 = []
-# Statically link AOCL libraries. Default = dynamically link.
-static-link = []
+# Build-mode features forward to whichever component crates are enabled.
+ilp64 = [
+    "aocl-blas-sys?/ilp64",
+    "aocl-lapack-sys?/ilp64",
+    "aocl-sparse-sys?/ilp64",
+    "aocl-rng-sys?/ilp64",
+    "aocl-data-analytics-sys?/ilp64",
+    "aocl-scalapack-sys?/ilp64",
+]
+static-link = [
+    "aocl-blas-sys?/static-link",
+    "aocl-lapack-sys?/static-link",
+    "aocl-fft-sys?/static-link",
+    "aocl-math-sys?/static-link",
+    "aocl-sparse-sys?/static-link",
+    "aocl-rng-sys?/static-link",
+    "aocl-securerng-sys?/static-link",
+    "aocl-utils-sys?/static-link",
+    "aocl-compression-sys?/static-link",
+    "aocl-crypto-sys?/static-link",
+    "aocl-data-analytics-sys?/static-link",
+    "aocl-scalapack-sys?/static-link",
+]
 
 [dependencies]
-libc.workspace = true
-
-[build-dependencies]
-bindgen.workspace = true
+aocl-blas-sys           = { version = "0.1", path = "../aocl-blas-sys",           optional = true }
+aocl-lapack-sys         = { version = "0.1", path = "../aocl-lapack-sys",         optional = true }
+aocl-fft-sys            = { version = "0.1", path = "../aocl-fft-sys",            optional = true }
+aocl-math-sys           = { version = "0.1", path = "../aocl-math-sys",           optional = true }
+aocl-sparse-sys         = { version = "0.1", path = "../aocl-sparse-sys",         optional = true }
+aocl-rng-sys            = { version = "0.1", path = "../aocl-rng-sys",            optional = true }
+aocl-securerng-sys      = { version = "0.1", path = "../aocl-securerng-sys",      optional = true }
+aocl-utils-sys          = { version = "0.1", path = "../aocl-utils-sys",          optional = true }
+aocl-compression-sys    = { version = "0.1", path = "../aocl-compression-sys",    optional = true }
+aocl-crypto-sys         = { version = "0.1", path = "../aocl-crypto-sys",         optional = true }
+aocl-data-analytics-sys = { version = "0.1", path = "../aocl-data-analytics-sys", optional = true }
+aocl-scalapack-sys      = { version = "0.1", path = "../aocl-scalapack-sys",      optional = true }

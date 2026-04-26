@@ -1,0 +1,22 @@
+[package]
+name = "aocl-data-analytics"
+description = "Safe Rust wrappers for AOCL-DA (data analytics, statistics, ML primitives)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+categories = ["api-bindings", "science"]
+keywords = ["aocl", "amd", "machine-learning", "statistics"]
+
+[dependencies]
+aocl-data-analytics-sys = { version = "0.1", path = "../aocl-data-analytics-sys" }
+aocl-error = { version = "0.1", path = "../aocl-error" }
+aocl-types = { version = "0.1", path = "../aocl-types" }
+
+[features]
+default = []
+ilp64 = ["aocl-data-analytics-sys/ilp64"]
+static-link = ["aocl-data-analytics-sys/static-link"]

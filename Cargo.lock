@@ -15,15 +15,252 @@ dependencies = [
 name = "aocl"
 version = "0.1.0"
 dependencies = [
- "aocl-sys",
+ "aocl-blas",
+ "aocl-compression",
+ "aocl-crypto",
+ "aocl-data-analytics",
+ "aocl-error",
+ "aocl-fft",
+ "aocl-lapack",
+ "aocl-math",
+ "aocl-rng",
+ "aocl-scalapack",
+ "aocl-securerng",
+ "aocl-sparse",
+ "aocl-types",
+ "aocl-utils",
+]
+
+[[package]]
+name = "aocl-blas"
+version = "0.1.0"
+dependencies = [
+ "aocl-blas-sys",
+ "aocl-error",
+ "aocl-types",
+]
+
+[[package]]
+name = "aocl-blas-sys"
+version = "0.1.0"
+dependencies = [
+ "aocl-build",
+ "libc",
+]
+
+[[package]]
+name = "aocl-build"
+version = "0.1.0"
+dependencies = [
+ "bindgen",
+]
+
+[[package]]
+name = "aocl-compression"
+version = "0.1.0"
+dependencies = [
+ "aocl-compression-sys",
+ "aocl-error",
+]
+
+[[package]]
+name = "aocl-compression-sys"
+version = "0.1.0"
+dependencies = [
+ "aocl-build",
+ "libc",
+]
+
+[[package]]
+name = "aocl-crypto"
+version = "0.1.0"
+dependencies = [
+ "aocl-crypto-sys",
+ "aocl-error",
+]
+
+[[package]]
+name = "aocl-crypto-sys"
+version = "0.1.0"
+dependencies = [
+ "aocl-build",
+ "libc",
+]
+
+[[package]]
+name = "aocl-data-analytics"
+version = "0.1.0"
+dependencies = [
+ "aocl-data-analytics-sys",
+ "aocl-error",
+ "aocl-types",
+]
+
+[[package]]
+name = "aocl-data-analytics-sys"
+version = "0.1.0"
+dependencies = [
+ "aocl-build",
+ "libc",
+]
+
+[[package]]
+name = "aocl-error"
+version = "0.1.0"
+dependencies = [
  "thiserror",
+]
+
+[[package]]
+name = "aocl-fft"
+version = "0.1.0"
+dependencies = [
+ "aocl-error",
+ "aocl-fft-sys",
+]
+
+[[package]]
+name = "aocl-fft-sys"
+version = "0.1.0"
+dependencies = [
+ "aocl-build",
+ "libc",
+]
+
+[[package]]
+name = "aocl-lapack"
+version = "0.1.0"
+dependencies = [
+ "aocl-error",
+ "aocl-lapack-sys",
+ "aocl-types",
+]
+
+[[package]]
+name = "aocl-lapack-sys"
+version = "0.1.0"
+dependencies = [
+ "aocl-build",
+ "libc",
+]
+
+[[package]]
+name = "aocl-math"
+version = "0.1.0"
+dependencies = [
+ "aocl-error",
+ "aocl-math-sys",
+]
+
+[[package]]
+name = "aocl-math-sys"
+version = "0.1.0"
+dependencies = [
+ "aocl-build",
+ "libc",
+]
+
+[[package]]
+name = "aocl-rng"
+version = "0.1.0"
+dependencies = [
+ "aocl-error",
+ "aocl-rng-sys",
+]
+
+[[package]]
+name = "aocl-rng-sys"
+version = "0.1.0"
+dependencies = [
+ "aocl-build",
+ "libc",
+]
+
+[[package]]
+name = "aocl-scalapack"
+version = "0.1.0"
+dependencies = [
+ "aocl-error",
+ "aocl-scalapack-sys",
+ "aocl-types",
+]
+
+[[package]]
+name = "aocl-scalapack-sys"
+version = "0.1.0"
+dependencies = [
+ "aocl-build",
+ "libc",
+]
+
+[[package]]
+name = "aocl-securerng"
+version = "0.1.0"
+dependencies = [
+ "aocl-error",
+ "aocl-securerng-sys",
+]
+
+[[package]]
+name = "aocl-securerng-sys"
+version = "0.1.0"
+dependencies = [
+ "aocl-build",
+ "libc",
+]
+
+[[package]]
+name = "aocl-sparse"
+version = "0.1.0"
+dependencies = [
+ "aocl-error",
+ "aocl-sparse-sys",
+ "aocl-types",
+]
+
+[[package]]
+name = "aocl-sparse-sys"
+version = "0.1.0"
+dependencies = [
+ "aocl-build",
+ "libc",
 ]
 
 [[package]]
 name = "aocl-sys"
 version = "0.1.0"
 dependencies = [
- "bindgen",
+ "aocl-blas-sys",
+ "aocl-compression-sys",
+ "aocl-crypto-sys",
+ "aocl-data-analytics-sys",
+ "aocl-fft-sys",
+ "aocl-lapack-sys",
+ "aocl-math-sys",
+ "aocl-rng-sys",
+ "aocl-scalapack-sys",
+ "aocl-securerng-sys",
+ "aocl-sparse-sys",
+ "aocl-utils-sys",
+]
+
+[[package]]
+name = "aocl-types"
+version = "0.1.0"
+
+[[package]]
+name = "aocl-utils"
+version = "0.1.0"
+dependencies = [
+ "aocl-error",
+ "aocl-utils-sys",
+]
+
+[[package]]
+name = "aocl-utils-sys"
+version = "0.1.0"
+dependencies = [
+ "aocl-build",
  "libc",
 ]
 

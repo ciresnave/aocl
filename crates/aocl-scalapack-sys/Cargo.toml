@@ -1,0 +1,24 @@
+[package]
+name = "aocl-scalapack-sys"
+description = "Linker shim for AOCL-ScaLAPACK (Fortran/MPI; Rust bindings to come)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+build = "build.rs"
+links = "amd-scalapack"
+categories = ["external-ffi-bindings", "science", "mathematics"]
+keywords = ["aocl", "amd", "scalapack", "mpi", "ffi"]
+
+[features]
+default = []
+ilp64 = []
+static-link = []
+
+[dependencies]
+libc.workspace = true
+
+[build-dependencies]
+aocl-build = { version = "0.1", path = "../aocl-build" }

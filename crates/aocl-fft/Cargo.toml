@@ -1,0 +1,20 @@
+[package]
+name = "aocl-fft"
+description = "Safe Rust wrappers for AOCL-FFTW"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+categories = ["api-bindings", "mathematics", "science"]
+keywords = ["aocl", "amd", "fft", "fftw"]
+
+[dependencies]
+aocl-fft-sys = { version = "0.1", path = "../aocl-fft-sys" }
+aocl-error = { version = "0.1", path = "../aocl-error" }
+
+[features]
+default = []
+static-link = ["aocl-fft-sys/static-link"]

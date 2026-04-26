@@ -1,0 +1,23 @@
+[package]
+name = "aocl-utils-sys"
+description = "Unsafe FFI bindings to AOCL-Utils (CPU identification, threading helpers)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+build = "build.rs"
+links = "amd-utils"
+categories = ["external-ffi-bindings", "hardware-support"]
+keywords = ["aocl", "amd", "cpuid", "ffi"]
+
+[features]
+default = []
+static-link = []
+
+[dependencies]
+libc.workspace = true
+
+[build-dependencies]
+aocl-build = { version = "0.1", path = "../aocl-build" }

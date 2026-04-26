@@ -1,0 +1,22 @@
+[package]
+name = "aocl-scalapack"
+description = "Safe Rust wrappers for AOCL-ScaLAPACK (Fortran/MPI; under construction)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+categories = ["api-bindings", "mathematics", "science"]
+keywords = ["aocl", "amd", "scalapack", "mpi", "blacs"]
+
+[dependencies]
+aocl-scalapack-sys = { version = "0.1", path = "../aocl-scalapack-sys" }
+aocl-error = { version = "0.1", path = "../aocl-error" }
+aocl-types = { version = "0.1", path = "../aocl-types" }
+
+[features]
+default = []
+ilp64 = ["aocl-scalapack-sys/ilp64"]
+static-link = ["aocl-scalapack-sys/static-link"]

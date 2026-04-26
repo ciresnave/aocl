@@ -1,0 +1,22 @@
+[package]
+name = "aocl-blas"
+description = "Safe Rust wrappers for AOCL-BLAS (BLIS)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+categories = ["api-bindings", "mathematics", "science"]
+keywords = ["aocl", "amd", "blas", "blis"]
+
+[dependencies]
+aocl-blas-sys = { version = "0.1", path = "../aocl-blas-sys" }
+aocl-error = { version = "0.1", path = "../aocl-error" }
+aocl-types = { version = "0.1", path = "../aocl-types" }
+
+[features]
+default = []
+ilp64 = ["aocl-blas-sys/ilp64"]
+static-link = ["aocl-blas-sys/static-link"]

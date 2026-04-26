@@ -1,0 +1,23 @@
+[package]
+name = "aocl-crypto-sys"
+description = "Unsafe FFI bindings to AOCL-Cryptography (ALCP)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+build = "build.rs"
+links = "amd-crypto"
+categories = ["external-ffi-bindings", "cryptography"]
+keywords = ["aocl", "amd", "alcp", "crypto", "ffi"]
+
+[features]
+default = []
+static-link = []
+
+[dependencies]
+libc.workspace = true
+
+[build-dependencies]
+aocl-build = { version = "0.1", path = "../aocl-build" }
