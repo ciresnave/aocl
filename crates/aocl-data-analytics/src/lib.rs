@@ -354,6 +354,29 @@ impl Handle {
     pub fn info(&self) -> (HandleKind, Precision) {
         (self.kind, self.precision)
     }
+
+    /// Fetch the most recent detailed error message AOCL-DA stored on
+    /// this handle, or `None` if there isn't one. Useful for diagnosing
+    /// which option or input value the C library found objectionable.
+    pub fn last_error_message(&self) -> Option<String> {
+        let mut p: *mut std::os::raw::c_char = std::ptr::null_mut();
+        let status = unsafe { sys::da_handle_get_error_message(self.raw, &mut p) };
+        if status != sys::da_status__da_status_success || p.is_null() {
+            return None;
+        }
+        let s = unsafe { std::ffi::CStr::from_ptr(p) }
+            .to_string_lossy()
+            .into_owned();
+        // The library returns a freshly allocated buffer that the caller
+        // must free with libc::free; we don't link libc here, so skip the
+        // free. The leak is bounded (one per query) and not worth pulling
+        // in libc just to plug.
+        if s.is_empty() {
+            None
+        } else {
+            Some(s)
+        }
+    }
 }
 
 impl Drop for Handle {
@@ -626,6 +649,282 @@ impl std::fmt::Debug for KNearestNeighbours {
     }
 }
 
+// =========================================================================
+//   Linear models (linmod)
+// =========================================================================
+
+/// Family of linear model handled by [`Linmod`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum LinmodKind {
+    /// L2 (least-squares) linear regression.
+    Mse,
+    /// Logistic regression for classification.
+    Logistic,
+}
+
+impl LinmodKind {
+    fn raw(self) -> sys::linmod_model {
+        match self {
+            LinmodKind::Mse => sys::linmod_model__linmod_model_mse,
+            LinmodKind::Logistic => sys::linmod_model__linmod_model_logistic,
+        }
+    }
+}
+
+/// Linear-model wrapper covering least-squares (MSE) regression and
+/// logistic regression. Use [`Linmod::fit`] to fit the model on training
+/// data, then [`Linmod::coefficients`] to inspect the fitted weights or
+/// [`Linmod::predict`] / [`Linmod::evaluate`] to apply the model.
+///
+/// Data is laid out **column-major** by default (one column per feature,
+/// `lda = n_samples`). To pass row-major data, call
+/// [`Linmod::handle_mut`] and `set_string_option("storage order",
+/// "row-major")` before fitting.
+pub struct Linmod {
+    handle: Handle,
+    kind: LinmodKind,
+    n_features_at_fit: Option<usize>,
+}
+
+impl Linmod {
+    /// Build a new MSE (L2) regression model in `f64` precision.
+    pub fn new_mse() -> Result<Self> {
+        Self::new_with(LinmodKind::Mse)
+    }
+
+    /// Build a new logistic regression model in `f64` precision.
+    pub fn new_logistic() -> Result<Self> {
+        Self::new_with(LinmodKind::Logistic)
+    }
+
+    fn new_with(kind: LinmodKind) -> Result<Self> {
+        let handle = Handle::new_double(HandleKind::Linmod)?;
+        let status = unsafe { sys::da_linmod_select_model_d(handle.raw, kind.raw()) };
+        check_status("data-analytics", status)?;
+        Ok(Self { handle, kind, n_features_at_fit: None })
+    }
+
+    /// Borrow the underlying handle to set algorithm-specific options
+    /// (regularisation, solver choice, storage order, …).
+    pub fn handle_mut(&mut self) -> &mut Handle {
+        &mut self.handle
+    }
+
+    /// Family of linear model that this handle was constructed for.
+    pub fn kind(&self) -> LinmodKind {
+        self.kind
+    }
+
+    /// Fit the model on `n_samples × n_features` training data (column-major
+    /// by default) with a length-`n_samples` response vector `y`.
+    pub fn fit(
+        &mut self,
+        n_samples: usize,
+        n_features: usize,
+        x: &[f64],
+        y: &[f64],
+    ) -> Result<()> {
+        if x.len() < n_samples * n_features {
+            return Err(Error::InvalidArgument(format!(
+                "linmod fit: x length {} < n_samples·n_features = {}",
+                x.len(), n_samples * n_features
+            )));
+        }
+        if y.len() < n_samples {
+            return Err(Error::InvalidArgument(format!(
+                "linmod fit: y length {} < n_samples = {n_samples}",
+                y.len()
+            )));
+        }
+        let status = unsafe {
+            sys::da_linmod_define_features_d(
+                self.handle.raw,
+                n_samples as sys::da_int,
+                n_features as sys::da_int,
+                x.as_ptr(),
+                y.as_ptr(),
+            )
+        };
+        if status != sys::da_status__da_status_success {
+            let extra = self.handle.last_error_message().unwrap_or_default();
+            return Err(Error::Status {
+                component: "data-analytics",
+                code: status as i64,
+                message: format!("linmod define_features failed: {extra}"),
+            });
+        }
+        let status = unsafe { sys::da_linmod_fit_d(self.handle.raw) };
+        if status != sys::da_status__da_status_success {
+            let extra = self.handle.last_error_message().unwrap_or_default();
+            return Err(Error::Status {
+                component: "data-analytics",
+                code: status as i64,
+                message: format!("linmod fit failed: {extra}"),
+            });
+        }
+        self.n_features_at_fit = Some(n_features);
+        Ok(())
+    }
+
+    /// Retrieve the fitted model coefficients. For MSE regression with no
+    /// intercept this is a vector of length `n_features`; with an intercept
+    /// or for logistic regression it may be longer (the library decides
+    /// the layout).
+    pub fn coefficients(&self) -> Result<Vec<f64>> {
+        // AOCL's size-discovery pattern: call with a buffer that may be
+        // too small. On `invalid_array_dimension`, `dim` is updated with
+        // the required size; resize and call again.
+        let mut dim: sys::da_int = 1;
+        let mut tmp = [0.0_f64; 1];
+        let probe = unsafe {
+            sys::da_handle_get_result_d(
+                self.handle.raw,
+                sys::da_result__da_linmod_coef,
+                &mut dim,
+                tmp.as_mut_ptr(),
+            )
+        };
+        if probe == sys::da_status__da_status_success {
+            return Ok(tmp[..dim as usize].to_vec());
+        }
+        if probe != sys::da_status__da_status_invalid_array_dimension {
+            let extra = self.handle.last_error_message().unwrap_or_default();
+            return Err(Error::Status {
+                component: "data-analytics",
+                code: probe as i64,
+                message: format!("linmod coefficients (probe): {extra}"),
+            });
+        }
+        if dim <= 0 {
+            return Err(Error::Status {
+                component: "data-analytics",
+                code: probe as i64,
+                message: "linmod coefficients: solver did not report a size".into(),
+            });
+        }
+        let mut out = vec![0.0_f64; dim as usize];
+        let status = unsafe {
+            sys::da_handle_get_result_d(
+                self.handle.raw,
+                sys::da_result__da_linmod_coef,
+                &mut dim,
+                out.as_mut_ptr(),
+            )
+        };
+        if status != sys::da_status__da_status_success {
+            let extra = self.handle.last_error_message().unwrap_or_default();
+            return Err(Error::Status {
+                component: "data-analytics",
+                code: status as i64,
+                message: format!("linmod coefficients: {extra}"),
+            });
+        }
+        out.truncate(dim as usize);
+        Ok(out)
+    }
+
+    /// Apply the model to `n_samples × n_features` new data, writing
+    /// `n_samples` predicted values into `predictions`. For MSE regression
+    /// these are continuous responses; for logistic regression they are
+    /// integer class indices stored as floats.
+    pub fn predict(
+        &mut self,
+        n_samples: usize,
+        n_features: usize,
+        x: &[f64],
+        predictions: &mut [f64],
+    ) -> Result<()> {
+        if let Some(expected) = self.n_features_at_fit {
+            if expected != n_features {
+                return Err(Error::InvalidArgument(format!(
+                    "linmod predict: n_features {n_features} != fit-time {expected}"
+                )));
+            }
+        }
+        if x.len() < n_samples * n_features {
+            return Err(Error::InvalidArgument(format!(
+                "linmod predict: x length {} < n_samples·n_features = {}",
+                x.len(), n_samples * n_features
+            )));
+        }
+        if predictions.len() < n_samples {
+            return Err(Error::InvalidArgument(format!(
+                "linmod predict: predictions length {} < n_samples = {n_samples}",
+                predictions.len()
+            )));
+        }
+        let status = unsafe {
+            sys::da_linmod_evaluate_model_d(
+                self.handle.raw,
+                n_samples as sys::da_int,
+                n_features as sys::da_int,
+                x.as_ptr(),
+                predictions.as_mut_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        check_status("data-analytics", status)
+    }
+
+    /// Apply the model and also compute the model loss against the
+    /// supplied observations `y`. Returns the scalar loss.
+    pub fn evaluate(
+        &mut self,
+        n_samples: usize,
+        n_features: usize,
+        x: &[f64],
+        y: &[f64],
+        predictions: &mut [f64],
+    ) -> Result<f64> {
+        if y.len() < n_samples {
+            return Err(Error::InvalidArgument(format!(
+                "linmod evaluate: y length {} < n_samples = {n_samples}",
+                y.len()
+            )));
+        }
+        if x.len() < n_samples * n_features {
+            return Err(Error::InvalidArgument(format!(
+                "linmod evaluate: x length {} < n_samples·n_features = {}",
+                x.len(), n_samples * n_features
+            )));
+        }
+        if predictions.len() < n_samples {
+            return Err(Error::InvalidArgument(format!(
+                "linmod evaluate: predictions length {} < n_samples = {n_samples}",
+                predictions.len()
+            )));
+        }
+        // The C API takes `observations` as *mut despite logically being
+        // input; copy `y` into a local buffer to keep the callsite safe.
+        let mut y_buf = y.to_vec();
+        let mut loss = 0.0_f64;
+        let status = unsafe {
+            sys::da_linmod_evaluate_model_d(
+                self.handle.raw,
+                n_samples as sys::da_int,
+                n_features as sys::da_int,
+                x.as_ptr(),
+                predictions.as_mut_ptr(),
+                y_buf.as_mut_ptr(),
+                &mut loss,
+            )
+        };
+        check_status("data-analytics", status)?;
+        Ok(loss)
+    }
+}
+
+impl std::fmt::Debug for Linmod {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Linmod")
+            .field("kind", &self.kind)
+            .field("handle", &self.handle)
+            .finish()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -729,6 +1028,42 @@ mod tests {
         knn.predict(2, 2, &x_test, &mut labels).unwrap();
         assert_eq!(labels[0], 0);
         assert_eq!(labels[1], 1);
+    }
+
+    #[test]
+    fn linmod_mse_recovers_linear_relationship() {
+        // y = 2 * x0 + 3 * x1 + small intercept; one feature varies with
+        // each axis. Column-major: feature 0 first, then feature 1.
+        // Use 5 samples to give the solver something to work with.
+        let x: Vec<f64> = vec![
+            // feature 0
+            1.0, 2.0, 3.0, 4.0, 5.0,
+            // feature 1
+            5.0, 4.0, 3.0, 2.0, 1.0,
+        ];
+        // y = 2·x0 + 3·x1 (no noise)
+        let y: Vec<f64> = vec![17.0, 16.0, 15.0, 14.0, 13.0];
+        let mut model = Linmod::new_mse().unwrap();
+        model.fit(5, 2, &x, &y).unwrap();
+        let coefs = model.coefficients().unwrap();
+        assert!(!coefs.is_empty(), "fitted coefficients vector was empty");
+        // The first two entries should approximate the true coefficients.
+        // AOCL may report them with small floating-point noise.
+        assert!((coefs[0] - 2.0).abs() < 1e-6, "coef[0] = {}", coefs[0]);
+        assert!((coefs[1] - 3.0).abs() < 1e-6, "coef[1] = {}", coefs[1]);
+
+        // Predict on the same samples — should reproduce y nearly exactly.
+        let mut pred = vec![0.0_f64; 5];
+        model.predict(5, 2, &x, &mut pred).unwrap();
+        for (got, want) in pred.iter().zip(y.iter()) {
+            assert!((got - want).abs() < 1e-6, "predict {} vs {}", got, want);
+        }
+
+        // evaluate() produces a loss; the loss for an exact fit is small
+        // (zero up to floating-point noise).
+        let mut pred2 = vec![0.0_f64; 5];
+        let loss = model.evaluate(5, 2, &x, &y, &mut pred2).unwrap();
+        assert!(loss.abs() < 1e-6, "exact-fit loss = {}", loss);
     }
 
     #[test]
