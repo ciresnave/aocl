@@ -6,10 +6,10 @@
 //! cryptographic RNG), derives a 32-byte public key, exchanges it,
 //! and computes a 32-byte shared secret.
 //!
-//! **Status (AOCL 5.1):** the API surface is exposed but the ALCP
-//! X25519 results don't match standard RFC 7748 test vectors — likely
-//! a private-key clamping / point-format flag mismatch. We track this
-//! as a known issue.
+//! Use one [`EcDh`] handle per peer through the entire flow
+//! (`set_private_key` → `derive_public_key` → `shared_secret`); ALCP
+//! 5.1 stores derivation state on the handle, so splitting the
+//! lifecycle across multiple handles yields non-matching secrets.
 
 use aocl_crypto_sys as sys;
 use aocl_error::{Error, Result};
@@ -175,11 +175,11 @@ mod tests {
     use super::*;
 
     #[test]
-    #[ignore = "ALCP X25519 results don't match standard RFC 7748 vectors on AOCL 5.1; \
-                may need explicit private-key clamping or a different point-format flag — tracked"]
     fn x25519_dh_round_trip() {
-        // Two distinct private keys (these are arbitrary valid 32-byte
-        // values; X25519 clamps internally so any 32 bytes work).
+        // Mirrors ALCP's x25519_example.c: each peer keeps a single
+        // EcDh handle through set_private_key → derive_public_key →
+        // shared_secret. Splitting the lifecycle across multiple
+        // handles produces non-matching secrets on AOCL 5.1.
         let alice_priv = [
             0x77, 0x07, 0x6d, 0x0a, 0x73, 0x18, 0xa5, 0x7d,
             0x3c, 0x16, 0xc1, 0x72, 0x51, 0xb2, 0x66, 0x45,
@@ -193,33 +193,22 @@ mod tests {
             0x1c, 0x2f, 0x8b, 0x27, 0xff, 0x88, 0xe0, 0xeb,
         ];
 
+        let mut alice = EcDh::new(Curve::X25519).unwrap();
+        let mut bob = EcDh::new(Curve::X25519).unwrap();
+
+        alice.set_private_key(&alice_priv).unwrap();
+        bob.set_private_key(&bob_priv).unwrap();
+
         let mut alice_pub = [0u8; 32];
         let mut bob_pub = [0u8; 32];
+        alice.derive_public_key(&alice_priv, &mut alice_pub).unwrap();
+        bob.derive_public_key(&bob_priv, &mut bob_pub).unwrap();
 
-        {
-            let mut a = EcDh::new(Curve::X25519).unwrap();
-            a.set_private_key(&alice_priv).unwrap();
-            a.derive_public_key(&alice_priv, &mut alice_pub).unwrap();
-        }
-        {
-            let mut b = EcDh::new(Curve::X25519).unwrap();
-            b.set_private_key(&bob_priv).unwrap();
-            b.derive_public_key(&bob_priv, &mut bob_pub).unwrap();
-        }
-
-        // Each side derives the shared secret from the peer's public key.
+        // Same handles compute the shared secret with the peer's pub key.
         let mut alice_secret = [0u8; 32];
         let mut bob_secret = [0u8; 32];
-        {
-            let mut a = EcDh::new(Curve::X25519).unwrap();
-            a.set_private_key(&alice_priv).unwrap();
-            a.shared_secret(&bob_pub, &mut alice_secret).unwrap();
-        }
-        {
-            let mut b = EcDh::new(Curve::X25519).unwrap();
-            b.set_private_key(&bob_priv).unwrap();
-            b.shared_secret(&alice_pub, &mut bob_secret).unwrap();
-        }
+        alice.shared_secret(&bob_pub, &mut alice_secret).unwrap();
+        bob.shared_secret(&alice_pub, &mut bob_secret).unwrap();
 
         assert_eq!(alice_secret, bob_secret,
                    "X25519 shared secrets did not match");

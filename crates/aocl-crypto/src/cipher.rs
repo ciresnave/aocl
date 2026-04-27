@@ -65,9 +65,11 @@ pub struct Cipher {
 
 impl Cipher {
     /// Build a cipher session for `mode` with the given key (length in
-    /// bits = `key.len() * 8`) and IV (or nonce for ChaCha20). For AES,
-    /// key length must be 16, 24, or 32 bytes; ChaCha20 requires a
-    /// 32-byte key and 12-byte nonce.
+    /// bits = `key.len() * 8`) and IV. For AES, key length must be 16,
+    /// 24, or 32 bytes. ChaCha20 requires a 32-byte key and a 16-byte
+    /// IV that is the concatenation `counter (4 bytes, little-endian) ||
+    /// nonce (12 bytes)`; ALCP doesn't accept the 12-byte IETF nonce
+    /// directly.
     pub fn new(mode: Mode, key: &[u8], iv: &[u8]) -> Result<Self> {
         let key_len_bits = (key.len() as u64).saturating_mul(8);
         let context_size = unsafe { sys::alcp_cipher_context_size() } as usize;
@@ -185,19 +187,24 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "ALCP's ChaCha20 init via the generic cipher_request returns init-failure on AOCL 5.1 — needs a specialised code path; tracked as TODO"]
     fn chacha20_round_trip() {
         let key = [0x55u8; 32];
-        let nonce = [0x77u8; 12];
+        // ALCP requires a 16-byte IV: counter (4 bytes, little-endian)
+        // followed by a 12-byte nonce. Passing the bare 12-byte IETF
+        // nonce returns init-failure.
+        let iv: [u8; 16] = [
+            0x01, 0x00, 0x00, 0x00,           // counter = 1 (LE)
+            0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77,
+        ];
         let plaintext = b"chacha20 sample message of arbitrary length".to_vec();
         let mut ct = vec![0u8; plaintext.len()];
         let mut pt = vec![0u8; plaintext.len()];
         {
-            let mut c = Cipher::new(Mode::ChaCha20, &key, &nonce).unwrap();
+            let mut c = Cipher::new(Mode::ChaCha20, &key, &iv).unwrap();
             c.encrypt(&plaintext, &mut ct).unwrap();
         }
         {
-            let mut c = Cipher::new(Mode::ChaCha20, &key, &nonce).unwrap();
+            let mut c = Cipher::new(Mode::ChaCha20, &key, &iv).unwrap();
             c.decrypt(&ct, &mut pt).unwrap();
         }
         assert_eq!(pt, plaintext);

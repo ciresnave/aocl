@@ -4,15 +4,9 @@
 //! - HMAC-DRBG over a configurable digest (`Drbg::hmac`)
 //! - CTR-DRBG over an AES key length (`Drbg::ctr_aes`)
 //!
-//! **Status (AOCL 5.1):** the API surface is exposed but
-//! `alcp_drbg_initialize` currently returns error 0x3 / heap-corrupts
-//! on Windows with our zeroed-info-struct pattern. We track this as a
-//! known issue; users wanting cryptographic randomness should use
-//! [`aocl-securerng`](https://docs.rs/aocl-securerng) (RDRAND/RDSEED)
-//! in the meantime.
-//!
-//! For general-purpose statistical RNG use
-//! [`aocl-rng`](https://docs.rs/aocl-rng).
+//! For non-cryptographic / statistical RNG use
+//! [`aocl-rng`](https://docs.rs/aocl-rng); for raw RDRAND / RDSEED bytes
+//! use [`aocl-securerng`](https://docs.rs/aocl-securerng).
 
 use aocl_crypto_sys as sys;
 use aocl_error::{Error, Result};
@@ -61,8 +55,10 @@ pub struct Drbg {
 
 impl Drbg {
     /// Build an HMAC-DRBG over the given digest with the given security
-    /// strength (in bits). `personalization` is an optional caller-provided
-    /// per-instantiation string.
+    /// strength (in bits, capped at 128 by the `max_entropy_len = 16`
+    /// AOCL convention; see ALCP's `hmac_drbg-demo.c`).
+    /// `personalization` is an optional caller-provided per-instantiation
+    /// string.
     pub fn hmac(
         digest_mode: DigestMode,
         security_strength: u32,
@@ -71,12 +67,14 @@ impl Drbg {
         let mut info: Box<sys::_alc_drbg_info_t> = Box::new(unsafe { std::mem::zeroed() });
         info.di_type = sys::_alc_drbg_type_ALC_DRBG_HMAC;
         info.di_algoinfo.hmac_drbg = sys::_alc_hmac_drbg_info { digest_mode: digest_mode.raw() };
-        info.max_entropy_len = 256;
-        info.max_nonce_len = 256;
+        info.max_entropy_len = 16;
+        info.max_nonce_len = 16;
         Self::build(info, security_strength as i32, personalization)
     }
 
-    /// Build a CTR-DRBG over the given AES key length.
+    /// Build a CTR-DRBG over the given AES key length. Enables the
+    /// derivation function (`use_derivation_function = true`) per ALCP's
+    /// `ctr_drbg-demo.c`.
     pub fn ctr_aes(
         key_len: AesKeyLen,
         security_strength: u32,
@@ -86,10 +84,10 @@ impl Drbg {
         info.di_type = sys::_alc_drbg_type_ALC_DRBG_CTR;
         info.di_algoinfo.ctr_drbg = sys::_alc_ctr_drbg_info {
             di_keysize: key_len.bits(),
-            use_derivation_function: 0,
+            use_derivation_function: 1,
         };
-        info.max_entropy_len = 256;
-        info.max_nonce_len = 256;
+        info.max_entropy_len = 16;
+        info.max_nonce_len = 16;
         Self::build(info, security_strength as i32, personalization)
     }
 
@@ -98,16 +96,28 @@ impl Drbg {
         security_strength: i32,
         personalization: Option<&[u8]>,
     ) -> Result<Self> {
-        // Configure entropy source: use the operating system's secure
-        // random source (CryptGenRandom on Windows, /dev/urandom on
-        // Linux). The unused distrib field stays at UNKNOWN.
+        // Match ALCP's drbg-demo configuration: discrete uniform RNG
+        // sourced from the OS (CryptGenRandom on Windows, /dev/urandom
+        // on Linux). Setting ri_type=SIMPLE / ri_distrib=UNKNOWN causes
+        // alcp_drbg_initialize to fail on AOCL 5.1.
         info.di_rng_sourceinfo.custom_rng = 0;
         info.di_rng_sourceinfo.di_sourceinfo.rng_info = sys::alc_rng_info_t {
-            ri_type: sys::alc_rng_type_t_ALC_RNG_TYPE_SIMPLE,
+            ri_type: sys::alc_rng_type_t_ALC_RNG_TYPE_DISCRETE,
             ri_source: sys::alc_rng_source_t_ALC_RNG_SOURCE_OS,
-            ri_distrib: sys::alc_rng_distrib_t_ALC_RNG_DISTRIB_UNKNOWN,
+            ri_distrib: sys::alc_rng_distrib_t_ALC_RNG_DISTRIB_UNIFORM,
             ri_flags: 0,
         };
+
+        let supported = unsafe { sys::alcp_drbg_supported(info.as_mut() as *mut _) };
+        if unsafe { sys::alcp_is_error(supported) } != 0 {
+            return Err(Error::Status {
+                component: "crypto",
+                code: supported as i64,
+                message: format!(
+                    "alcp_drbg_supported rejected this configuration: {supported:#x}"
+                ),
+            });
+        }
 
         let context_size =
             unsafe { sys::alcp_drbg_context_size(info.as_mut() as *mut _) } as usize;
@@ -185,9 +195,10 @@ mod tests {
     use super::*;
 
     #[test]
-    #[ignore = "ALCP DRBG init returns 0x3 / heap-corrupts on AOCL 5.1 with our zeroed-info pattern; needs an alcp-side example as reference"]
     fn hmac_drbg_produces_distinct_outputs() {
-        let mut drbg = Drbg::hmac(DigestMode::Sha2_256, 128, Some(b"my-app-tag")).unwrap();
+        // ALCP's max_entropy_len=16 caps security strength below ~128 bits;
+        // demo programs use 100.
+        let mut drbg = Drbg::hmac(DigestMode::Sha2_256, 100, Some(b"my-app-tag")).unwrap();
         let mut a = [0u8; 32];
         let mut b = [0u8; 32];
         drbg.randomize(&mut a, None).unwrap();
@@ -198,9 +209,8 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "ALCP DRBG init returns 0x3 / heap-corrupts on AOCL 5.1; tracked"]
-    fn ctr_drbg_aes256_produces_distinct_outputs() {
-        let mut drbg = Drbg::ctr_aes(AesKeyLen::Bits256, 256, None).unwrap();
+    fn ctr_drbg_aes128_produces_distinct_outputs() {
+        let mut drbg = Drbg::ctr_aes(AesKeyLen::Bits128, 100, None).unwrap();
         let mut a = [0u8; 64];
         let mut b = [0u8; 64];
         drbg.randomize(&mut a, None).unwrap();
@@ -209,9 +219,8 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "ALCP DRBG init returns 0x3 / heap-corrupts on AOCL 5.1; tracked"]
     fn empty_output_is_ok() {
-        let mut drbg = Drbg::hmac(DigestMode::Sha2_256, 128, None).unwrap();
+        let mut drbg = Drbg::hmac(DigestMode::Sha2_256, 100, None).unwrap();
         let mut empty: [u8; 0] = [];
         drbg.randomize(&mut empty, None).unwrap();
     }
