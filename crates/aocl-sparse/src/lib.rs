@@ -2013,6 +2013,344 @@ pub fn doti_f32(x: &[f32], indx: &[sys::aoclsparse_int], y: &[f32]) -> Result<f3
     Ok(r)
 }
 
+// =========================================================================
+//   CSR ↔ ELL / DIA / BSR conversions, COO / CSC creators, value mutators,
+//   block-CSR mat-vec, symmetric Gauss-Seidel
+// =========================================================================
+
+/// Convert CSR → ELLPACK. `ell_width` is the chosen padded row length;
+/// caller must allocate `ell_col_ind` and `ell_val` of size
+/// `m * ell_width`. (`f64`)
+#[allow(clippy::too_many_arguments)]
+pub fn csr2ell_f64(
+    m: usize, descr: &MatDescr,
+    csr_row_ptr: &[sys::aoclsparse_int],
+    csr_col_ind: &[sys::aoclsparse_int],
+    csr_val: &[f64],
+    ell_col_ind: &mut [sys::aoclsparse_int],
+    ell_val: &mut [f64],
+    ell_width: usize,
+) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_dcsr2ell(
+            m as sys::aoclsparse_int, descr.as_raw(),
+            csr_row_ptr.as_ptr(), csr_col_ind.as_ptr(), csr_val.as_ptr(),
+            ell_col_ind.as_mut_ptr(), ell_val.as_mut_ptr(),
+            ell_width as sys::aoclsparse_int,
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// `f32` CSR → ELLPACK. See [`csr2ell_f64`].
+#[allow(clippy::too_many_arguments)]
+pub fn csr2ell_f32(
+    m: usize, descr: &MatDescr,
+    csr_row_ptr: &[sys::aoclsparse_int],
+    csr_col_ind: &[sys::aoclsparse_int],
+    csr_val: &[f32],
+    ell_col_ind: &mut [sys::aoclsparse_int],
+    ell_val: &mut [f32],
+    ell_width: usize,
+) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_scsr2ell(
+            m as sys::aoclsparse_int, descr.as_raw(),
+            csr_row_ptr.as_ptr(), csr_col_ind.as_ptr(), csr_val.as_ptr(),
+            ell_col_ind.as_mut_ptr(), ell_val.as_mut_ptr(),
+            ell_width as sys::aoclsparse_int,
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// Convert CSR → DIA (diagonal storage). `dia_offset` and `dia_val`
+/// must be pre-allocated; `dia_num_diag` is the number of distinct
+/// diagonals. (`f64`)
+#[allow(clippy::too_many_arguments)]
+pub fn csr2dia_f64(
+    m: usize, n: usize, descr: &MatDescr,
+    csr_row_ptr: &[sys::aoclsparse_int],
+    csr_col_ind: &[sys::aoclsparse_int],
+    csr_val: &[f64],
+    dia_num_diag: usize,
+    dia_offset: &mut [sys::aoclsparse_int],
+    dia_val: &mut [f64],
+) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_dcsr2dia(
+            m as sys::aoclsparse_int, n as sys::aoclsparse_int, descr.as_raw(),
+            csr_row_ptr.as_ptr(), csr_col_ind.as_ptr(), csr_val.as_ptr(),
+            dia_num_diag as sys::aoclsparse_int,
+            dia_offset.as_mut_ptr(),
+            dia_val.as_mut_ptr(),
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// `f32` CSR → DIA. See [`csr2dia_f64`].
+#[allow(clippy::too_many_arguments)]
+pub fn csr2dia_f32(
+    m: usize, n: usize, descr: &MatDescr,
+    csr_row_ptr: &[sys::aoclsparse_int],
+    csr_col_ind: &[sys::aoclsparse_int],
+    csr_val: &[f32],
+    dia_num_diag: usize,
+    dia_offset: &mut [sys::aoclsparse_int],
+    dia_val: &mut [f32],
+) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_scsr2dia(
+            m as sys::aoclsparse_int, n as sys::aoclsparse_int, descr.as_raw(),
+            csr_row_ptr.as_ptr(), csr_col_ind.as_ptr(), csr_val.as_ptr(),
+            dia_num_diag as sys::aoclsparse_int,
+            dia_offset.as_mut_ptr(),
+            dia_val.as_mut_ptr(),
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// Compute the number of nonzero blocks (`bsr_nnz`) and `bsr_row_ptr`
+/// for a CSR → BSR conversion with the given `block_dim`.
+pub fn csr2bsr_nnz(
+    m: usize, n: usize, descr: &MatDescr,
+    csr_row_ptr: &[sys::aoclsparse_int],
+    csr_col_ind: &[sys::aoclsparse_int],
+    block_dim: usize,
+    bsr_row_ptr: &mut [sys::aoclsparse_int],
+) -> Result<usize> {
+    let mut bsr_nnz: sys::aoclsparse_int = 0;
+    let status = unsafe {
+        sys::aoclsparse_csr2bsr_nnz(
+            m as sys::aoclsparse_int, n as sys::aoclsparse_int, descr.as_raw(),
+            csr_row_ptr.as_ptr(), csr_col_ind.as_ptr(),
+            block_dim as sys::aoclsparse_int,
+            bsr_row_ptr.as_mut_ptr(),
+            &mut bsr_nnz,
+        )
+    };
+    check_status("sparse", status)?;
+    Ok(bsr_nnz as usize)
+}
+
+/// Convert CSR → BSR. Run [`csr2bsr_nnz`] first to size the output. (`f64`)
+#[allow(clippy::too_many_arguments)]
+pub fn csr2bsr_f64(
+    m: usize, n: usize, descr: &MatDescr,
+    csr_val: &[f64],
+    csr_row_ptr: &[sys::aoclsparse_int],
+    csr_col_ind: &[sys::aoclsparse_int],
+    block_dim: usize,
+    bsr_val: &mut [f64],
+    bsr_row_ptr: &mut [sys::aoclsparse_int],
+    bsr_col_ind: &mut [sys::aoclsparse_int],
+) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_dcsr2bsr(
+            m as sys::aoclsparse_int, n as sys::aoclsparse_int, descr.as_raw(),
+            csr_val.as_ptr(), csr_row_ptr.as_ptr(), csr_col_ind.as_ptr(),
+            block_dim as sys::aoclsparse_int,
+            bsr_val.as_mut_ptr(),
+            bsr_row_ptr.as_mut_ptr(),
+            bsr_col_ind.as_mut_ptr(),
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// `f32` CSR → BSR. See [`csr2bsr_f64`].
+#[allow(clippy::too_many_arguments)]
+pub fn csr2bsr_f32(
+    m: usize, n: usize, descr: &MatDescr,
+    csr_val: &[f32],
+    csr_row_ptr: &[sys::aoclsparse_int],
+    csr_col_ind: &[sys::aoclsparse_int],
+    block_dim: usize,
+    bsr_val: &mut [f32],
+    bsr_row_ptr: &mut [sys::aoclsparse_int],
+    bsr_col_ind: &mut [sys::aoclsparse_int],
+) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_scsr2bsr(
+            m as sys::aoclsparse_int, n as sys::aoclsparse_int, descr.as_raw(),
+            csr_val.as_ptr(), csr_row_ptr.as_ptr(), csr_col_ind.as_ptr(),
+            block_dim as sys::aoclsparse_int,
+            bsr_val.as_mut_ptr(),
+            bsr_row_ptr.as_mut_ptr(),
+            bsr_col_ind.as_mut_ptr(),
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// Block-CSR mat-vec with a per-block bitmask. `masks[i]` is a u8 bit
+/// pattern indicating which rows of block `i` participate. `n_rows_blk`
+/// is the block height. (`f64`)
+#[allow(clippy::too_many_arguments)]
+pub fn blkcsrmv_f64(
+    op: Trans,
+    alpha: f64,
+    m: usize, n: usize,
+    masks: &[u8],
+    csr_val: &[f64],
+    csr_col_ind: &[sys::aoclsparse_int],
+    csr_row_ptr: &[sys::aoclsparse_int],
+    descr: &MatDescr,
+    x: &[f64],
+    beta: f64,
+    y: &mut [f64],
+    n_rows_blk: usize,
+) -> Result<()> {
+    let nnz = csr_val.len();
+    let status = unsafe {
+        sys::aoclsparse_dblkcsrmv(
+            trans_raw(op), &alpha,
+            m as sys::aoclsparse_int, n as sys::aoclsparse_int, nnz as sys::aoclsparse_int,
+            masks.as_ptr(),
+            csr_val.as_ptr(), csr_col_ind.as_ptr(), csr_row_ptr.as_ptr(),
+            descr.as_raw(),
+            x.as_ptr(), &beta, y.as_mut_ptr(),
+            n_rows_blk as sys::aoclsparse_int,
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// Symmetric Gauss-Seidel sweep `x := x + α · D⁻¹ (b − A·x)` against a
+/// symmetric matrix handle. (`f64`)
+pub fn symgs_f64(
+    op: Trans,
+    a: &SparseMatrix<f64>,
+    descr: &MatDescr,
+    alpha: f64,
+    b: &[f64],
+    x: &mut [f64],
+) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_dsymgs(
+            trans_raw(op), a.as_raw(), descr.as_raw(),
+            alpha, b.as_ptr(), x.as_mut_ptr(),
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// `f32` symmetric Gauss-Seidel. See [`symgs_f64`].
+pub fn symgs_f32(
+    op: Trans,
+    a: &SparseMatrix<f32>,
+    descr: &MatDescr,
+    alpha: f32,
+    b: &[f32],
+    x: &mut [f32],
+) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_ssymgs(
+            trans_raw(op), a.as_raw(), descr.as_raw(),
+            alpha, b.as_ptr(), x.as_mut_ptr(),
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// Fused Gauss-Seidel + matrix-vector: produces both the updated `x`
+/// and `y := A·x` in one pass. (`f64`)
+#[allow(clippy::too_many_arguments)]
+pub fn symgs_mv_f64(
+    op: Trans,
+    a: &SparseMatrix<f64>,
+    descr: &MatDescr,
+    alpha: f64,
+    b: &[f64],
+    x: &mut [f64],
+    y: &mut [f64],
+) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_dsymgs_mv(
+            trans_raw(op), a.as_raw(), descr.as_raw(),
+            alpha, b.as_ptr(), x.as_mut_ptr(), y.as_mut_ptr(),
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// `f32` fused symmetric Gauss-Seidel + mat-vec. See [`symgs_mv_f64`].
+#[allow(clippy::too_many_arguments)]
+pub fn symgs_mv_f32(
+    op: Trans,
+    a: &SparseMatrix<f32>,
+    descr: &MatDescr,
+    alpha: f32,
+    b: &[f32],
+    x: &mut [f32],
+    y: &mut [f32],
+) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_ssymgs_mv(
+            trans_raw(op), a.as_raw(), descr.as_raw(),
+            alpha, b.as_ptr(), x.as_mut_ptr(), y.as_mut_ptr(),
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// Set a single value at `(row_idx, col_idx)` in a CSR matrix handle.
+/// Element must already exist in the sparsity pattern. (`f64`)
+pub fn set_value_f64(
+    a: &mut SparseMatrix<f64>,
+    row_idx: i32,
+    col_idx: i32,
+    val: f64,
+) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_dset_value(
+            a.as_raw(),
+            row_idx as sys::aoclsparse_int,
+            col_idx as sys::aoclsparse_int,
+            val,
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// `f32` set_value. See [`set_value_f64`].
+pub fn set_value_f32(
+    a: &mut SparseMatrix<f32>,
+    row_idx: i32,
+    col_idx: i32,
+    val: f32,
+) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_sset_value(
+            a.as_raw(),
+            row_idx as sys::aoclsparse_int,
+            col_idx as sys::aoclsparse_int,
+            val,
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// Update the values array of a CSR handle without rebuilding.
+/// `len = nnz`; the new values must respect the existing sparsity
+/// pattern. (`f64`)
+pub fn update_values_f64(a: &mut SparseMatrix<f64>, val: &mut [f64]) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_dupdate_values(a.as_raw(), val.len() as sys::aoclsparse_int, val.as_mut_ptr())
+    };
+    check_status("sparse", status)
+}
+
+/// `f32` update_values. See [`update_values_f64`].
+pub fn update_values_f32(a: &mut SparseMatrix<f32>, val: &mut [f32]) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_supdate_values(a.as_raw(), val.len() as sys::aoclsparse_int, val.as_mut_ptr())
+    };
+    check_status("sparse", status)
+}
+
 /// Apply one ILU(0) smoothing step in-place to `x`, with right-hand side `b`.
 ///
 /// On the first call against a matrix this also factorizes; subsequent
