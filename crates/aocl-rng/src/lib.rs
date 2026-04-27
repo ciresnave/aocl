@@ -441,6 +441,124 @@ impl Rng {
         Ok(())
     }
 
+    /// Multivariate Student's-t distribution: `n` samples each drawn
+    /// with `df` degrees of freedom, mean `xmu` (length `m`), and
+    /// scale matrix `c` (`m × m`, leading dim `ldc`). `out` is laid
+    /// out as `n × m` with leading dim `ldx`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn multi_students_t(
+        &mut self,
+        m: RngInt, df: RngInt,
+        xmu: &mut [f64],
+        c: &mut [f64], ldc: RngInt,
+        out: &mut [f64], ldx: RngInt,
+    ) -> Result<()> {
+        let n_samples = if m > 0 { out.len() / m as usize } else { 0 };
+        if n_samples == 0 {
+            return Ok(());
+        }
+        let n_int: RngInt = n_samples.try_into().map_err(|_| {
+            Error::InvalidArgument(format!("multi_students_t: n={n_samples} exceeds rng_int_t range"))
+        })?;
+        let mut info: RngInt = 0;
+        unsafe {
+            sys::drandmultistudentst(
+                n_int, m, df,
+                xmu.as_mut_ptr(),
+                c.as_mut_ptr(), ldc,
+                self.state.as_mut_ptr(),
+                out.as_mut_ptr(), ldx,
+                &mut info,
+            );
+        }
+        if info != 0 {
+            return Err(Error::Status {
+                component: "rng",
+                code: info as i64,
+                message: format!("multi_students_t returned info={info}"),
+            });
+        }
+        Ok(())
+    }
+}
+
+// =========================================================================
+//   Blum-Blum-Shub cryptographic RNG (separate state from Rng)
+// =========================================================================
+
+/// Blum-Blum-Shub generator state. Use [`BlumBlumShub::new`] to
+/// initialise from prime factors `p` and `q` (each must be ≡ 3 mod 4)
+/// and seed `s`, then call [`BlumBlumShub::sample`] to fill a buffer.
+pub struct BlumBlumShub {
+    state: Box<[sys::rng_int_t; STATE_LEN]>,
+}
+
+impl BlumBlumShub {
+    /// Initialise BBS from prime factors `p` and `q` (must each be
+    /// `≡ 3 (mod 4)`) and a seed `s` coprime to `p · q`. `nbits`
+    /// controls how many bits per call to extract.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        nbits: RngInt,
+        p: &mut [RngInt],
+        q: &mut [RngInt],
+        s: &mut [RngInt],
+    ) -> Result<Self> {
+        let mut state = Box::new([0 as sys::rng_int_t; STATE_LEN]);
+        let mut lstate: RngInt = STATE_LEN as RngInt;
+        let mut info: RngInt = 0;
+        unsafe {
+            sys::drandinitializebbs(
+                nbits,
+                p.len() as RngInt, p.as_mut_ptr(),
+                q.len() as RngInt, q.as_mut_ptr(),
+                s.len() as RngInt, s.as_mut_ptr(),
+                state.as_mut_ptr(), &mut lstate,
+                &mut info,
+            );
+        }
+        if info != 0 {
+            return Err(Error::Status {
+                component: "rng",
+                code: info as i64,
+                message: format!("drandinitializebbs returned info={info}"),
+            });
+        }
+        Ok(BlumBlumShub { state })
+    }
+
+    /// Fill `out` with BBS-generated `f64` values in `[0, 1)`.
+    pub fn sample(&mut self, out: &mut [f64]) -> Result<()> {
+        let n = out.len();
+        if n == 0 {
+            return Ok(());
+        }
+        let n_int: RngInt = n.try_into().map_err(|_| {
+            Error::InvalidArgument(format!("BBS sample: n={n} exceeds rng_int_t range"))
+        })?;
+        let mut info: RngInt = 0;
+        unsafe {
+            sys::drandblumblumshub(n_int, self.state.as_mut_ptr(), out.as_mut_ptr(), &mut info);
+        }
+        if info != 0 {
+            return Err(Error::Status {
+                component: "rng",
+                code: info as i64,
+                message: format!("drandblumblumshub returned info={info}"),
+            });
+        }
+        Ok(())
+    }
+}
+
+impl std::fmt::Debug for BlumBlumShub {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BlumBlumShub").finish_non_exhaustive()
+    }
+}
+
+impl Rng {
+
     // ---- internal helpers ----------------------------------------------
 
     fn fill_real<F>(&mut self, op: &'static str, out: &mut [f64], call: F) -> Result<()>
