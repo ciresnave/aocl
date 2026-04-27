@@ -17,5 +17,6 @@ pub mod digest;
 pub mod drbg;
 pub mod ec;
 pub mod mac;
+pub mod rsa;
 
 pub use aocl_error::{Error, Result};
