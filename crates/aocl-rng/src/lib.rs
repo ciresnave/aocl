@@ -6,6 +6,11 @@
 use aocl_rng_sys as sys;
 pub use aocl_error::{Error, Result};
 
+/// Integer width used by AOCL-RNG for size parameters and integer-valued
+/// distribution outputs. `i32` in the default LP64 build, `i64` in the
+/// `ilp64` Cargo-feature build.
+pub type RngInt = sys::rng_int_t;
+
 /// Base generator algorithm. The numeric values follow the NAG-style
 /// `genid` convention used by AOCL-RNG.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -242,14 +247,14 @@ impl Rng {
     // ---- Discrete distributions (integer-valued) -----------------------
 
     /// Binomial(`m`, `p`).
-    pub fn binomial(&mut self, m: i32, p: f64, out: &mut [i32]) -> Result<()> {
+    pub fn binomial(&mut self, m: RngInt, p: f64, out: &mut [RngInt]) -> Result<()> {
         self.fill_int("binomial", out, |n, st, ptr, info| unsafe {
-            sys::drandbinomial(n, m as sys::rng_int_t, p, st, ptr, info)
+            sys::drandbinomial(n, m, p, st, ptr, info)
         })
     }
 
     /// Geometric distribution with success probability `p`.
-    pub fn geometric(&mut self, p: f64, out: &mut [i32]) -> Result<()> {
+    pub fn geometric(&mut self, p: f64, out: &mut [RngInt]) -> Result<()> {
         self.fill_int("geometric", out, |n, st, ptr, info| unsafe {
             sys::drandgeometric(n, p, st, ptr, info)
         })
@@ -257,28 +262,28 @@ impl Rng {
 
     /// Negative-binomial: number of failures before `m` successes, each
     /// with success probability `p`.
-    pub fn negative_binomial(&mut self, m: i32, p: f64, out: &mut [i32]) -> Result<()> {
+    pub fn negative_binomial(&mut self, m: RngInt, p: f64, out: &mut [RngInt]) -> Result<()> {
         self.fill_int("negative_binomial", out, |n, st, ptr, info| unsafe {
-            sys::drandnegativebinomial(n, m as sys::rng_int_t, p, st, ptr, info)
+            sys::drandnegativebinomial(n, m, p, st, ptr, info)
         })
     }
 
     /// Poisson with mean `lambda`.
-    pub fn poisson(&mut self, lambda: f64, out: &mut [i32]) -> Result<()> {
+    pub fn poisson(&mut self, lambda: f64, out: &mut [RngInt]) -> Result<()> {
         self.fill_int("poisson", out, |n, st, ptr, info| unsafe {
             sys::drandpoisson(n, lambda, st, ptr, info)
         })
     }
 
     /// Discrete uniform on the inclusive integer range `[a, b]`.
-    pub fn discrete_uniform(&mut self, a: i32, b: i32, out: &mut [i32]) -> Result<()> {
+    pub fn discrete_uniform(&mut self, a: RngInt, b: RngInt, out: &mut [RngInt]) -> Result<()> {
         if a > b {
             return Err(Error::InvalidArgument(format!(
                 "discrete_uniform: require a <= b, got a={a} b={b}"
             )));
         }
         self.fill_int("discrete_uniform", out, |n, st, ptr, info| unsafe {
-            sys::dranddiscreteuniform(n, a as sys::rng_int_t, b as sys::rng_int_t, st, ptr, info)
+            sys::dranddiscreteuniform(n, a, b, st, ptr, info)
         })
     }
 
@@ -307,7 +312,7 @@ impl Rng {
         Ok(())
     }
 
-    fn fill_int<F>(&mut self, op: &'static str, out: &mut [i32], call: F) -> Result<()>
+    fn fill_int<F>(&mut self, op: &'static str, out: &mut [RngInt], call: F) -> Result<()>
     where
         F: FnOnce(sys::rng_int_t, *mut sys::rng_int_t, *mut sys::rng_int_t, *mut sys::rng_int_t),
     {
@@ -318,15 +323,8 @@ impl Rng {
         let n_int: sys::rng_int_t = n.try_into().map_err(|_| {
             Error::InvalidArgument(format!("{op}: n={n} exceeds rng_int_t range"))
         })?;
-        // rng_int_t is i32 in LP64 (matches our i32 output buffer); in
-        // ILP64 it is i64 — that variant would need widening here.
         let mut info: sys::rng_int_t = 0;
-        call(
-            n_int,
-            self.state.as_mut_ptr(),
-            out.as_mut_ptr() as *mut sys::rng_int_t,
-            &mut info,
-        );
+        call(n_int, self.state.as_mut_ptr(), out.as_mut_ptr(), &mut info);
         if info != 0 {
             return Err(Error::Status {
                 component: "rng",
@@ -421,7 +419,7 @@ mod tests {
     #[test]
     fn poisson_non_negative_with_mean() {
         let mut rng = Rng::new(BaseGenerator::MersenneTwister, 29).unwrap();
-        let mut out = vec![0_i32; 5_000];
+        let mut out = vec![0 as RngInt; 5_000];
         rng.poisson(4.5, &mut out).unwrap();
         assert!(out.iter().all(|&x| x >= 0));
         let mu = out.iter().map(|&x| x as f64).sum::<f64>() / out.len() as f64;
@@ -431,7 +429,7 @@ mod tests {
     #[test]
     fn discrete_uniform_in_range() {
         let mut rng = Rng::new(BaseGenerator::MersenneTwister, 31).unwrap();
-        let mut out = vec![0_i32; 1_000];
+        let mut out = vec![0 as RngInt; 1_000];
         rng.discrete_uniform(10, 20, &mut out).unwrap();
         assert!(out.iter().all(|&x| (10..=20).contains(&x)));
     }
@@ -439,7 +437,7 @@ mod tests {
     #[test]
     fn binomial_in_range() {
         let mut rng = Rng::new(BaseGenerator::MersenneTwister, 41).unwrap();
-        let mut out = vec![0_i32; 2_000];
+        let mut out = vec![0 as RngInt; 2_000];
         rng.binomial(10, 0.3, &mut out).unwrap();
         assert!(out.iter().all(|&x| (0..=10).contains(&x)));
         // Mean = 10·0.3 = 3
