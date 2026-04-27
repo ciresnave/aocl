@@ -2,14 +2,25 @@
 
 #![warn(missing_debug_implementations)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
+// The Scalar / ComplexScalar traits in this crate are sealed (require
+// `aocl_types::sealed::Sealed`), so they cannot be implemented from
+// outside this crate. The raw-pointer arguments on a few trait methods
+// are FFI plumbing called only by the safe wrappers in this same
+// crate; clippy's lint targets the case where a downstream
+// implementer might deref a hostile pointer, which can't happen here.
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
+// Some `(IndexBase, Vec, Vec, Vec)` return tuples are intentional —
+// they mirror what the C API hands back. Aliasing them would obscure
+// rather than clarify the underlying data layout.
+#![allow(clippy::type_complexity)]
 
 use std::ffi::CString;
 use std::marker::PhantomData;
 
-use aocl_sparse_sys as sys;
 pub use aocl_error::{Error, Result};
-pub use aocl_types::{Complex32, Complex64, Trans};
+use aocl_sparse_sys as sys;
 use aocl_types::sealed::Sealed;
+pub use aocl_types::{Complex32, Complex64, Trans};
 
 pub mod complex;
 
@@ -151,10 +162,18 @@ impl MatType {
 
     fn from_raw(raw: sys::aoclsparse_matrix_type) -> Option<Self> {
         Some(match raw {
-            r if r == sys::aoclsparse_matrix_type__aoclsparse_matrix_type_general => MatType::General,
-            r if r == sys::aoclsparse_matrix_type__aoclsparse_matrix_type_symmetric => MatType::Symmetric,
-            r if r == sys::aoclsparse_matrix_type__aoclsparse_matrix_type_hermitian => MatType::Hermitian,
-            r if r == sys::aoclsparse_matrix_type__aoclsparse_matrix_type_triangular => MatType::Triangular,
+            r if r == sys::aoclsparse_matrix_type__aoclsparse_matrix_type_general => {
+                MatType::General
+            }
+            r if r == sys::aoclsparse_matrix_type__aoclsparse_matrix_type_symmetric => {
+                MatType::Symmetric
+            }
+            r if r == sys::aoclsparse_matrix_type__aoclsparse_matrix_type_hermitian => {
+                MatType::Hermitian
+            }
+            r if r == sys::aoclsparse_matrix_type__aoclsparse_matrix_type_triangular => {
+                MatType::Triangular
+            }
             _ => return None,
         })
     }
@@ -375,7 +394,15 @@ pub trait Scalar: Copy + Sized + Sealed {
     /// Pointers reference internal storage; do not modify or free them.
     fn export_csr(
         mat: sys::aoclsparse_matrix,
-    ) -> Result<(IndexBase, usize, usize, usize, *mut sys::aoclsparse_int, *mut sys::aoclsparse_int, *mut Self)>;
+    ) -> Result<(
+        IndexBase,
+        usize,
+        usize,
+        usize,
+        *mut sys::aoclsparse_int,
+        *mut sys::aoclsparse_int,
+        *mut Self,
+    )>;
 
     /// ILU(0) smoother: applies one ILU step in place to `x`.
     fn ilu_smoother(
@@ -621,11 +648,7 @@ macro_rules! impl_scalar {
                 check_status("sparse", status)
             }
 
-            fn gthr(
-                y: &[Self],
-                indx: &[sys::aoclsparse_int],
-                x: &mut [Self],
-            ) -> Result<()> {
+            fn gthr(y: &[Self], indx: &[sys::aoclsparse_int], x: &mut [Self]) -> Result<()> {
                 let status = unsafe {
                     sys::$gthr(
                         x.len() as sys::aoclsparse_int,
@@ -637,11 +660,7 @@ macro_rules! impl_scalar {
                 check_status("sparse", status)
             }
 
-            fn sctr(
-                x: &[Self],
-                indx: &[sys::aoclsparse_int],
-                y: &mut [Self],
-            ) -> Result<()> {
+            fn sctr(x: &[Self], indx: &[sys::aoclsparse_int], y: &mut [Self]) -> Result<()> {
                 let status = unsafe {
                     sys::$sctr(
                         x.len() as sys::aoclsparse_int,
@@ -668,13 +687,15 @@ macro_rules! impl_scalar {
                 if csr_row_ptr.len() != m + 1 {
                     return Err(Error::InvalidArgument(format!(
                         "csrsv: csr_row_ptr length {} != m+1 = {}",
-                        csr_row_ptr.len(), m + 1
+                        csr_row_ptr.len(),
+                        m + 1
                     )));
                 }
                 if x.len() < m || y.len() < m {
                     return Err(Error::InvalidArgument(format!(
                         "csrsv: x.len()={}, y.len()={}, m={m}",
-                        x.len(), y.len()
+                        x.len(),
+                        y.len()
                     )));
                 }
                 let status = unsafe {
@@ -774,10 +795,9 @@ macro_rules! impl_scalar {
                         ell_col_ind.len()
                     )));
                 }
-                let needed = m
-                    .checked_mul(ell_width)
-                    .ok_or_else(|| Error::InvalidArgument(
-                        "ellmv: m * ell_width overflows".into()))?;
+                let needed = m.checked_mul(ell_width).ok_or_else(|| {
+                    Error::InvalidArgument("ellmv: m * ell_width overflows".into())
+                })?;
                 if nnz < needed {
                     return Err(Error::InvalidArgument(format!(
                         "ellmv: ell_val length {nnz} < m*ell_width = {needed}"
@@ -790,7 +810,8 @@ macro_rules! impl_scalar {
                 if x.len() < x_len || y.len() < y_len {
                     return Err(Error::InvalidArgument(format!(
                         "ellmv: x.len()={}, y.len()={}, expected ({x_len}, {y_len})",
-                        x.len(), y.len()
+                        x.len(),
+                        y.len()
                     )));
                 }
                 let status = unsafe {
@@ -830,18 +851,19 @@ macro_rules! impl_scalar {
                 if bsr_row_ptr.len() != mb + 1 {
                     return Err(Error::InvalidArgument(format!(
                         "bsrmv: bsr_row_ptr length {} != mb+1 = {}",
-                        bsr_row_ptr.len(), mb + 1
+                        bsr_row_ptr.len(),
+                        mb + 1
                     )));
                 }
-                let block_area = bsr_dim
-                    .checked_mul(bsr_dim)
-                    .ok_or_else(|| Error::InvalidArgument(
-                        "bsrmv: bsr_dim*bsr_dim overflows".into()))?;
+                let block_area = bsr_dim.checked_mul(bsr_dim).ok_or_else(|| {
+                    Error::InvalidArgument("bsrmv: bsr_dim*bsr_dim overflows".into())
+                })?;
                 let nnzb = bsr_col_ind.len();
                 if bsr_val.len() < nnzb * block_area {
                     return Err(Error::InvalidArgument(format!(
                         "bsrmv: bsr_val length {} < nnzb*bsr_dim^2 = {}",
-                        bsr_val.len(), nnzb * block_area
+                        bsr_val.len(),
+                        nnzb * block_area
                     )));
                 }
                 let (x_len, y_len) = match op {
@@ -851,7 +873,8 @@ macro_rules! impl_scalar {
                 if x.len() < x_len || y.len() < y_len {
                     return Err(Error::InvalidArgument(format!(
                         "bsrmv: x.len()={}, y.len()={}, expected ({x_len}, {y_len})",
-                        x.len(), y.len()
+                        x.len(),
+                        y.len()
                     )));
                 }
                 let status = unsafe {
@@ -904,9 +927,15 @@ macro_rules! impl_scalar {
 
             fn export_csr(
                 mat: sys::aoclsparse_matrix,
-            ) -> Result<(IndexBase, usize, usize, usize,
-                         *mut sys::aoclsparse_int, *mut sys::aoclsparse_int, *mut Self)>
-            {
+            ) -> Result<(
+                IndexBase,
+                usize,
+                usize,
+                usize,
+                *mut sys::aoclsparse_int,
+                *mut sys::aoclsparse_int,
+                *mut Self,
+            )> {
                 let mut base: sys::aoclsparse_index_base = 0;
                 let mut m: sys::aoclsparse_int = 0;
                 let mut n: sys::aoclsparse_int = 0;
@@ -932,7 +961,15 @@ macro_rules! impl_scalar {
                 } else {
                     IndexBase::Zero
                 };
-                Ok((base_e, m as usize, n as usize, nnz as usize, row_ptr, col_ind, val))
+                Ok((
+                    base_e,
+                    m as usize,
+                    n as usize,
+                    nnz as usize,
+                    row_ptr,
+                    col_ind,
+                    val,
+                ))
             }
 
             fn ilu_smoother(
@@ -973,7 +1010,9 @@ macro_rules! impl_scalar {
             ) -> Result<()> {
                 if b.len() < n || x.len() < n {
                     return Err(Error::InvalidArgument(format!(
-                        "itsol_solve: b.len()={}, x.len()={}, n={n}", b.len(), x.len()
+                        "itsol_solve: b.len()={}, x.len()={}, n={n}",
+                        b.len(),
+                        x.len()
                     )));
                 }
                 let status = unsafe {
@@ -1049,7 +1088,8 @@ macro_rules! impl_scalar {
                 let status = unsafe {
                     sys::$spmmd(
                         trans_raw(op),
-                        a, b,
+                        a,
+                        b,
                         layout.raw(),
                         c.as_mut_ptr(),
                         ldc as sys::aoclsparse_int,
@@ -1080,7 +1120,8 @@ macro_rules! impl_scalar {
                         trans_raw(op_b),
                         descr_b.as_raw(),
                         b,
-                        alpha, beta,
+                        alpha,
+                        beta,
                         c.as_mut_ptr(),
                         layout.raw(),
                         ldc as sys::aoclsparse_int,
@@ -1114,7 +1155,8 @@ macro_rules! impl_scalar {
                         sor_type.raw(),
                         descr.as_raw(),
                         a,
-                        omega, alpha,
+                        omega,
+                        alpha,
                         x.as_mut_ptr(),
                         b.as_ptr(),
                     )
@@ -1209,10 +1251,17 @@ pub fn csrmv<T: Scalar>(
 ///
 /// `x` and `indx` must have equal length (`nnz`); each `indx[i]` indexes
 /// into `y`.
-pub fn axpyi<T: Scalar>(alpha: T, x: &[T], indx: &[sys::aoclsparse_int], y: &mut [T]) -> Result<()> {
+pub fn axpyi<T: Scalar>(
+    alpha: T,
+    x: &[T],
+    indx: &[sys::aoclsparse_int],
+    y: &mut [T],
+) -> Result<()> {
     if x.len() != indx.len() {
         return Err(Error::InvalidArgument(format!(
-            "axpyi: x.len()={}, indx.len()={}", x.len(), indx.len()
+            "axpyi: x.len()={}, indx.len()={}",
+            x.len(),
+            indx.len()
         )));
     }
     T::axpyi(alpha, x, indx, y)
@@ -1222,7 +1271,9 @@ pub fn axpyi<T: Scalar>(alpha: T, x: &[T], indx: &[sys::aoclsparse_int], y: &mut
 pub fn gthr<T: Scalar>(y: &[T], indx: &[sys::aoclsparse_int], x: &mut [T]) -> Result<()> {
     if x.len() != indx.len() {
         return Err(Error::InvalidArgument(format!(
-            "gthr: x.len()={}, indx.len()={}", x.len(), indx.len()
+            "gthr: x.len()={}, indx.len()={}",
+            x.len(),
+            indx.len()
         )));
     }
     T::gthr(y, indx, x)
@@ -1232,7 +1283,9 @@ pub fn gthr<T: Scalar>(y: &[T], indx: &[sys::aoclsparse_int], x: &mut [T]) -> Re
 pub fn sctr<T: Scalar>(x: &[T], indx: &[sys::aoclsparse_int], y: &mut [T]) -> Result<()> {
     if x.len() != indx.len() {
         return Err(Error::InvalidArgument(format!(
-            "sctr: x.len()={}, indx.len()={}", x.len(), indx.len()
+            "sctr: x.len()={}, indx.len()={}",
+            x.len(),
+            indx.len()
         )));
     }
     T::sctr(x, indx, y)
@@ -1296,7 +1349,8 @@ pub fn csr_to_dense<T: Scalar>(
     if csr_row_ptr.len() != m + 1 {
         return Err(Error::InvalidArgument(format!(
             "csr_to_dense: csr_row_ptr length {} != m+1 = {}",
-            csr_row_ptr.len(), m + 1
+            csr_row_ptr.len(),
+            m + 1
         )));
     }
     let needed = match order {
@@ -1305,7 +1359,8 @@ pub fn csr_to_dense<T: Scalar>(
     };
     if a.len() < needed {
         return Err(Error::InvalidArgument(format!(
-            "csr_to_dense: A length {} < needed {needed}", a.len()
+            "csr_to_dense: A length {} < needed {needed}",
+            a.len()
         )));
     }
     T::csr_to_dense(m, n, descr, csr_val, csr_row_ptr, csr_col_ind, a, ld, order)
@@ -1329,17 +1384,33 @@ pub fn csr_to_csc<T: Scalar>(
     if csr_col_ind.len() != nnz || csc_row_ind.len() < nnz || csc_val.len() < nnz {
         return Err(Error::InvalidArgument(format!(
             "csr_to_csc: nnz mismatch (csr_val={}, csr_col_ind={}, csc_row_ind={}, csc_val={})",
-            nnz, csr_col_ind.len(), csc_row_ind.len(), csc_val.len()
+            nnz,
+            csr_col_ind.len(),
+            csc_row_ind.len(),
+            csc_val.len()
         )));
     }
     if csr_row_ptr.len() != m + 1 || csc_col_ptr.len() != n + 1 {
         return Err(Error::InvalidArgument(format!(
             "csr_to_csc: row_ptr length {} != m+1 = {} or col_ptr length {} != n+1 = {}",
-            csr_row_ptr.len(), m + 1, csc_col_ptr.len(), n + 1
+            csr_row_ptr.len(),
+            m + 1,
+            csc_col_ptr.len(),
+            n + 1
         )));
     }
-    T::csr_to_csc(m, n, descr, base_csc, csr_row_ptr, csr_col_ind, csr_val,
-                  csc_row_ind, csc_col_ptr, csc_val)
+    T::csr_to_csc(
+        m,
+        n,
+        descr,
+        base_csc,
+        csr_row_ptr,
+        csr_col_ind,
+        csr_val,
+        csc_row_ind,
+        csc_col_ptr,
+        csc_val,
+    )
 }
 
 /// Index base for sparse-format index arrays.
@@ -1384,7 +1455,19 @@ pub fn ellmv<T: Scalar>(
     beta: T,
     y: &mut [T],
 ) -> Result<()> {
-    T::ellmv(op, alpha, m, n, ell_val, ell_col_ind, ell_width, descr, x, beta, y)
+    T::ellmv(
+        op,
+        alpha,
+        m,
+        n,
+        ell_val,
+        ell_col_ind,
+        ell_width,
+        descr,
+        x,
+        beta,
+        y,
+    )
 }
 
 /// Compute `y := α · op(A) · x + β · y` for a BSR-format `A`.
@@ -1408,8 +1491,20 @@ pub fn bsrmv<T: Scalar>(
     beta: T,
     y: &mut [T],
 ) -> Result<()> {
-    T::bsrmv(op, alpha, mb, nb, bsr_dim, bsr_val, bsr_col_ind, bsr_row_ptr,
-             descr, x, beta, y)
+    T::bsrmv(
+        op,
+        alpha,
+        mb,
+        nb,
+        bsr_dim,
+        bsr_val,
+        bsr_col_ind,
+        bsr_row_ptr,
+        descr,
+        x,
+        beta,
+        y,
+    )
 }
 
 // =========================================================================
@@ -1477,7 +1572,8 @@ impl<T: Scalar> SparseMatrix<T> {
         if row_ptr.len() != m + 1 {
             return Err(Error::InvalidArgument(format!(
                 "from_csr: row_ptr length {} != m+1 = {}",
-                row_ptr.len(), m + 1
+                row_ptr.len(),
+                m + 1
             )));
         }
         let nnz = val.len();
@@ -1501,7 +1597,11 @@ impl<T: Scalar> SparseMatrix<T> {
         )?;
         Ok(Self {
             raw,
-            storage: CsrStorage::Owned { _row_ptr: row_ptr, _col_ind: col_ind, _val: val },
+            storage: CsrStorage::Owned {
+                _row_ptr: row_ptr,
+                _col_ind: col_ind,
+                _val: val,
+            },
             base,
             m,
             n,
@@ -1556,7 +1656,14 @@ impl<T: Scalar> SparseMatrix<T> {
     }
 
     /// Read out the CSR contents as freshly allocated `Vec`s.
-    pub fn export_csr(&self) -> Result<(IndexBase, Vec<sys::aoclsparse_int>, Vec<sys::aoclsparse_int>, Vec<T>)> {
+    pub fn export_csr(
+        &self,
+    ) -> Result<(
+        IndexBase,
+        Vec<sys::aoclsparse_int>,
+        Vec<sys::aoclsparse_int>,
+        Vec<T>,
+    )> {
         let (base, m, _, nnz, row_ptr, col_ind, val) = T::export_csr(self.raw)?;
         let row_ptr = unsafe { std::slice::from_raw_parts(row_ptr, m + 1).to_vec() };
         let col_ind = unsafe { std::slice::from_raw_parts(col_ind, nnz).to_vec() };
@@ -1569,10 +1676,17 @@ impl<T: Scalar> SparseMatrix<T> {
 
     /// Hint that mat-vec (`mv`) will be called `expected_calls` times in
     /// the given orientation `op`.
-    pub fn set_mv_hint(&mut self, op: Trans, descr: &MatDescr, expected_calls: usize) -> Result<()> {
+    pub fn set_mv_hint(
+        &mut self,
+        op: Trans,
+        descr: &MatDescr,
+        expected_calls: usize,
+    ) -> Result<()> {
         let status = unsafe {
             sys::aoclsparse_set_mv_hint(
-                self.raw, trans_raw(op), descr.as_raw(),
+                self.raw,
+                trans_raw(op),
+                descr.as_raw(),
                 expected_calls as sys::aoclsparse_int,
             )
         };
@@ -1580,10 +1694,17 @@ impl<T: Scalar> SparseMatrix<T> {
     }
 
     /// Hint for triangular solve (`trsv`).
-    pub fn set_sv_hint(&mut self, op: Trans, descr: &MatDescr, expected_calls: usize) -> Result<()> {
+    pub fn set_sv_hint(
+        &mut self,
+        op: Trans,
+        descr: &MatDescr,
+        expected_calls: usize,
+    ) -> Result<()> {
         let status = unsafe {
             sys::aoclsparse_set_sv_hint(
-                self.raw, trans_raw(op), descr.as_raw(),
+                self.raw,
+                trans_raw(op),
+                descr.as_raw(),
                 expected_calls as sys::aoclsparse_int,
             )
         };
@@ -1591,10 +1712,17 @@ impl<T: Scalar> SparseMatrix<T> {
     }
 
     /// Hint for sparse-dense matrix multiply (`csrmm`).
-    pub fn set_mm_hint(&mut self, op: Trans, descr: &MatDescr, expected_calls: usize) -> Result<()> {
+    pub fn set_mm_hint(
+        &mut self,
+        op: Trans,
+        descr: &MatDescr,
+        expected_calls: usize,
+    ) -> Result<()> {
         let status = unsafe {
             sys::aoclsparse_set_mm_hint(
-                self.raw, trans_raw(op), descr.as_raw(),
+                self.raw,
+                trans_raw(op),
+                descr.as_raw(),
                 expected_calls as sys::aoclsparse_int,
             )
         };
@@ -1602,10 +1730,17 @@ impl<T: Scalar> SparseMatrix<T> {
     }
 
     /// Hint for sparse-sparse matrix multiply (`csr2m`).
-    pub fn set_2m_hint(&mut self, op: Trans, descr: &MatDescr, expected_calls: usize) -> Result<()> {
+    pub fn set_2m_hint(
+        &mut self,
+        op: Trans,
+        descr: &MatDescr,
+        expected_calls: usize,
+    ) -> Result<()> {
         let status = unsafe {
             sys::aoclsparse_set_2m_hint(
-                self.raw, trans_raw(op), descr.as_raw(),
+                self.raw,
+                trans_raw(op),
+                descr.as_raw(),
                 expected_calls as sys::aoclsparse_int,
             )
         };
@@ -1623,7 +1758,10 @@ impl<T: Scalar> SparseMatrix<T> {
     ) -> Result<()> {
         let status = unsafe {
             sys::aoclsparse_set_sm_hint(
-                self.raw, trans_raw(op), descr.as_raw(), order.raw(),
+                self.raw,
+                trans_raw(op),
+                descr.as_raw(),
+                order.raw(),
                 expected_calls as sys::aoclsparse_int,
             )
         };
@@ -1631,10 +1769,17 @@ impl<T: Scalar> SparseMatrix<T> {
     }
 
     /// Hint for ILU smoothing.
-    pub fn set_lu_smoother_hint(&mut self, op: Trans, descr: &MatDescr, expected_calls: usize) -> Result<()> {
+    pub fn set_lu_smoother_hint(
+        &mut self,
+        op: Trans,
+        descr: &MatDescr,
+        expected_calls: usize,
+    ) -> Result<()> {
         let status = unsafe {
             sys::aoclsparse_set_lu_smoother_hint(
-                self.raw, trans_raw(op), descr.as_raw(),
+                self.raw,
+                trans_raw(op),
+                descr.as_raw(),
                 expected_calls as sys::aoclsparse_int,
             )
         };
@@ -1642,10 +1787,17 @@ impl<T: Scalar> SparseMatrix<T> {
     }
 
     /// Hint for symmetric Gauss-Seidel.
-    pub fn set_symgs_hint(&mut self, op: Trans, descr: &MatDescr, expected_calls: usize) -> Result<()> {
+    pub fn set_symgs_hint(
+        &mut self,
+        op: Trans,
+        descr: &MatDescr,
+        expected_calls: usize,
+    ) -> Result<()> {
         let status = unsafe {
             sys::aoclsparse_set_symgs_hint(
-                self.raw, trans_raw(op), descr.as_raw(),
+                self.raw,
+                trans_raw(op),
+                descr.as_raw(),
                 expected_calls as sys::aoclsparse_int,
             )
         };
@@ -1653,10 +1805,17 @@ impl<T: Scalar> SparseMatrix<T> {
     }
 
     /// Hint for the fused dot-mat-vec routine.
-    pub fn set_dotmv_hint(&mut self, op: Trans, descr: &MatDescr, expected_calls: usize) -> Result<()> {
+    pub fn set_dotmv_hint(
+        &mut self,
+        op: Trans,
+        descr: &MatDescr,
+        expected_calls: usize,
+    ) -> Result<()> {
         let status = unsafe {
             sys::aoclsparse_set_dotmv_hint(
-                self.raw, trans_raw(op), descr.as_raw(),
+                self.raw,
+                trans_raw(op),
+                descr.as_raw(),
                 expected_calls as sys::aoclsparse_int,
             )
         };
@@ -1672,7 +1831,9 @@ impl<T: Scalar> SparseMatrix<T> {
     ) -> Result<()> {
         let status = unsafe {
             sys::aoclsparse_set_sorv_hint(
-                self.raw, descr.as_raw(), sor_type.raw(),
+                self.raw,
+                descr.as_raw(),
+                sor_type.raw(),
                 expected_calls as sys::aoclsparse_int,
             )
         };
@@ -1797,8 +1958,19 @@ pub fn sp2md<T: Scalar>(
     layout: Order,
     ldc: usize,
 ) -> Result<()> {
-    T::sp2md(op_a, descr_a, a.as_raw(), op_b, descr_b, b.as_raw(),
-             alpha, beta, c, layout, ldc)
+    T::sp2md(
+        op_a,
+        descr_a,
+        a.as_raw(),
+        op_b,
+        descr_b,
+        b.as_raw(),
+        alpha,
+        beta,
+        c,
+        layout,
+        ldc,
+    )
 }
 
 // =========================================================================
@@ -1813,9 +1985,7 @@ pub fn add<T: Scalar>(
     b: &SparseMatrix<T>,
 ) -> Result<SparseMatrix<T>> {
     let mut c_raw: sys::aoclsparse_matrix = std::ptr::null_mut();
-    let status = unsafe {
-        T::add_ffi(trans_raw(op), a.as_raw(), alpha, b.as_raw(), &mut c_raw)
-    };
+    let status = unsafe { T::add_ffi(trans_raw(op), a.as_raw(), alpha, b.as_raw(), &mut c_raw) };
     check_status("sparse", status)?;
     unsafe { SparseMatrix::from_library_owned(c_raw) }
 }
@@ -1835,7 +2005,10 @@ pub fn sorv<T: Scalar>(
     if x.len() < a.dims().1 || b.len() < a.dims().0 {
         return Err(Error::InvalidArgument(format!(
             "sorv: x.len()={}, b.len()={}, dims=({}, {})",
-            x.len(), b.len(), a.dims().0, a.dims().1
+            x.len(),
+            b.len(),
+            a.dims().0,
+            a.dims().1
         )));
     }
     T::sorv(sor_type, descr, a.as_raw(), omega, alpha, x, b)
@@ -1864,8 +2037,13 @@ pub fn mv_f64(
 ) -> Result<()> {
     let status = unsafe {
         sys::aoclsparse_dmv(
-            trans_raw(op), &alpha, a.as_raw(), descr.as_raw(),
-            x.as_ptr(), &beta, y.as_mut_ptr(),
+            trans_raw(op),
+            &alpha,
+            a.as_raw(),
+            descr.as_raw(),
+            x.as_ptr(),
+            &beta,
+            y.as_mut_ptr(),
         )
     };
     check_status("sparse", status)
@@ -1884,8 +2062,13 @@ pub fn mv_f32(
 ) -> Result<()> {
     let status = unsafe {
         sys::aoclsparse_smv(
-            trans_raw(op), &alpha, a.as_raw(), descr.as_raw(),
-            x.as_ptr(), &beta, y.as_mut_ptr(),
+            trans_raw(op),
+            &alpha,
+            a.as_raw(),
+            descr.as_raw(),
+            x.as_ptr(),
+            &beta,
+            y.as_mut_ptr(),
         )
     };
     check_status("sparse", status)
@@ -1904,8 +2087,12 @@ pub fn trsv_f64(
 ) -> Result<()> {
     let status = unsafe {
         sys::aoclsparse_dtrsv(
-            trans_raw(op), alpha, a.as_raw(), descr.as_raw(),
-            b.as_ptr(), x.as_mut_ptr(),
+            trans_raw(op),
+            alpha,
+            a.as_raw(),
+            descr.as_raw(),
+            b.as_ptr(),
+            x.as_mut_ptr(),
         )
     };
     check_status("sparse", status)
@@ -1922,8 +2109,12 @@ pub fn trsv_f32(
 ) -> Result<()> {
     let status = unsafe {
         sys::aoclsparse_strsv(
-            trans_raw(op), alpha, a.as_raw(), descr.as_raw(),
-            b.as_ptr(), x.as_mut_ptr(),
+            trans_raw(op),
+            alpha,
+            a.as_raw(),
+            descr.as_raw(),
+            b.as_ptr(),
+            x.as_mut_ptr(),
         )
     };
     check_status("sparse", status)
@@ -1946,10 +2137,16 @@ pub fn trsm_f64(
 ) -> Result<()> {
     let status = unsafe {
         sys::aoclsparse_dtrsm(
-            trans_raw(op), alpha, a.as_raw(), descr.as_raw(),
+            trans_raw(op),
+            alpha,
+            a.as_raw(),
+            descr.as_raw(),
             order.raw(),
-            b.as_ptr(), n_rhs as sys::aoclsparse_int, ldb as sys::aoclsparse_int,
-            x.as_mut_ptr(), ldx as sys::aoclsparse_int,
+            b.as_ptr(),
+            n_rhs as sys::aoclsparse_int,
+            ldb as sys::aoclsparse_int,
+            x.as_mut_ptr(),
+            ldx as sys::aoclsparse_int,
         )
     };
     check_status("sparse", status)
@@ -1971,10 +2168,16 @@ pub fn trsm_f32(
 ) -> Result<()> {
     let status = unsafe {
         sys::aoclsparse_strsm(
-            trans_raw(op), alpha, a.as_raw(), descr.as_raw(),
+            trans_raw(op),
+            alpha,
+            a.as_raw(),
+            descr.as_raw(),
             order.raw(),
-            b.as_ptr(), n_rhs as sys::aoclsparse_int, ldb as sys::aoclsparse_int,
-            x.as_mut_ptr(), ldx as sys::aoclsparse_int,
+            b.as_ptr(),
+            n_rhs as sys::aoclsparse_int,
+            ldb as sys::aoclsparse_int,
+            x.as_mut_ptr(),
+            ldx as sys::aoclsparse_int,
         )
     };
     check_status("sparse", status)
@@ -1985,13 +2188,17 @@ pub fn trsm_f32(
 pub fn doti_f64(x: &[f64], indx: &[sys::aoclsparse_int], y: &[f64]) -> Result<f64> {
     if x.len() != indx.len() {
         return Err(Error::InvalidArgument(format!(
-            "doti: x.len()={} != indx.len()={}", x.len(), indx.len()
+            "doti: x.len()={} != indx.len()={}",
+            x.len(),
+            indx.len()
         )));
     }
     let r = unsafe {
         sys::aoclsparse_ddoti(
             x.len() as sys::aoclsparse_int,
-            x.as_ptr(), indx.as_ptr(), y.as_ptr(),
+            x.as_ptr(),
+            indx.as_ptr(),
+            y.as_ptr(),
         )
     };
     Ok(r)
@@ -2001,13 +2208,17 @@ pub fn doti_f64(x: &[f64], indx: &[sys::aoclsparse_int], y: &[f64]) -> Result<f6
 pub fn doti_f32(x: &[f32], indx: &[sys::aoclsparse_int], y: &[f32]) -> Result<f32> {
     if x.len() != indx.len() {
         return Err(Error::InvalidArgument(format!(
-            "doti: x.len()={} != indx.len()={}", x.len(), indx.len()
+            "doti: x.len()={} != indx.len()={}",
+            x.len(),
+            indx.len()
         )));
     }
     let r = unsafe {
         sys::aoclsparse_sdoti(
             x.len() as sys::aoclsparse_int,
-            x.as_ptr(), indx.as_ptr(), y.as_ptr(),
+            x.as_ptr(),
+            indx.as_ptr(),
+            y.as_ptr(),
         )
     };
     Ok(r)
@@ -2023,7 +2234,8 @@ pub fn doti_f32(x: &[f32], indx: &[sys::aoclsparse_int], y: &[f32]) -> Result<f3
 /// `m * ell_width`. (`f64`)
 #[allow(clippy::too_many_arguments)]
 pub fn csr2ell_f64(
-    m: usize, descr: &MatDescr,
+    m: usize,
+    descr: &MatDescr,
     csr_row_ptr: &[sys::aoclsparse_int],
     csr_col_ind: &[sys::aoclsparse_int],
     csr_val: &[f64],
@@ -2033,9 +2245,13 @@ pub fn csr2ell_f64(
 ) -> Result<()> {
     let status = unsafe {
         sys::aoclsparse_dcsr2ell(
-            m as sys::aoclsparse_int, descr.as_raw(),
-            csr_row_ptr.as_ptr(), csr_col_ind.as_ptr(), csr_val.as_ptr(),
-            ell_col_ind.as_mut_ptr(), ell_val.as_mut_ptr(),
+            m as sys::aoclsparse_int,
+            descr.as_raw(),
+            csr_row_ptr.as_ptr(),
+            csr_col_ind.as_ptr(),
+            csr_val.as_ptr(),
+            ell_col_ind.as_mut_ptr(),
+            ell_val.as_mut_ptr(),
             ell_width as sys::aoclsparse_int,
         )
     };
@@ -2045,7 +2261,8 @@ pub fn csr2ell_f64(
 /// `f32` CSR → ELLPACK. See [`csr2ell_f64`].
 #[allow(clippy::too_many_arguments)]
 pub fn csr2ell_f32(
-    m: usize, descr: &MatDescr,
+    m: usize,
+    descr: &MatDescr,
     csr_row_ptr: &[sys::aoclsparse_int],
     csr_col_ind: &[sys::aoclsparse_int],
     csr_val: &[f32],
@@ -2055,9 +2272,13 @@ pub fn csr2ell_f32(
 ) -> Result<()> {
     let status = unsafe {
         sys::aoclsparse_scsr2ell(
-            m as sys::aoclsparse_int, descr.as_raw(),
-            csr_row_ptr.as_ptr(), csr_col_ind.as_ptr(), csr_val.as_ptr(),
-            ell_col_ind.as_mut_ptr(), ell_val.as_mut_ptr(),
+            m as sys::aoclsparse_int,
+            descr.as_raw(),
+            csr_row_ptr.as_ptr(),
+            csr_col_ind.as_ptr(),
+            csr_val.as_ptr(),
+            ell_col_ind.as_mut_ptr(),
+            ell_val.as_mut_ptr(),
             ell_width as sys::aoclsparse_int,
         )
     };
@@ -2069,7 +2290,9 @@ pub fn csr2ell_f32(
 /// diagonals. (`f64`)
 #[allow(clippy::too_many_arguments)]
 pub fn csr2dia_f64(
-    m: usize, n: usize, descr: &MatDescr,
+    m: usize,
+    n: usize,
+    descr: &MatDescr,
     csr_row_ptr: &[sys::aoclsparse_int],
     csr_col_ind: &[sys::aoclsparse_int],
     csr_val: &[f64],
@@ -2079,8 +2302,12 @@ pub fn csr2dia_f64(
 ) -> Result<()> {
     let status = unsafe {
         sys::aoclsparse_dcsr2dia(
-            m as sys::aoclsparse_int, n as sys::aoclsparse_int, descr.as_raw(),
-            csr_row_ptr.as_ptr(), csr_col_ind.as_ptr(), csr_val.as_ptr(),
+            m as sys::aoclsparse_int,
+            n as sys::aoclsparse_int,
+            descr.as_raw(),
+            csr_row_ptr.as_ptr(),
+            csr_col_ind.as_ptr(),
+            csr_val.as_ptr(),
             dia_num_diag as sys::aoclsparse_int,
             dia_offset.as_mut_ptr(),
             dia_val.as_mut_ptr(),
@@ -2092,7 +2319,9 @@ pub fn csr2dia_f64(
 /// `f32` CSR → DIA. See [`csr2dia_f64`].
 #[allow(clippy::too_many_arguments)]
 pub fn csr2dia_f32(
-    m: usize, n: usize, descr: &MatDescr,
+    m: usize,
+    n: usize,
+    descr: &MatDescr,
     csr_row_ptr: &[sys::aoclsparse_int],
     csr_col_ind: &[sys::aoclsparse_int],
     csr_val: &[f32],
@@ -2102,8 +2331,12 @@ pub fn csr2dia_f32(
 ) -> Result<()> {
     let status = unsafe {
         sys::aoclsparse_scsr2dia(
-            m as sys::aoclsparse_int, n as sys::aoclsparse_int, descr.as_raw(),
-            csr_row_ptr.as_ptr(), csr_col_ind.as_ptr(), csr_val.as_ptr(),
+            m as sys::aoclsparse_int,
+            n as sys::aoclsparse_int,
+            descr.as_raw(),
+            csr_row_ptr.as_ptr(),
+            csr_col_ind.as_ptr(),
+            csr_val.as_ptr(),
             dia_num_diag as sys::aoclsparse_int,
             dia_offset.as_mut_ptr(),
             dia_val.as_mut_ptr(),
@@ -2115,7 +2348,9 @@ pub fn csr2dia_f32(
 /// Compute the number of nonzero blocks (`bsr_nnz`) and `bsr_row_ptr`
 /// for a CSR → BSR conversion with the given `block_dim`.
 pub fn csr2bsr_nnz(
-    m: usize, n: usize, descr: &MatDescr,
+    m: usize,
+    n: usize,
+    descr: &MatDescr,
     csr_row_ptr: &[sys::aoclsparse_int],
     csr_col_ind: &[sys::aoclsparse_int],
     block_dim: usize,
@@ -2124,8 +2359,11 @@ pub fn csr2bsr_nnz(
     let mut bsr_nnz: sys::aoclsparse_int = 0;
     let status = unsafe {
         sys::aoclsparse_csr2bsr_nnz(
-            m as sys::aoclsparse_int, n as sys::aoclsparse_int, descr.as_raw(),
-            csr_row_ptr.as_ptr(), csr_col_ind.as_ptr(),
+            m as sys::aoclsparse_int,
+            n as sys::aoclsparse_int,
+            descr.as_raw(),
+            csr_row_ptr.as_ptr(),
+            csr_col_ind.as_ptr(),
             block_dim as sys::aoclsparse_int,
             bsr_row_ptr.as_mut_ptr(),
             &mut bsr_nnz,
@@ -2138,7 +2376,9 @@ pub fn csr2bsr_nnz(
 /// Convert CSR → BSR. Run [`csr2bsr_nnz`] first to size the output. (`f64`)
 #[allow(clippy::too_many_arguments)]
 pub fn csr2bsr_f64(
-    m: usize, n: usize, descr: &MatDescr,
+    m: usize,
+    n: usize,
+    descr: &MatDescr,
     csr_val: &[f64],
     csr_row_ptr: &[sys::aoclsparse_int],
     csr_col_ind: &[sys::aoclsparse_int],
@@ -2149,8 +2389,12 @@ pub fn csr2bsr_f64(
 ) -> Result<()> {
     let status = unsafe {
         sys::aoclsparse_dcsr2bsr(
-            m as sys::aoclsparse_int, n as sys::aoclsparse_int, descr.as_raw(),
-            csr_val.as_ptr(), csr_row_ptr.as_ptr(), csr_col_ind.as_ptr(),
+            m as sys::aoclsparse_int,
+            n as sys::aoclsparse_int,
+            descr.as_raw(),
+            csr_val.as_ptr(),
+            csr_row_ptr.as_ptr(),
+            csr_col_ind.as_ptr(),
             block_dim as sys::aoclsparse_int,
             bsr_val.as_mut_ptr(),
             bsr_row_ptr.as_mut_ptr(),
@@ -2163,7 +2407,9 @@ pub fn csr2bsr_f64(
 /// `f32` CSR → BSR. See [`csr2bsr_f64`].
 #[allow(clippy::too_many_arguments)]
 pub fn csr2bsr_f32(
-    m: usize, n: usize, descr: &MatDescr,
+    m: usize,
+    n: usize,
+    descr: &MatDescr,
     csr_val: &[f32],
     csr_row_ptr: &[sys::aoclsparse_int],
     csr_col_ind: &[sys::aoclsparse_int],
@@ -2174,8 +2420,12 @@ pub fn csr2bsr_f32(
 ) -> Result<()> {
     let status = unsafe {
         sys::aoclsparse_scsr2bsr(
-            m as sys::aoclsparse_int, n as sys::aoclsparse_int, descr.as_raw(),
-            csr_val.as_ptr(), csr_row_ptr.as_ptr(), csr_col_ind.as_ptr(),
+            m as sys::aoclsparse_int,
+            n as sys::aoclsparse_int,
+            descr.as_raw(),
+            csr_val.as_ptr(),
+            csr_row_ptr.as_ptr(),
+            csr_col_ind.as_ptr(),
             block_dim as sys::aoclsparse_int,
             bsr_val.as_mut_ptr(),
             bsr_row_ptr.as_mut_ptr(),
@@ -2192,7 +2442,8 @@ pub fn csr2bsr_f32(
 pub fn blkcsrmv_f64(
     op: Trans,
     alpha: f64,
-    m: usize, n: usize,
+    m: usize,
+    n: usize,
     masks: &[u8],
     csr_val: &[f64],
     csr_col_ind: &[sys::aoclsparse_int],
@@ -2206,12 +2457,19 @@ pub fn blkcsrmv_f64(
     let nnz = csr_val.len();
     let status = unsafe {
         sys::aoclsparse_dblkcsrmv(
-            trans_raw(op), &alpha,
-            m as sys::aoclsparse_int, n as sys::aoclsparse_int, nnz as sys::aoclsparse_int,
+            trans_raw(op),
+            &alpha,
+            m as sys::aoclsparse_int,
+            n as sys::aoclsparse_int,
+            nnz as sys::aoclsparse_int,
             masks.as_ptr(),
-            csr_val.as_ptr(), csr_col_ind.as_ptr(), csr_row_ptr.as_ptr(),
+            csr_val.as_ptr(),
+            csr_col_ind.as_ptr(),
+            csr_row_ptr.as_ptr(),
             descr.as_raw(),
-            x.as_ptr(), &beta, y.as_mut_ptr(),
+            x.as_ptr(),
+            &beta,
+            y.as_mut_ptr(),
             n_rows_blk as sys::aoclsparse_int,
         )
     };
@@ -2230,8 +2488,12 @@ pub fn symgs_f64(
 ) -> Result<()> {
     let status = unsafe {
         sys::aoclsparse_dsymgs(
-            trans_raw(op), a.as_raw(), descr.as_raw(),
-            alpha, b.as_ptr(), x.as_mut_ptr(),
+            trans_raw(op),
+            a.as_raw(),
+            descr.as_raw(),
+            alpha,
+            b.as_ptr(),
+            x.as_mut_ptr(),
         )
     };
     check_status("sparse", status)
@@ -2248,8 +2510,12 @@ pub fn symgs_f32(
 ) -> Result<()> {
     let status = unsafe {
         sys::aoclsparse_ssymgs(
-            trans_raw(op), a.as_raw(), descr.as_raw(),
-            alpha, b.as_ptr(), x.as_mut_ptr(),
+            trans_raw(op),
+            a.as_raw(),
+            descr.as_raw(),
+            alpha,
+            b.as_ptr(),
+            x.as_mut_ptr(),
         )
     };
     check_status("sparse", status)
@@ -2269,8 +2535,13 @@ pub fn symgs_mv_f64(
 ) -> Result<()> {
     let status = unsafe {
         sys::aoclsparse_dsymgs_mv(
-            trans_raw(op), a.as_raw(), descr.as_raw(),
-            alpha, b.as_ptr(), x.as_mut_ptr(), y.as_mut_ptr(),
+            trans_raw(op),
+            a.as_raw(),
+            descr.as_raw(),
+            alpha,
+            b.as_ptr(),
+            x.as_mut_ptr(),
+            y.as_mut_ptr(),
         )
     };
     check_status("sparse", status)
@@ -2289,8 +2560,13 @@ pub fn symgs_mv_f32(
 ) -> Result<()> {
     let status = unsafe {
         sys::aoclsparse_ssymgs_mv(
-            trans_raw(op), a.as_raw(), descr.as_raw(),
-            alpha, b.as_ptr(), x.as_mut_ptr(), y.as_mut_ptr(),
+            trans_raw(op),
+            a.as_raw(),
+            descr.as_raw(),
+            alpha,
+            b.as_ptr(),
+            x.as_mut_ptr(),
+            y.as_mut_ptr(),
         )
     };
     check_status("sparse", status)
@@ -2338,7 +2614,11 @@ pub fn set_value_f32(
 /// pattern. (`f64`)
 pub fn update_values_f64(a: &mut SparseMatrix<f64>, val: &mut [f64]) -> Result<()> {
     let status = unsafe {
-        sys::aoclsparse_dupdate_values(a.as_raw(), val.len() as sys::aoclsparse_int, val.as_mut_ptr())
+        sys::aoclsparse_dupdate_values(
+            a.as_raw(),
+            val.len() as sys::aoclsparse_int,
+            val.as_mut_ptr(),
+        )
     };
     check_status("sparse", status)
 }
@@ -2346,7 +2626,11 @@ pub fn update_values_f64(a: &mut SparseMatrix<f64>, val: &mut [f64]) -> Result<(
 /// `f32` update_values. See [`update_values_f64`].
 pub fn update_values_f32(a: &mut SparseMatrix<f32>, val: &mut [f32]) -> Result<()> {
     let status = unsafe {
-        sys::aoclsparse_supdate_values(a.as_raw(), val.len() as sys::aoclsparse_int, val.as_mut_ptr())
+        sys::aoclsparse_supdate_values(
+            a.as_raw(),
+            val.len() as sys::aoclsparse_int,
+            val.as_mut_ptr(),
+        )
     };
     check_status("sparse", status)
 }
@@ -2372,8 +2656,14 @@ pub fn dotmv_f64(
 ) -> Result<()> {
     let status = unsafe {
         sys::aoclsparse_ddotmv(
-            trans_raw(op), alpha, a.as_raw(), descr.as_raw(),
-            x.as_ptr(), beta, y.as_mut_ptr(), d,
+            trans_raw(op),
+            alpha,
+            a.as_raw(),
+            descr.as_raw(),
+            x.as_ptr(),
+            beta,
+            y.as_mut_ptr(),
+            d,
         )
     };
     check_status("sparse", status)
@@ -2393,8 +2683,14 @@ pub fn dotmv_f32(
 ) -> Result<()> {
     let status = unsafe {
         sys::aoclsparse_sdotmv(
-            trans_raw(op), alpha, a.as_raw(), descr.as_raw(),
-            x.as_ptr(), beta, y.as_mut_ptr(), d,
+            trans_raw(op),
+            alpha,
+            a.as_raw(),
+            descr.as_raw(),
+            x.as_ptr(),
+            beta,
+            y.as_mut_ptr(),
+            d,
         )
     };
     check_status("sparse", status)
@@ -2407,16 +2703,21 @@ pub fn dotmv_f32(
 pub fn syrkd_f64(
     op_a: Trans,
     a: &SparseMatrix<f64>,
-    alpha: f64, beta: f64,
+    alpha: f64,
+    beta: f64,
     c: &mut [f64],
     order_c: Order,
     ldc: usize,
 ) -> Result<()> {
     let status = unsafe {
         sys::aoclsparse_dsyrkd(
-            trans_raw(op_a), a.as_raw(),
-            alpha, beta,
-            c.as_mut_ptr(), order_c.raw(), ldc as sys::aoclsparse_int,
+            trans_raw(op_a),
+            a.as_raw(),
+            alpha,
+            beta,
+            c.as_mut_ptr(),
+            order_c.raw(),
+            ldc as sys::aoclsparse_int,
         )
     };
     check_status("sparse", status)
@@ -2427,16 +2728,21 @@ pub fn syrkd_f64(
 pub fn syrkd_f32(
     op_a: Trans,
     a: &SparseMatrix<f32>,
-    alpha: f32, beta: f32,
+    alpha: f32,
+    beta: f32,
     c: &mut [f32],
     order_c: Order,
     ldc: usize,
 ) -> Result<()> {
     let status = unsafe {
         sys::aoclsparse_ssyrkd(
-            trans_raw(op_a), a.as_raw(),
-            alpha, beta,
-            c.as_mut_ptr(), order_c.raw(), ldc as sys::aoclsparse_int,
+            trans_raw(op_a),
+            a.as_raw(),
+            alpha,
+            beta,
+            c.as_mut_ptr(),
+            order_c.raw(),
+            ldc as sys::aoclsparse_int,
         )
     };
     check_status("sparse", status)
@@ -2448,16 +2754,27 @@ pub fn syrkd_f32(
 pub fn syprd_f64(
     op_a: Trans,
     a: &SparseMatrix<f64>,
-    b: &[f64], order_b: Order, ldb: usize,
-    alpha: f64, beta: f64,
-    c: &mut [f64], order_c: Order, ldc: usize,
+    b: &[f64],
+    order_b: Order,
+    ldb: usize,
+    alpha: f64,
+    beta: f64,
+    c: &mut [f64],
+    order_c: Order,
+    ldc: usize,
 ) -> Result<()> {
     let status = unsafe {
         sys::aoclsparse_dsyprd(
-            trans_raw(op_a), a.as_raw(),
-            b.as_ptr(), order_b.raw(), ldb as sys::aoclsparse_int,
-            alpha, beta,
-            c.as_mut_ptr(), order_c.raw(), ldc as sys::aoclsparse_int,
+            trans_raw(op_a),
+            a.as_raw(),
+            b.as_ptr(),
+            order_b.raw(),
+            ldb as sys::aoclsparse_int,
+            alpha,
+            beta,
+            c.as_mut_ptr(),
+            order_c.raw(),
+            ldc as sys::aoclsparse_int,
         )
     };
     check_status("sparse", status)
@@ -2468,16 +2785,27 @@ pub fn syprd_f64(
 pub fn syprd_f32(
     op_a: Trans,
     a: &SparseMatrix<f32>,
-    b: &[f32], order_b: Order, ldb: usize,
-    alpha: f32, beta: f32,
-    c: &mut [f32], order_c: Order, ldc: usize,
+    b: &[f32],
+    order_b: Order,
+    ldb: usize,
+    alpha: f32,
+    beta: f32,
+    c: &mut [f32],
+    order_c: Order,
+    ldc: usize,
 ) -> Result<()> {
     let status = unsafe {
         sys::aoclsparse_ssyprd(
-            trans_raw(op_a), a.as_raw(),
-            b.as_ptr(), order_b.raw(), ldb as sys::aoclsparse_int,
-            alpha, beta,
-            c.as_mut_ptr(), order_c.raw(), ldc as sys::aoclsparse_int,
+            trans_raw(op_a),
+            a.as_raw(),
+            b.as_ptr(),
+            order_b.raw(),
+            ldb as sys::aoclsparse_int,
+            alpha,
+            beta,
+            c.as_mut_ptr(),
+            order_c.raw(),
+            ldc as sys::aoclsparse_int,
         )
     };
     check_status("sparse", status)
@@ -2486,13 +2814,20 @@ pub fn syprd_f32(
 /// Sparse rotation: simultaneously rotate `(x, y)` at indices `indx`
 /// by `(c, s)`. `x` is sparse with `indx` indices into the dense `y`. (`f64`)
 pub fn roti_f64(
-    x: &mut [f64], indx: &[sys::aoclsparse_int], y: &mut [f64], c: f64, s: f64,
+    x: &mut [f64],
+    indx: &[sys::aoclsparse_int],
+    y: &mut [f64],
+    c: f64,
+    s: f64,
 ) -> Result<()> {
     let status = unsafe {
         sys::aoclsparse_droti(
             x.len() as sys::aoclsparse_int,
-            x.as_mut_ptr(), indx.as_ptr(),
-            y.as_mut_ptr(), c, s,
+            x.as_mut_ptr(),
+            indx.as_ptr(),
+            y.as_mut_ptr(),
+            c,
+            s,
         )
     };
     check_status("sparse", status)
@@ -2500,13 +2835,20 @@ pub fn roti_f64(
 
 /// `f32` sparse rotation. See [`roti_f64`].
 pub fn roti_f32(
-    x: &mut [f32], indx: &[sys::aoclsparse_int], y: &mut [f32], c: f32, s: f32,
+    x: &mut [f32],
+    indx: &[sys::aoclsparse_int],
+    y: &mut [f32],
+    c: f32,
+    s: f32,
 ) -> Result<()> {
     let status = unsafe {
         sys::aoclsparse_sroti(
             x.len() as sys::aoclsparse_int,
-            x.as_mut_ptr(), indx.as_ptr(),
-            y.as_mut_ptr(), c, s,
+            x.as_mut_ptr(),
+            indx.as_ptr(),
+            y.as_mut_ptr(),
+            c,
+            s,
         )
     };
     check_status("sparse", status)
@@ -2517,7 +2859,8 @@ pub fn gthrs_f64(y: &[f64], x: &mut [f64], stride: i32) -> Result<()> {
     let status = unsafe {
         sys::aoclsparse_dgthrs(
             x.len() as sys::aoclsparse_int,
-            y.as_ptr(), x.as_mut_ptr(),
+            y.as_ptr(),
+            x.as_mut_ptr(),
             stride as sys::aoclsparse_int,
         )
     };
@@ -2526,7 +2869,12 @@ pub fn gthrs_f64(y: &[f64], x: &mut [f64], stride: i32) -> Result<()> {
 /// `f32` strided gather. See [`gthrs_f64`].
 pub fn gthrs_f32(y: &[f32], x: &mut [f32], stride: i32) -> Result<()> {
     let status = unsafe {
-        sys::aoclsparse_sgthrs(x.len() as sys::aoclsparse_int, y.as_ptr(), x.as_mut_ptr(), stride as sys::aoclsparse_int)
+        sys::aoclsparse_sgthrs(
+            x.len() as sys::aoclsparse_int,
+            y.as_ptr(),
+            x.as_mut_ptr(),
+            stride as sys::aoclsparse_int,
+        )
     };
     check_status("sparse", status)
 }
@@ -2534,14 +2882,24 @@ pub fn gthrs_f32(y: &[f32], x: &mut [f32], stride: i32) -> Result<()> {
 /// Strided sparse scatter: `y[i · stride] := x[i]`. (`f64`)
 pub fn sctrs_f64(x: &[f64], y: &mut [f64], stride: i32) -> Result<()> {
     let status = unsafe {
-        sys::aoclsparse_dsctrs(x.len() as sys::aoclsparse_int, x.as_ptr(), stride as sys::aoclsparse_int, y.as_mut_ptr())
+        sys::aoclsparse_dsctrs(
+            x.len() as sys::aoclsparse_int,
+            x.as_ptr(),
+            stride as sys::aoclsparse_int,
+            y.as_mut_ptr(),
+        )
     };
     check_status("sparse", status)
 }
 /// `f32` strided scatter. See [`sctrs_f64`].
 pub fn sctrs_f32(x: &[f32], y: &mut [f32], stride: i32) -> Result<()> {
     let status = unsafe {
-        sys::aoclsparse_ssctrs(x.len() as sys::aoclsparse_int, x.as_ptr(), stride as sys::aoclsparse_int, y.as_mut_ptr())
+        sys::aoclsparse_ssctrs(
+            x.len() as sys::aoclsparse_int,
+            x.as_ptr(),
+            stride as sys::aoclsparse_int,
+            y.as_mut_ptr(),
+        )
     };
     check_status("sparse", status)
 }
@@ -2550,14 +2908,24 @@ pub fn sctrs_f32(x: &[f32], y: &mut [f32], stride: i32) -> Result<()> {
 /// (`f64`)
 pub fn gthrz_f64(y: &mut [f64], indx: &[sys::aoclsparse_int], x: &mut [f64]) -> Result<()> {
     let status = unsafe {
-        sys::aoclsparse_dgthrz(x.len() as sys::aoclsparse_int, y.as_mut_ptr(), x.as_mut_ptr(), indx.as_ptr())
+        sys::aoclsparse_dgthrz(
+            x.len() as sys::aoclsparse_int,
+            y.as_mut_ptr(),
+            x.as_mut_ptr(),
+            indx.as_ptr(),
+        )
     };
     check_status("sparse", status)
 }
 /// `f32` gather-and-zero. See [`gthrz_f64`].
 pub fn gthrz_f32(y: &mut [f32], indx: &[sys::aoclsparse_int], x: &mut [f32]) -> Result<()> {
     let status = unsafe {
-        sys::aoclsparse_sgthrz(x.len() as sys::aoclsparse_int, y.as_mut_ptr(), x.as_mut_ptr(), indx.as_ptr())
+        sys::aoclsparse_sgthrz(
+            x.len() as sys::aoclsparse_int,
+            y.as_mut_ptr(),
+            x.as_mut_ptr(),
+            indx.as_ptr(),
+        )
     };
     check_status("sparse", status)
 }
@@ -2570,14 +2938,20 @@ pub fn sorv_f32(
     sor_type: SorType,
     descr: &MatDescr,
     a: &SparseMatrix<f32>,
-    omega: f32, alpha: f32,
-    x: &mut [f32], b: &[f32],
+    omega: f32,
+    alpha: f32,
+    x: &mut [f32],
+    b: &[f32],
 ) -> Result<()> {
     let status = unsafe {
         sys::aoclsparse_ssorv(
-            sor_type.raw(), descr.as_raw(), a.as_raw(),
-            omega, alpha,
-            x.as_mut_ptr(), b.as_ptr(),
+            sor_type.raw(),
+            descr.as_raw(),
+            a.as_raw(),
+            omega,
+            alpha,
+            x.as_mut_ptr(),
+            b.as_ptr(),
         )
     };
     check_status("sparse", status)
@@ -2592,7 +2966,9 @@ pub fn sorv_f32(
 #[allow(clippy::too_many_arguments)]
 pub fn create_tcsr_f64(
     base: IndexBase,
-    m: usize, n: usize, nnz: usize,
+    m: usize,
+    n: usize,
+    nnz: usize,
     row_ptr_l: &mut [sys::aoclsparse_int],
     row_ptr_u: &mut [sys::aoclsparse_int],
     col_idx_l: &mut [sys::aoclsparse_int],
@@ -2605,10 +2981,15 @@ pub fn create_tcsr_f64(
         sys::aoclsparse_create_dtcsr(
             &mut raw,
             base.raw(),
-            m as sys::aoclsparse_int, n as sys::aoclsparse_int, nnz as sys::aoclsparse_int,
-            row_ptr_l.as_mut_ptr(), row_ptr_u.as_mut_ptr(),
-            col_idx_l.as_mut_ptr(), col_idx_u.as_mut_ptr(),
-            val_l.as_mut_ptr(), val_u.as_mut_ptr(),
+            m as sys::aoclsparse_int,
+            n as sys::aoclsparse_int,
+            nnz as sys::aoclsparse_int,
+            row_ptr_l.as_mut_ptr(),
+            row_ptr_u.as_mut_ptr(),
+            col_idx_l.as_mut_ptr(),
+            col_idx_u.as_mut_ptr(),
+            val_l.as_mut_ptr(),
+            val_u.as_mut_ptr(),
         )
     };
     check_status("sparse", status)?;
@@ -2622,7 +3003,9 @@ pub fn create_tcsr_f64(
 #[allow(clippy::too_many_arguments)]
 pub fn create_tcsr_f32(
     base: IndexBase,
-    m: usize, n: usize, nnz: usize,
+    m: usize,
+    n: usize,
+    nnz: usize,
     row_ptr_l: &mut [sys::aoclsparse_int],
     row_ptr_u: &mut [sys::aoclsparse_int],
     col_idx_l: &mut [sys::aoclsparse_int],
@@ -2635,10 +3018,15 @@ pub fn create_tcsr_f32(
         sys::aoclsparse_create_stcsr(
             &mut raw,
             base.raw(),
-            m as sys::aoclsparse_int, n as sys::aoclsparse_int, nnz as sys::aoclsparse_int,
-            row_ptr_l.as_mut_ptr(), row_ptr_u.as_mut_ptr(),
-            col_idx_l.as_mut_ptr(), col_idx_u.as_mut_ptr(),
-            val_l.as_mut_ptr(), val_u.as_mut_ptr(),
+            m as sys::aoclsparse_int,
+            n as sys::aoclsparse_int,
+            nnz as sys::aoclsparse_int,
+            row_ptr_l.as_mut_ptr(),
+            row_ptr_u.as_mut_ptr(),
+            col_idx_l.as_mut_ptr(),
+            col_idx_u.as_mut_ptr(),
+            val_l.as_mut_ptr(),
+            val_u.as_mut_ptr(),
         )
     };
     check_status("sparse", status)?;
@@ -2656,7 +3044,9 @@ pub fn create_tcsr_f32(
 #[allow(clippy::too_many_arguments)]
 pub fn create_csc_f64(
     base: IndexBase,
-    m: usize, n: usize, nnz: usize,
+    m: usize,
+    n: usize,
+    nnz: usize,
     col_ptr: &mut [sys::aoclsparse_int],
     row_idx: &mut [sys::aoclsparse_int],
     val: &mut [f64],
@@ -2664,20 +3054,29 @@ pub fn create_csc_f64(
     let mut raw: sys::aoclsparse_matrix = std::ptr::null_mut();
     let status = unsafe {
         sys::aoclsparse_create_dcsc(
-            &mut raw, base.raw(),
-            m as sys::aoclsparse_int, n as sys::aoclsparse_int, nnz as sys::aoclsparse_int,
-            col_ptr.as_mut_ptr(), row_idx.as_mut_ptr(), val.as_mut_ptr(),
+            &mut raw,
+            base.raw(),
+            m as sys::aoclsparse_int,
+            n as sys::aoclsparse_int,
+            nnz as sys::aoclsparse_int,
+            col_ptr.as_mut_ptr(),
+            row_idx.as_mut_ptr(),
+            val.as_mut_ptr(),
         )
     };
     check_status("sparse", status)?;
-    if raw.is_null() { return Err(Error::AllocationFailed("sparse")); }
+    if raw.is_null() {
+        return Err(Error::AllocationFailed("sparse"));
+    }
     Ok(raw)
 }
 /// `f32` CSC creator. See [`create_csc_f64`].
 #[allow(clippy::too_many_arguments)]
 pub fn create_csc_f32(
     base: IndexBase,
-    m: usize, n: usize, nnz: usize,
+    m: usize,
+    n: usize,
+    nnz: usize,
     col_ptr: &mut [sys::aoclsparse_int],
     row_idx: &mut [sys::aoclsparse_int],
     val: &mut [f32],
@@ -2685,13 +3084,20 @@ pub fn create_csc_f32(
     let mut raw: sys::aoclsparse_matrix = std::ptr::null_mut();
     let status = unsafe {
         sys::aoclsparse_create_scsc(
-            &mut raw, base.raw(),
-            m as sys::aoclsparse_int, n as sys::aoclsparse_int, nnz as sys::aoclsparse_int,
-            col_ptr.as_mut_ptr(), row_idx.as_mut_ptr(), val.as_mut_ptr(),
+            &mut raw,
+            base.raw(),
+            m as sys::aoclsparse_int,
+            n as sys::aoclsparse_int,
+            nnz as sys::aoclsparse_int,
+            col_ptr.as_mut_ptr(),
+            row_idx.as_mut_ptr(),
+            val.as_mut_ptr(),
         )
     };
     check_status("sparse", status)?;
-    if raw.is_null() { return Err(Error::AllocationFailed("sparse")); }
+    if raw.is_null() {
+        return Err(Error::AllocationFailed("sparse"));
+    }
     Ok(raw)
 }
 
@@ -2708,7 +3114,9 @@ impl MemoryUsage {
     fn raw(self) -> sys::aoclsparse_memory_usage {
         match self {
             MemoryUsage::Minimal => sys::aoclsparse_memory_usage__aoclsparse_memory_usage_minimal,
-            MemoryUsage::Unrestricted => sys::aoclsparse_memory_usage__aoclsparse_memory_usage_unrestricted,
+            MemoryUsage::Unrestricted => {
+                sys::aoclsparse_memory_usage__aoclsparse_memory_usage_unrestricted
+            }
         }
     }
 }
@@ -2734,7 +3142,10 @@ pub fn ilu_smoother<T: Scalar>(
     if x.len() < a.n || b.len() < a.m {
         return Err(Error::InvalidArgument(format!(
             "ilu_smoother: x.len()={}, b.len()={}, dims=({}, {})",
-            x.len(), b.len(), a.m, a.n
+            x.len(),
+            b.len(),
+            a.m,
+            a.n
         )));
     }
     T::ilu_smoother(op, a.raw, descr, x, b)
@@ -2762,7 +3173,10 @@ impl<T: Scalar> IterSolver<T> {
         if handle.is_null() {
             return Err(Error::AllocationFailed("sparse"));
         }
-        Ok(Self { handle, _marker: PhantomData })
+        Ok(Self {
+            handle,
+            _marker: PhantomData,
+        })
     }
 
     /// Set a string-keyed solver option. See AOCL-Sparse's
@@ -2797,7 +3211,8 @@ impl<T: Scalar> IterSolver<T> {
         let n = mat.n;
         if mat.m != mat.n {
             return Err(Error::InvalidArgument(format!(
-                "iterative solve requires square matrix; got ({}, {})", mat.m, mat.n
+                "iterative solve requires square matrix; got ({}, {})",
+                mat.m, mat.n
             )));
         }
         let mut rinfo: Box<[T; 100]> = Box::new([T::default(); 100]);
@@ -2918,7 +3333,20 @@ mod tests {
         let descr = MatDescr::new().unwrap();
         let b: [f64; 6] = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
         let mut c = [0.0_f64; 6];
-        csrmm(Trans::No, 1.0, &a, &descr, Order::RowMajor, &b, 3, 3, 0.0, &mut c, 3).unwrap();
+        csrmm(
+            Trans::No,
+            1.0,
+            &a,
+            &descr,
+            Order::RowMajor,
+            &b,
+            3,
+            3,
+            0.0,
+            &mut c,
+            3,
+        )
+        .unwrap();
         for (got, want) in c.iter().zip(b.iter()) {
             assert!((got - want).abs() < 1e-12, "got {got}, want {want}");
         }
@@ -2935,7 +3363,7 @@ mod tests {
         let mut c = [0.0_f64; 9];
         spmmd(Trans::No, &a, &b, Order::RowMajor, &mut c, 3).unwrap();
         // Row-major identity matrix.
-        let expected = [1.0, 0.0, 0.0,  0.0, 1.0, 0.0,  0.0, 0.0, 1.0];
+        let expected = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
         for (got, want) in c.iter().zip(expected.iter()) {
             assert!((got - want).abs() < 1e-12, "got {got}, want {want}");
         }
@@ -2950,7 +3378,20 @@ mod tests {
         let descr = MatDescr::new().unwrap();
         let x = [10.0_f64, 20.0, 30.0];
         let mut y = [0.0_f64; 2];
-        ellmv(Trans::No, 1.0_f64, 2, 3, &val, &col, 2, &descr, &x, 0.0, &mut y).unwrap();
+        ellmv(
+            Trans::No,
+            1.0_f64,
+            2,
+            3,
+            &val,
+            &col,
+            2,
+            &descr,
+            &x,
+            0.0,
+            &mut y,
+        )
+        .unwrap();
         // y[0] = 1*10 + 2*30 = 70; y[1] = 3*10 + 4*20 = 110
         assert!((y[0] - 70.0).abs() < 1e-12, "got {}", y[0]);
         assert!((y[1] - 110.0).abs() < 1e-12, "got {}", y[1]);
@@ -2961,13 +3402,27 @@ mod tests {
         // 4×4 matrix laid out as 2×2 blocks of size 2×2:
         // block (0,0) = [[1,0],[0,1]] (identity), block (1,1) = [[2,0],[0,2]]
         // bsr_dim = 2, mb = 2, nb = 2, nnzb = 2
-        let val: [f64; 8] = [1.0, 0.0, 0.0, 1.0,  2.0, 0.0, 0.0, 2.0];
+        let val: [f64; 8] = [1.0, 0.0, 0.0, 1.0, 2.0, 0.0, 0.0, 2.0];
         let col: [sys::aoclsparse_int; 2] = [0, 1];
         let rp: [sys::aoclsparse_int; 3] = [0, 1, 2];
         let descr = MatDescr::new().unwrap();
         let x = [1.0_f64, 2.0, 3.0, 4.0];
         let mut y = [0.0_f64; 4];
-        bsrmv(Trans::No, 1.0_f64, 2, 2, 2, &val, &col, &rp, &descr, &x, 0.0, &mut y).unwrap();
+        bsrmv(
+            Trans::No,
+            1.0_f64,
+            2,
+            2,
+            2,
+            &val,
+            &col,
+            &rp,
+            &descr,
+            &x,
+            0.0,
+            &mut y,
+        )
+        .unwrap();
         // y = diag([1,1,2,2]) * x = [1, 2, 6, 8]
         assert!((y[0] - 1.0).abs() < 1e-12);
         assert!((y[1] - 2.0).abs() < 1e-12);
@@ -3001,8 +3456,16 @@ mod tests {
         let a = SparseMatrix::<f64>::from_csr(IndexBase::Zero, 3, 3, &rp, &col, &val).unwrap();
         let b = SparseMatrix::<f64>::from_csr(IndexBase::Zero, 3, 3, &rp, &col, &val).unwrap();
         let descr = MatDescr::new().unwrap();
-        let c = csr2m(Trans::No, &descr, &a, Trans::No, &descr, &b,
-                      Stage::FullComputation).unwrap();
+        let c = csr2m(
+            Trans::No,
+            &descr,
+            &a,
+            Trans::No,
+            &descr,
+            &b,
+            Stage::FullComputation,
+        )
+        .unwrap();
         assert_eq!(c.dims(), (3, 3));
         let (_, rp_c, col_c, val_c) = c.export_csr().unwrap();
         assert_eq!(rp_c, [0, 1, 2, 3]);
@@ -3048,7 +3511,18 @@ mod tests {
         let rp: [sys::aoclsparse_int; 3] = [0, 2, 3];
         let descr = MatDescr::new().unwrap();
         let mut dense = [0.0_f64; 6];
-        csr_to_dense::<f64>(2, 3, &descr, &val, &rp, &col, &mut dense, 3, Order::RowMajor).unwrap();
+        csr_to_dense::<f64>(
+            2,
+            3,
+            &descr,
+            &val,
+            &rp,
+            &col,
+            &mut dense,
+            3,
+            Order::RowMajor,
+        )
+        .unwrap();
         assert_eq!(dense, [1.0, 0.0, 2.0, 0.0, 3.0, 0.0]);
     }
 }

@@ -13,3 +13,7 @@ keywords = ["aocl", "amd", "build", "bindgen"]
 
 [dependencies]
 bindgen.workspace = true
+
+[package.metadata.docs.rs]
+default-target = "x86_64-unknown-linux-gnu"
+rustdoc-args = ["--cfg", "docsrs"]

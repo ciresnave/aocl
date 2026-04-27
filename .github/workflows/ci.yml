@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  # Compile-only check on Linux. We set DOCS_RS=1 so each *-sys crate's
+  # build.rs short-circuits past the AOCL-native-libs requirement and
+  # writes empty bindings. CI scope is limited to the layers that
+  # COMPILE without a real AOCL install:
+  #
+  #   - The foundation crates (aocl-build / aocl-error / aocl-types),
+  #     which have no native deps at all.
+  #   - The *-sys FFI crates, which produce empty bindings under
+  #     DOCS_RS=1 (no FFI bodies to compile against).
+  #
+  # The safe wrapper crates and the umbrella crates DO need real
+  # bindings to compile, so they're excluded — they get tested by the
+  # contributor running `cargo test` locally with AOCL installed.
+  build-linux-stub:
+    name: Build (Linux, DOCS_RS stub — foundation + *-sys)
+    runs-on: ubuntu-latest
+    env:
+      DOCS_RS: 1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install libclang
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cargo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: cargo build (foundation + *-sys)
+        run: |
+          cargo build \
+            -p aocl-build -p aocl-error -p aocl-types \
+            -p aocl-blas-sys -p aocl-lapack-sys -p aocl-fft-sys \
+            -p aocl-math-sys -p aocl-sparse-sys -p aocl-rng-sys \
+            -p aocl-securerng-sys -p aocl-utils-sys \
+            -p aocl-compression-sys -p aocl-crypto-sys \
+            -p aocl-data-analytics-sys -p aocl-scalapack-sys
+
+  # Same compile-only check on Windows. Verifies that nothing in the
+  # workspace assumes Linux-only paths or syntax.
+  build-windows-stub:
+    name: Build (Windows, DOCS_RS stub — foundation + *-sys)
+    runs-on: windows-latest
+    env:
+      DOCS_RS: 1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install LLVM
+        run: choco install llvm --no-progress -y
+      - name: LIBCLANG_PATH
+        run: echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+      - uses: dtolnay/rust-toolchain@stable
+      - name: cargo build (foundation + *-sys)
+        run: |
+          cargo build `
+            -p aocl-build -p aocl-error -p aocl-types `
+            -p aocl-blas-sys -p aocl-lapack-sys -p aocl-fft-sys `
+            -p aocl-math-sys -p aocl-sparse-sys -p aocl-rng-sys `
+            -p aocl-securerng-sys -p aocl-utils-sys `
+            -p aocl-compression-sys -p aocl-crypto-sys `
+            -p aocl-data-analytics-sys -p aocl-scalapack-sys
+
+  # Clippy correctness gate on Linux against the foundation + *-sys
+  # set. Catches lint regressions in code paths that don't depend on
+  # the native libs.
+  clippy:
+    name: Clippy (Linux, DOCS_RS stub)
+    runs-on: ubuntu-latest
+    env:
+      DOCS_RS: 1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install libclang
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: cargo clippy
+        run: |
+          cargo clippy \
+            -p aocl-build -p aocl-error -p aocl-types \
+            -p aocl-blas-sys -p aocl-lapack-sys -p aocl-fft-sys \
+            -p aocl-math-sys -p aocl-sparse-sys -p aocl-rng-sys \
+            -p aocl-securerng-sys -p aocl-utils-sys \
+            -p aocl-compression-sys -p aocl-crypto-sys \
+            -p aocl-data-analytics-sys -p aocl-scalapack-sys \
+            -- -D warnings
+
+  # Format gate covers every crate including the safe wrappers; rustfmt
+  # only needs to parse the source, not link against AOCL.
+  fmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: cargo fmt --check
+        run: cargo fmt --all -- --check

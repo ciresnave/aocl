@@ -22,3 +22,7 @@ libc.workspace = true
 
 [build-dependencies]
 aocl-build = { version = "0.1", path = "../aocl-build" }
+
+[package.metadata.docs.rs]
+default-target = "x86_64-unknown-linux-gnu"
+rustdoc-args = ["--cfg", "docsrs"]

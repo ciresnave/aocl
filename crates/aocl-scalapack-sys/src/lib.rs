@@ -44,12 +44,16 @@ extern "C" {
     /// Initialise an `nprow × npcol` BLACS process grid in `*context`.
     /// `order` is `b'R'` (row-major) or `b'C'` (column-major) for how
     /// MPI ranks are laid out across the grid.
-    pub fn Cblacs_gridinit(context: *mut c_int, order: *const c_char,
-                           nprow: c_int, npcol: c_int);
+    pub fn Cblacs_gridinit(context: *mut c_int, order: *const c_char, nprow: c_int, npcol: c_int);
 
     /// Read back the grid shape and this process's coordinates.
-    pub fn Cblacs_gridinfo(context: c_int, nprow: *mut c_int, npcol: *mut c_int,
-                           myprow: *mut c_int, mypcol: *mut c_int);
+    pub fn Cblacs_gridinfo(
+        context: c_int,
+        nprow: *mut c_int,
+        npcol: *mut c_int,
+        myprow: *mut c_int,
+        mypcol: *mut c_int,
+    );
 
     /// Release the grid context.
     pub fn Cblacs_gridexit(context: c_int);
@@ -66,11 +70,11 @@ extern "C" {
 //   Distributed-matrix descriptor (Fortran)
 // =========================================================================
 
-/// Initialise a 9-element ScaLAPACK descriptor `desc` describing an
-/// `m × n` block-cyclically distributed matrix with block size
-/// `mb × nb`, root process at `(rsrc, csrc)`, attached to the BLACS
-/// context `ctxt`, with local leading dimension `lld`. On exit `info`
-/// is non-zero on error.
+// Initialise a 9-element ScaLAPACK descriptor `desc` describing an
+// `m × n` block-cyclically distributed matrix with block size
+// `mb × nb`, root process at `(rsrc, csrc)`, attached to the BLACS
+// context `ctxt`, with local leading dimension `lld`. On exit `info`
+// is non-zero on error.
 extern "C" {
     pub fn descinit_(
         desc: *mut c_int,
@@ -86,10 +90,10 @@ extern "C" {
     );
 }
 
-/// Compute the local row count for a block-cyclically distributed array
-/// with `n` global rows split into `nb`-row blocks across `nprocs`
-/// processes, with this process's row coordinate `iproc` and root at
-/// `isrcproc`.
+// Compute the local row count for a block-cyclically distributed array
+// with `n` global rows split into `nb`-row blocks across `nprocs`
+// processes, with this process's row coordinate `iproc` and root at
+// `isrcproc`.
 extern "C" {
     pub fn numroc_(
         n: *const c_int,
@@ -104,207 +108,349 @@ extern "C" {
 //   ScaLAPACK Fortran routines (trailing underscore, all-by-pointer)
 // =========================================================================
 
-/// Distributed general solve `A·X = B` for double-precision `A`.
-/// `n`, `nrhs` are global problem sizes. `a` and `b` are local
-/// fragments described by `desca` and `descb`. `ipiv` holds local
-/// pivots. On exit `info = 0` on success.
+// Distributed general solve `A·X = B` for double-precision `A`.
+// `n`, `nrhs` are global problem sizes. `a` and `b` are local
+// fragments described by `desca` and `descb`. `ipiv` holds local
+// pivots. On exit `info = 0` on success.
 extern "C" {
     pub fn psgesv_(
-        n: *const c_int, nrhs: *const c_int,
-        a: *mut f32, ia: *const c_int, ja: *const c_int, desca: *const c_int,
+        n: *const c_int,
+        nrhs: *const c_int,
+        a: *mut f32,
+        ia: *const c_int,
+        ja: *const c_int,
+        desca: *const c_int,
         ipiv: *mut c_int,
-        b: *mut f32, ib: *const c_int, jb: *const c_int, descb: *const c_int,
+        b: *mut f32,
+        ib: *const c_int,
+        jb: *const c_int,
+        descb: *const c_int,
         info: *mut c_int,
     );
 
     pub fn pdgesv_(
-        n: *const c_int, nrhs: *const c_int,
-        a: *mut f64, ia: *const c_int, ja: *const c_int, desca: *const c_int,
+        n: *const c_int,
+        nrhs: *const c_int,
+        a: *mut f64,
+        ia: *const c_int,
+        ja: *const c_int,
+        desca: *const c_int,
         ipiv: *mut c_int,
-        b: *mut f64, ib: *const c_int, jb: *const c_int, descb: *const c_int,
+        b: *mut f64,
+        ib: *const c_int,
+        jb: *const c_int,
+        descb: *const c_int,
         info: *mut c_int,
     );
 
     /// Complex (single) variant. `a` and `b` are pointers to `[f32; 2]`
     /// pairs of `(re, im)`.
     pub fn pcgesv_(
-        n: *const c_int, nrhs: *const c_int,
-        a: *mut [f32; 2], ia: *const c_int, ja: *const c_int, desca: *const c_int,
+        n: *const c_int,
+        nrhs: *const c_int,
+        a: *mut [f32; 2],
+        ia: *const c_int,
+        ja: *const c_int,
+        desca: *const c_int,
         ipiv: *mut c_int,
-        b: *mut [f32; 2], ib: *const c_int, jb: *const c_int, descb: *const c_int,
+        b: *mut [f32; 2],
+        ib: *const c_int,
+        jb: *const c_int,
+        descb: *const c_int,
         info: *mut c_int,
     );
 
     pub fn pzgesv_(
-        n: *const c_int, nrhs: *const c_int,
-        a: *mut [f64; 2], ia: *const c_int, ja: *const c_int, desca: *const c_int,
+        n: *const c_int,
+        nrhs: *const c_int,
+        a: *mut [f64; 2],
+        ia: *const c_int,
+        ja: *const c_int,
+        desca: *const c_int,
         ipiv: *mut c_int,
-        b: *mut [f64; 2], ib: *const c_int, jb: *const c_int, descb: *const c_int,
+        b: *mut [f64; 2],
+        ib: *const c_int,
+        jb: *const c_int,
+        descb: *const c_int,
         info: *mut c_int,
     );
 }
 
-/// Distributed `C := α · op(A) · op(B) + β · C`. `transa`, `transb` are
-/// 1-byte chars (`b'N'`, `b'T'`, `b'C'`).
+// Distributed `C := α · op(A) · op(B) + β · C`. `transa`, `transb` are
+// 1-byte chars (`b'N'`, `b'T'`, `b'C'`).
 extern "C" {
     pub fn psgemm_(
-        transa: *const c_char, transb: *const c_char,
-        m: *const c_int, n: *const c_int, k: *const c_int,
+        transa: *const c_char,
+        transb: *const c_char,
+        m: *const c_int,
+        n: *const c_int,
+        k: *const c_int,
         alpha: *const f32,
-        a: *const f32, ia: *const c_int, ja: *const c_int, desca: *const c_int,
-        b: *const f32, ib: *const c_int, jb: *const c_int, descb: *const c_int,
+        a: *const f32,
+        ia: *const c_int,
+        ja: *const c_int,
+        desca: *const c_int,
+        b: *const f32,
+        ib: *const c_int,
+        jb: *const c_int,
+        descb: *const c_int,
         beta: *const f32,
-        c: *mut f32, ic: *const c_int, jc: *const c_int, descc: *const c_int,
+        c: *mut f32,
+        ic: *const c_int,
+        jc: *const c_int,
+        descc: *const c_int,
     );
 
     pub fn pdgemm_(
-        transa: *const c_char, transb: *const c_char,
-        m: *const c_int, n: *const c_int, k: *const c_int,
+        transa: *const c_char,
+        transb: *const c_char,
+        m: *const c_int,
+        n: *const c_int,
+        k: *const c_int,
         alpha: *const f64,
-        a: *const f64, ia: *const c_int, ja: *const c_int, desca: *const c_int,
-        b: *const f64, ib: *const c_int, jb: *const c_int, descb: *const c_int,
+        a: *const f64,
+        ia: *const c_int,
+        ja: *const c_int,
+        desca: *const c_int,
+        b: *const f64,
+        ib: *const c_int,
+        jb: *const c_int,
+        descb: *const c_int,
         beta: *const f64,
-        c: *mut f64, ic: *const c_int, jc: *const c_int, descc: *const c_int,
+        c: *mut f64,
+        ic: *const c_int,
+        jc: *const c_int,
+        descc: *const c_int,
     );
 }
 
-/// Distributed Cholesky factorization (positive-definite).
+// Distributed Cholesky factorization (positive-definite).
 extern "C" {
     pub fn pspotrf_(
-        uplo: *const c_char, n: *const c_int,
-        a: *mut f32, ia: *const c_int, ja: *const c_int, desca: *const c_int,
+        uplo: *const c_char,
+        n: *const c_int,
+        a: *mut f32,
+        ia: *const c_int,
+        ja: *const c_int,
+        desca: *const c_int,
         info: *mut c_int,
     );
 
     pub fn pdpotrf_(
-        uplo: *const c_char, n: *const c_int,
-        a: *mut f64, ia: *const c_int, ja: *const c_int, desca: *const c_int,
+        uplo: *const c_char,
+        n: *const c_int,
+        a: *mut f64,
+        ia: *const c_int,
+        ja: *const c_int,
+        desca: *const c_int,
         info: *mut c_int,
     );
 }
 
-/// Distributed LU factorization with partial pivoting.
+// Distributed LU factorization with partial pivoting.
 extern "C" {
     pub fn psgetrf_(
-        m: *const c_int, n: *const c_int,
-        a: *mut f32, ia: *const c_int, ja: *const c_int, desca: *const c_int,
+        m: *const c_int,
+        n: *const c_int,
+        a: *mut f32,
+        ia: *const c_int,
+        ja: *const c_int,
+        desca: *const c_int,
         ipiv: *mut c_int,
         info: *mut c_int,
     );
 
     pub fn pdgetrf_(
-        m: *const c_int, n: *const c_int,
-        a: *mut f64, ia: *const c_int, ja: *const c_int, desca: *const c_int,
+        m: *const c_int,
+        n: *const c_int,
+        a: *mut f64,
+        ia: *const c_int,
+        ja: *const c_int,
+        desca: *const c_int,
         ipiv: *mut c_int,
         info: *mut c_int,
     );
 }
 
-/// Distributed real symmetric eigendecomposition. `jobz` is `b'N'`
-/// (eigenvalues only) or `b'V'` (also eigenvectors). `uplo` is `b'U'` or
-/// `b'L'`. `w` receives `n` real eigenvalues. `z` (when computed) is
-/// the eigenvector matrix with descriptor `descz`. `work` is workspace
-/// of size `lwork`; pass `lwork = -1` to query the optimal size which
-/// is returned in `work[0]`.
+// Distributed real symmetric eigendecomposition. `jobz` is `b'N'`
+// (eigenvalues only) or `b'V'` (also eigenvectors). `uplo` is `b'U'` or
+// `b'L'`. `w` receives `n` real eigenvalues. `z` (when computed) is
+// the eigenvector matrix with descriptor `descz`. `work` is workspace
+// of size `lwork`; pass `lwork = -1` to query the optimal size which
+// is returned in `work[0]`.
 extern "C" {
     pub fn pssyev_(
-        jobz: *const c_char, uplo: *const c_char, n: *const c_int,
-        a: *mut f32, ia: *const c_int, ja: *const c_int, desca: *const c_int,
+        jobz: *const c_char,
+        uplo: *const c_char,
+        n: *const c_int,
+        a: *mut f32,
+        ia: *const c_int,
+        ja: *const c_int,
+        desca: *const c_int,
         w: *mut f32,
-        z: *mut f32, iz: *const c_int, jz: *const c_int, descz: *const c_int,
-        work: *mut f32, lwork: *const c_int,
+        z: *mut f32,
+        iz: *const c_int,
+        jz: *const c_int,
+        descz: *const c_int,
+        work: *mut f32,
+        lwork: *const c_int,
         info: *mut c_int,
     );
 
     pub fn pdsyev_(
-        jobz: *const c_char, uplo: *const c_char, n: *const c_int,
-        a: *mut f64, ia: *const c_int, ja: *const c_int, desca: *const c_int,
+        jobz: *const c_char,
+        uplo: *const c_char,
+        n: *const c_int,
+        a: *mut f64,
+        ia: *const c_int,
+        ja: *const c_int,
+        desca: *const c_int,
         w: *mut f64,
-        z: *mut f64, iz: *const c_int, jz: *const c_int, descz: *const c_int,
-        work: *mut f64, lwork: *const c_int,
+        z: *mut f64,
+        iz: *const c_int,
+        jz: *const c_int,
+        descz: *const c_int,
+        work: *mut f64,
+        lwork: *const c_int,
         info: *mut c_int,
     );
 }
 
-/// Distributed least squares (`m × n` overdetermined or underdetermined
-/// system). `trans = b'N'` for `min || A·X − B ||₂`, `b'T'` for the
-/// transposed problem. `work` is workspace of size `lwork`; pass
-/// `lwork = -1` for size query.
+// Distributed least squares (`m × n` overdetermined or underdetermined
+// system). `trans = b'N'` for `min || A·X − B ||₂`, `b'T'` for the
+// transposed problem. `work` is workspace of size `lwork`; pass
+// `lwork = -1` for size query.
 extern "C" {
     pub fn psgels_(
         trans: *const c_char,
-        m: *const c_int, n: *const c_int, nrhs: *const c_int,
-        a: *mut f32, ia: *const c_int, ja: *const c_int, desca: *const c_int,
-        b: *mut f32, ib: *const c_int, jb: *const c_int, descb: *const c_int,
-        work: *mut f32, lwork: *const c_int,
+        m: *const c_int,
+        n: *const c_int,
+        nrhs: *const c_int,
+        a: *mut f32,
+        ia: *const c_int,
+        ja: *const c_int,
+        desca: *const c_int,
+        b: *mut f32,
+        ib: *const c_int,
+        jb: *const c_int,
+        descb: *const c_int,
+        work: *mut f32,
+        lwork: *const c_int,
         info: *mut c_int,
     );
 
     pub fn pdgels_(
         trans: *const c_char,
-        m: *const c_int, n: *const c_int, nrhs: *const c_int,
-        a: *mut f64, ia: *const c_int, ja: *const c_int, desca: *const c_int,
-        b: *mut f64, ib: *const c_int, jb: *const c_int, descb: *const c_int,
-        work: *mut f64, lwork: *const c_int,
+        m: *const c_int,
+        n: *const c_int,
+        nrhs: *const c_int,
+        a: *mut f64,
+        ia: *const c_int,
+        ja: *const c_int,
+        desca: *const c_int,
+        b: *mut f64,
+        ib: *const c_int,
+        jb: *const c_int,
+        descb: *const c_int,
+        work: *mut f64,
+        lwork: *const c_int,
         info: *mut c_int,
     );
 }
 
-/// Distributed back-substitution after `pdgetrf` (LU).
+// Distributed back-substitution after `pdgetrf` (LU).
 extern "C" {
     pub fn psgetrs_(
         trans: *const c_char,
-        n: *const c_int, nrhs: *const c_int,
-        a: *const f32, ia: *const c_int, ja: *const c_int, desca: *const c_int,
+        n: *const c_int,
+        nrhs: *const c_int,
+        a: *const f32,
+        ia: *const c_int,
+        ja: *const c_int,
+        desca: *const c_int,
         ipiv: *const c_int,
-        b: *mut f32, ib: *const c_int, jb: *const c_int, descb: *const c_int,
+        b: *mut f32,
+        ib: *const c_int,
+        jb: *const c_int,
+        descb: *const c_int,
         info: *mut c_int,
     );
 
     pub fn pdgetrs_(
         trans: *const c_char,
-        n: *const c_int, nrhs: *const c_int,
-        a: *const f64, ia: *const c_int, ja: *const c_int, desca: *const c_int,
+        n: *const c_int,
+        nrhs: *const c_int,
+        a: *const f64,
+        ia: *const c_int,
+        ja: *const c_int,
+        desca: *const c_int,
         ipiv: *const c_int,
-        b: *mut f64, ib: *const c_int, jb: *const c_int, descb: *const c_int,
+        b: *mut f64,
+        ib: *const c_int,
+        jb: *const c_int,
+        descb: *const c_int,
         info: *mut c_int,
     );
 }
 
-/// Distributed back-substitution after `pdpotrf` (Cholesky).
+// Distributed back-substitution after `pdpotrf` (Cholesky).
 extern "C" {
     pub fn pspotrs_(
         uplo: *const c_char,
-        n: *const c_int, nrhs: *const c_int,
-        a: *const f32, ia: *const c_int, ja: *const c_int, desca: *const c_int,
-        b: *mut f32, ib: *const c_int, jb: *const c_int, descb: *const c_int,
+        n: *const c_int,
+        nrhs: *const c_int,
+        a: *const f32,
+        ia: *const c_int,
+        ja: *const c_int,
+        desca: *const c_int,
+        b: *mut f32,
+        ib: *const c_int,
+        jb: *const c_int,
+        descb: *const c_int,
         info: *mut c_int,
     );
 
     pub fn pdpotrs_(
         uplo: *const c_char,
-        n: *const c_int, nrhs: *const c_int,
-        a: *const f64, ia: *const c_int, ja: *const c_int, desca: *const c_int,
-        b: *mut f64, ib: *const c_int, jb: *const c_int, descb: *const c_int,
+        n: *const c_int,
+        nrhs: *const c_int,
+        a: *const f64,
+        ia: *const c_int,
+        ja: *const c_int,
+        desca: *const c_int,
+        b: *mut f64,
+        ib: *const c_int,
+        jb: *const c_int,
+        descb: *const c_int,
         info: *mut c_int,
     );
 }
 
-/// Distributed QR factorization. `tau` is local; `work` workspace.
+// Distributed QR factorization. `tau` is local; `work` workspace.
 extern "C" {
     pub fn psgeqrf_(
-        m: *const c_int, n: *const c_int,
-        a: *mut f32, ia: *const c_int, ja: *const c_int, desca: *const c_int,
+        m: *const c_int,
+        n: *const c_int,
+        a: *mut f32,
+        ia: *const c_int,
+        ja: *const c_int,
+        desca: *const c_int,
         tau: *mut f32,
-        work: *mut f32, lwork: *const c_int,
+        work: *mut f32,
+        lwork: *const c_int,
         info: *mut c_int,
     );
 
     pub fn pdgeqrf_(
-        m: *const c_int, n: *const c_int,
-        a: *mut f64, ia: *const c_int, ja: *const c_int, desca: *const c_int,
+        m: *const c_int,
+        n: *const c_int,
+        a: *mut f64,
+        ia: *const c_int,
+        ja: *const c_int,
+        desca: *const c_int,
         tau: *mut f64,
-        work: *mut f64, lwork: *const c_int,
+        work: *mut f64,
+        lwork: *const c_int,
         info: *mut c_int,
     );
 }

@@ -42,14 +42,38 @@ impl Component<'_> {
     /// `bindgen` against [`Self::wrapper`]. Reads `CARGO_FEATURE_ILP64` and
     /// `CARGO_FEATURE_STATIC_LINK` to choose layout.
     ///
+    /// In docs.rs builds (`DOCS_RS=1`), this is a no-op apart from
+    /// emitting an empty bindings file — docs.rs's sandbox does not
+    /// have AOCL native libraries, so attempting to link or run
+    /// `bindgen` would fail.
+    ///
     /// Panics on misconfiguration (missing component dir, missing wrapper,
     /// bindgen failure) so build-script breakage surfaces clearly.
     pub fn build(&self, root: &Path) {
+        let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR"));
+
+        // docs.rs short-circuit: write an empty bindings file and skip
+        // every step that needs the native AOCL install. The crate will
+        // then build with no symbols defined; safe wrappers must
+        // `#[cfg(not(docsrs))]` their FFI bodies to compile here too.
+        if env::var_os("DOCS_RS").is_some() {
+            if !self.module.is_empty() {
+                let stub = out_dir.join(format!("{}.rs", self.module));
+                std::fs::write(
+                    &stub,
+                    b"// docs.rs build: AOCL native libs unavailable; bindings omitted.\n",
+                )
+                .unwrap_or_else(|e| panic!("failed to write stub {}: {e}", stub.display()));
+            }
+            // Tell rustc to enable `cfg(docsrs)` so downstream crates can
+            // gate FFI-using bodies if they want to.
+            println!("cargo:rustc-cfg=docsrs");
+            return;
+        }
+
         let static_link = env::var_os("CARGO_FEATURE_STATIC_LINK").is_some();
         let ilp64 = env::var_os("CARGO_FEATURE_ILP64").is_some();
-        let target_windows =
-            env::var("CARGO_CFG_TARGET_OS").unwrap_or_default() == "windows";
-        let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR"));
+        let target_windows = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default() == "windows";
 
         let comp_dir = root.join(self.component_dir);
         if !comp_dir.exists() {
@@ -93,10 +117,7 @@ impl Component<'_> {
         };
 
         if final_lib_dir.exists() {
-            println!(
-                "cargo:rustc-link-search=native={}",
-                final_lib_dir.display()
-            );
+            println!("cargo:rustc-link-search=native={}", final_lib_dir.display());
         } else {
             println!(
                 "cargo:warning=lib dir not found for '{}': {}",
@@ -177,9 +198,9 @@ impl Component<'_> {
         });
 
         let out_path = out_dir.join(format!("{}.rs", self.module));
-        bindings.write_to_file(&out_path).unwrap_or_else(|e| {
-            panic!("failed to write {}: {e}", out_path.display())
-        });
+        bindings
+            .write_to_file(&out_path)
+            .unwrap_or_else(|e| panic!("failed to write {}: {e}", out_path.display()));
     }
 }
 
@@ -190,9 +211,13 @@ impl Component<'_> {
 ///   2. Windows: `C:\Program Files\AMD\AOCL-Windows`.
 ///   3. Linux: any directory matching `/opt/AMD/aocl/aocl-linux-*`.
 ///
-/// Panics if no install can be found, with instructions on how to set
-/// `AOCL_ROOT`.
+/// In docs.rs builds (`DOCS_RS=1`), returns a fake path; the build
+/// short-circuits before this matters. Panics if no install can be
+/// found, with instructions on how to set `AOCL_ROOT`.
 pub fn locate_aocl_root() -> PathBuf {
+    if env::var_os("DOCS_RS").is_some() {
+        return PathBuf::from("/docs.rs/aocl-stub");
+    }
     if let Ok(v) = env::var("AOCL_ROOT") {
         let p = PathBuf::from(v);
         if p.exists() {
@@ -229,9 +254,7 @@ pub fn locate_aocl_root() -> PathBuf {
 /// up an unrelated `libclang.dll` from `PATH` (e.g. one bundled with the
 /// Swift toolchain) that mishandles AOCL's SIMD intrinsic headers.
 pub fn ensure_libclang_path() {
-    if env::var_os("LIBCLANG_PATH").is_some()
-        || env::var_os("LLVM_CONFIG_PATH").is_some()
-    {
+    if env::var_os("LIBCLANG_PATH").is_some() || env::var_os("LLVM_CONFIG_PATH").is_some() {
         return;
     }
     if cfg!(target_os = "windows") {
@@ -241,10 +264,7 @@ pub fn ensure_libclang_path() {
         ] {
             let p = PathBuf::from(candidate);
             if p.join("libclang.dll").exists() {
-                println!(
-                    "cargo:warning=auto-detected libclang at {}",
-                    p.display()
-                );
+                println!("cargo:warning=auto-detected libclang at {}", p.display());
                 env::set_var("LIBCLANG_PATH", &p);
                 return;
             }

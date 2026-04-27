@@ -66,3 +66,7 @@ aocl-compression    = { version = "0.1", path = "../aocl-compression",    option
 aocl-crypto         = { version = "0.1", path = "../aocl-crypto",         optional = true }
 aocl-data-analytics = { version = "0.1", path = "../aocl-data-analytics", optional = true }
 aocl-scalapack      = { version = "0.1", path = "../aocl-scalapack",      optional = true }
+
+[package.metadata.docs.rs]
+default-target = "x86_64-unknown-linux-gnu"
+rustdoc-args = ["--cfg", "docsrs"]

@@ -18,3 +18,7 @@ aocl-error = { version = "0.1", path = "../aocl-error" }
 [features]
 default = []
 static-link = ["aocl-securerng-sys/static-link"]
+
+[package.metadata.docs.rs]
+default-target = "x86_64-unknown-linux-gnu"
+rustdoc-args = ["--cfg", "docsrs"]
