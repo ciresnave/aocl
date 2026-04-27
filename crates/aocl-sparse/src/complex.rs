@@ -13,7 +13,7 @@ use std::marker::PhantomData;
 use aocl_sparse_sys as sys;
 use aocl_types::{sealed::Sealed, Complex32, Complex64};
 
-use crate::{check_status, trans_raw, Error, IndexBase, MatDescr, Result, Trans};
+use crate::{check_status, trans_raw, Error, IndexBase, MatDescr, Order, Result, SorType, Trans};
 
 /// Scalar element type for the complex sparse routines (`c32`, `c64`).
 pub trait ComplexScalar: Copy + Sized + Sealed {
@@ -89,6 +89,75 @@ pub trait ComplexScalar: Copy + Sized + Sealed {
         b: &[Self],
         x: &mut [Self],
         rinfo: &mut [Self::Real; 100],
+    ) -> Result<()>;
+
+    /// `C := α · op(A) · B + β · C` where `A` is sparse (CSR via the
+    /// matrix handle) and `B`, `C` are dense.
+    #[allow(clippy::too_many_arguments)]
+    fn csrmm(
+        op: Trans,
+        alpha: Self,
+        a: sys::aoclsparse_matrix,
+        descr: &MatDescr,
+        order: Order,
+        b: &[Self],
+        n: usize,
+        ldb: usize,
+        beta: Self,
+        c: &mut [Self],
+        ldc: usize,
+    ) -> Result<()>;
+
+    /// `C := op(A) · B` where both `A` and `B` are sparse and `C` is dense.
+    #[allow(clippy::too_many_arguments)]
+    fn spmmd(
+        op: Trans,
+        a: sys::aoclsparse_matrix,
+        b: sys::aoclsparse_matrix,
+        layout: Order,
+        c: &mut [Self],
+        ldc: usize,
+    ) -> Result<()>;
+
+    /// `C := α · op_A(A) · op_B(B) + β · C` (sparse·sparse → dense).
+    #[allow(clippy::too_many_arguments)]
+    fn sp2md(
+        op_a: Trans,
+        descr_a: &MatDescr,
+        a: sys::aoclsparse_matrix,
+        op_b: Trans,
+        descr_b: &MatDescr,
+        b: sys::aoclsparse_matrix,
+        alpha: Self,
+        beta: Self,
+        c: &mut [Self],
+        layout: Order,
+        ldc: usize,
+    ) -> Result<()>;
+
+    /// Sparse-sparse `C := α · op(A) + B`.
+    ///
+    /// # Safety
+    /// Caller must adopt the resulting handle (e.g. via
+    /// [`ComplexSparseMatrix::from_library_owned`]).
+    unsafe fn add_ffi(
+        op: sys::aoclsparse_operation,
+        a: sys::aoclsparse_matrix,
+        alpha: Self,
+        b: sys::aoclsparse_matrix,
+        out: *mut sys::aoclsparse_matrix,
+    ) -> sys::aoclsparse_status;
+
+    /// One step of (S)SOR / forward / backward Gauss-Seidel relaxation.
+    #[allow(clippy::too_many_arguments)]
+    fn sorv(
+        sor_type: SorType,
+        descr: &MatDescr,
+        a: sys::aoclsparse_matrix,
+        omega: Self,
+        alpha: Self,
+        x: &mut [Self],
+        b: &[Self],
     ) -> Result<()>;
 
     /// Underlying real type — `f32` for `Complex32`, `f64` for `Complex64`.
@@ -282,6 +351,85 @@ impl ComplexScalar for Complex32 {
         check_status("sparse", status)
     }
 
+    fn csrmm(
+        op: Trans, alpha: Self, a: sys::aoclsparse_matrix, descr: &MatDescr,
+        order: Order, b: &[Self], n: usize, ldb: usize,
+        beta: Self, c: &mut [Self], ldc: usize,
+    ) -> Result<()> {
+        let alpha_raw = sys::aoclsparse_float_complex { real: alpha.re, imag: alpha.im };
+        let beta_raw = sys::aoclsparse_float_complex { real: beta.re, imag: beta.im };
+        let status = unsafe {
+            sys::aoclsparse_ccsrmm(
+                trans_raw(op), alpha_raw, a, descr.as_raw(), order.raw(),
+                b.as_ptr() as *const sys::aoclsparse_float_complex,
+                n as sys::aoclsparse_int, ldb as sys::aoclsparse_int,
+                beta_raw,
+                c.as_mut_ptr() as *mut sys::aoclsparse_float_complex,
+                ldc as sys::aoclsparse_int,
+            )
+        };
+        check_status("sparse", status)
+    }
+
+    fn spmmd(
+        op: Trans, a: sys::aoclsparse_matrix, b: sys::aoclsparse_matrix,
+        layout: Order, c: &mut [Self], ldc: usize,
+    ) -> Result<()> {
+        let status = unsafe {
+            sys::aoclsparse_cspmmd(
+                trans_raw(op), a, b, layout.raw(),
+                c.as_mut_ptr() as *mut sys::aoclsparse_float_complex,
+                ldc as sys::aoclsparse_int,
+            )
+        };
+        check_status("sparse", status)
+    }
+
+    fn sp2md(
+        op_a: Trans, descr_a: &MatDescr, a: sys::aoclsparse_matrix,
+        op_b: Trans, descr_b: &MatDescr, b: sys::aoclsparse_matrix,
+        alpha: Self, beta: Self, c: &mut [Self], layout: Order, ldc: usize,
+    ) -> Result<()> {
+        let alpha_raw = sys::aoclsparse_float_complex { real: alpha.re, imag: alpha.im };
+        let beta_raw = sys::aoclsparse_float_complex { real: beta.re, imag: beta.im };
+        let status = unsafe {
+            sys::aoclsparse_csp2md(
+                trans_raw(op_a), descr_a.as_raw(), a,
+                trans_raw(op_b), descr_b.as_raw(), b,
+                alpha_raw, beta_raw,
+                c.as_mut_ptr() as *mut sys::aoclsparse_float_complex,
+                layout.raw(), ldc as sys::aoclsparse_int,
+            )
+        };
+        check_status("sparse", status)
+    }
+
+    unsafe fn add_ffi(
+        op: sys::aoclsparse_operation,
+        a: sys::aoclsparse_matrix,
+        alpha: Self,
+        b: sys::aoclsparse_matrix,
+        out: *mut sys::aoclsparse_matrix,
+    ) -> sys::aoclsparse_status {
+        let alpha_raw = sys::aoclsparse_float_complex { real: alpha.re, imag: alpha.im };
+        sys::aoclsparse_cadd(op, a, alpha_raw, b, out)
+    }
+
+    fn sorv(
+        sor_type: SorType, descr: &MatDescr, a: sys::aoclsparse_matrix,
+        omega: Self, alpha: Self, x: &mut [Self], b: &[Self],
+    ) -> Result<()> {
+        let omega_raw = sys::aoclsparse_float_complex { real: omega.re, imag: omega.im };
+        let alpha_raw = sys::aoclsparse_float_complex { real: alpha.re, imag: alpha.im };
+        let status = unsafe {
+            sys::aoclsparse_csorv(
+                sor_type.raw(), descr.as_raw(), a, omega_raw, alpha_raw,
+                x.as_mut_ptr() as *mut sys::aoclsparse_float_complex,
+                b.as_ptr() as *const sys::aoclsparse_float_complex,
+            )
+        };
+        check_status("sparse", status)
+    }
 }
 
 // =========================================================================
@@ -468,6 +616,85 @@ impl ComplexScalar for Complex64 {
         check_status("sparse", status)
     }
 
+    fn csrmm(
+        op: Trans, alpha: Self, a: sys::aoclsparse_matrix, descr: &MatDescr,
+        order: Order, b: &[Self], n: usize, ldb: usize,
+        beta: Self, c: &mut [Self], ldc: usize,
+    ) -> Result<()> {
+        let alpha_raw = sys::aoclsparse_double_complex_ { real: alpha.re, imag: alpha.im };
+        let beta_raw = sys::aoclsparse_double_complex_ { real: beta.re, imag: beta.im };
+        let status = unsafe {
+            sys::aoclsparse_zcsrmm(
+                trans_raw(op), alpha_raw, a, descr.as_raw(), order.raw(),
+                b.as_ptr() as *const sys::aoclsparse_double_complex,
+                n as sys::aoclsparse_int, ldb as sys::aoclsparse_int,
+                beta_raw,
+                c.as_mut_ptr() as *mut sys::aoclsparse_double_complex,
+                ldc as sys::aoclsparse_int,
+            )
+        };
+        check_status("sparse", status)
+    }
+
+    fn spmmd(
+        op: Trans, a: sys::aoclsparse_matrix, b: sys::aoclsparse_matrix,
+        layout: Order, c: &mut [Self], ldc: usize,
+    ) -> Result<()> {
+        let status = unsafe {
+            sys::aoclsparse_zspmmd(
+                trans_raw(op), a, b, layout.raw(),
+                c.as_mut_ptr() as *mut sys::aoclsparse_double_complex,
+                ldc as sys::aoclsparse_int,
+            )
+        };
+        check_status("sparse", status)
+    }
+
+    fn sp2md(
+        op_a: Trans, descr_a: &MatDescr, a: sys::aoclsparse_matrix,
+        op_b: Trans, descr_b: &MatDescr, b: sys::aoclsparse_matrix,
+        alpha: Self, beta: Self, c: &mut [Self], layout: Order, ldc: usize,
+    ) -> Result<()> {
+        let alpha_raw = sys::aoclsparse_double_complex_ { real: alpha.re, imag: alpha.im };
+        let beta_raw = sys::aoclsparse_double_complex_ { real: beta.re, imag: beta.im };
+        let status = unsafe {
+            sys::aoclsparse_zsp2md(
+                trans_raw(op_a), descr_a.as_raw(), a,
+                trans_raw(op_b), descr_b.as_raw(), b,
+                alpha_raw, beta_raw,
+                c.as_mut_ptr() as *mut sys::aoclsparse_double_complex,
+                layout.raw(), ldc as sys::aoclsparse_int,
+            )
+        };
+        check_status("sparse", status)
+    }
+
+    unsafe fn add_ffi(
+        op: sys::aoclsparse_operation,
+        a: sys::aoclsparse_matrix,
+        alpha: Self,
+        b: sys::aoclsparse_matrix,
+        out: *mut sys::aoclsparse_matrix,
+    ) -> sys::aoclsparse_status {
+        let alpha_raw = sys::aoclsparse_double_complex_ { real: alpha.re, imag: alpha.im };
+        sys::aoclsparse_zadd(op, a, alpha_raw, b, out)
+    }
+
+    fn sorv(
+        sor_type: SorType, descr: &MatDescr, a: sys::aoclsparse_matrix,
+        omega: Self, alpha: Self, x: &mut [Self], b: &[Self],
+    ) -> Result<()> {
+        let omega_raw = sys::aoclsparse_double_complex_ { real: omega.re, imag: omega.im };
+        let alpha_raw = sys::aoclsparse_double_complex_ { real: alpha.re, imag: alpha.im };
+        let status = unsafe {
+            sys::aoclsparse_zsorv(
+                sor_type.raw(), descr.as_raw(), a, omega_raw, alpha_raw,
+                x.as_mut_ptr() as *mut sys::aoclsparse_double_complex,
+                b.as_ptr() as *const sys::aoclsparse_double_complex,
+            )
+        };
+        check_status("sparse", status)
+    }
 }
 
 // =========================================================================
@@ -670,6 +897,93 @@ pub fn trsv<T: ComplexScalar>(
     T::trsv(op, alpha, a.raw, descr, b, x)
 }
 
+/// Compute `C := α · op(A) · B + β · C` where `A` is sparse complex
+/// (CSR) and `B`, `C` are dense complex matrices laid out per `order`.
+#[allow(clippy::too_many_arguments)]
+pub fn csrmm<T: ComplexScalar>(
+    op: Trans,
+    alpha: T,
+    a: &ComplexSparseMatrix<T>,
+    descr: &MatDescr,
+    order: Order,
+    b: &[T],
+    n: usize,
+    ldb: usize,
+    beta: T,
+    c: &mut [T],
+    ldc: usize,
+) -> Result<()> {
+    T::csrmm(op, alpha, a.as_raw(), descr, order, b, n, ldb, beta, c, ldc)
+}
+
+/// Compute `C := op(A) · B` where both `A` and `B` are sparse complex
+/// matrices and `C` is dense.
+pub fn spmmd<T: ComplexScalar>(
+    op: Trans,
+    a: &ComplexSparseMatrix<T>,
+    b: &ComplexSparseMatrix<T>,
+    layout: Order,
+    c: &mut [T],
+    ldc: usize,
+) -> Result<()> {
+    T::spmmd(op, a.as_raw(), b.as_raw(), layout, c, ldc)
+}
+
+/// Compute `C := α · op_A(A) · op_B(B) + β · C` for complex sparse `A`
+/// and `B`, dense complex `C`.
+#[allow(clippy::too_many_arguments)]
+pub fn sp2md<T: ComplexScalar>(
+    op_a: Trans,
+    descr_a: &MatDescr,
+    a: &ComplexSparseMatrix<T>,
+    op_b: Trans,
+    descr_b: &MatDescr,
+    b: &ComplexSparseMatrix<T>,
+    alpha: T,
+    beta: T,
+    c: &mut [T],
+    layout: Order,
+    ldc: usize,
+) -> Result<()> {
+    T::sp2md(op_a, descr_a, a.as_raw(), op_b, descr_b, b.as_raw(),
+             alpha, beta, c, layout, ldc)
+}
+
+/// Compute `C := α · op(A) + B` returning a fresh complex CSR matrix.
+pub fn add<T: ComplexScalar>(
+    op: Trans,
+    a: &ComplexSparseMatrix<T>,
+    alpha: T,
+    b: &ComplexSparseMatrix<T>,
+) -> Result<ComplexSparseMatrix<T>> {
+    let mut c_raw: sys::aoclsparse_matrix = std::ptr::null_mut();
+    let status = unsafe {
+        T::add_ffi(trans_raw(op), a.as_raw(), alpha, b.as_raw(), &mut c_raw)
+    };
+    check_status("sparse", status)?;
+    unsafe { ComplexSparseMatrix::from_library_owned(c_raw) }
+}
+
+/// One step of (S)SOR / forward / backward Gauss-Seidel relaxation for a
+/// complex sparse matrix.
+pub fn sorv<T: ComplexScalar>(
+    sor_type: SorType,
+    descr: &MatDescr,
+    a: &ComplexSparseMatrix<T>,
+    omega: T,
+    alpha: T,
+    x: &mut [T],
+    b: &[T],
+) -> Result<()> {
+    if x.len() < a.dims().1 || b.len() < a.dims().0 {
+        return Err(Error::InvalidArgument(format!(
+            "sorv: x.len()={}, b.len()={}, dims=({}, {})",
+            x.len(), b.len(), a.dims().0, a.dims().1
+        )));
+    }
+    T::sorv(sor_type, descr, a.as_raw(), omega, alpha, x, b)
+}
+
 /// One ILU(0) smoothing step on a complex matrix.
 pub fn ilu_smoother<T: ComplexScalar>(
     op: Trans,
@@ -842,5 +1156,54 @@ mod tests {
         assert!((y[0].im - 1.0).abs() < 1e-6);
         assert!((y[1].re - 4.0).abs() < 1e-6);
         assert!((y[1].im + 2.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn complex_csrmm_identity_c64() {
+        // 2x2 identity sparse A, 2x2 dense B; C = A * B should equal B.
+        let val = [Complex64::new(1.0, 0.0), Complex64::new(1.0, 0.0)];
+        let col: [sys::aoclsparse_int; 2] = [0, 1];
+        let rp: [sys::aoclsparse_int; 3] = [0, 1, 2];
+        let a = ComplexSparseMatrix::<Complex64>::from_csr(
+            IndexBase::Zero, 2, 2, &rp, &col, &val).unwrap();
+        let descr = MatDescr::new().unwrap();
+        // 2x2 dense B (row-major, ldb = 2):
+        // [(1, 1), (2, -1)]
+        // [(3, 0), (4,  2)]
+        let b = [
+            Complex64::new(1.0, 1.0), Complex64::new(2.0, -1.0),
+            Complex64::new(3.0, 0.0), Complex64::new(4.0,  2.0),
+        ];
+        let mut c = [Complex64::new(0.0, 0.0); 4];
+        crate::complex::csrmm(
+            Trans::No,
+            Complex64::new(1.0, 0.0),
+            &a, &descr, Order::RowMajor,
+            &b, 2, 2,
+            Complex64::new(0.0, 0.0),
+            &mut c, 2,
+        ).unwrap();
+        for (got, want) in c.iter().zip(b.iter()) {
+            assert!((got.re - want.re).abs() < 1e-12);
+            assert!((got.im - want.im).abs() < 1e-12);
+        }
+    }
+
+    #[test]
+    fn complex_add_identity_plus_identity_c64() {
+        let val = [Complex64::new(1.0, 0.0), Complex64::new(1.0, 0.0)];
+        let col: [sys::aoclsparse_int; 2] = [0, 1];
+        let rp: [sys::aoclsparse_int; 3] = [0, 1, 2];
+        let a = ComplexSparseMatrix::<Complex64>::from_csr(
+            IndexBase::Zero, 2, 2, &rp, &col, &val).unwrap();
+        let b = ComplexSparseMatrix::<Complex64>::from_csr(
+            IndexBase::Zero, 2, 2, &rp, &col, &val).unwrap();
+        let c = crate::complex::add(Trans::No, &a, Complex64::new(1.0, 0.0), &b).unwrap();
+        let (_, _, _, val_c) = c.export_csr().unwrap();
+        assert_eq!(val_c.len(), 2);
+        for v in &val_c {
+            assert!((v.re - 2.0).abs() < 1e-12);
+            assert!(v.im.abs() < 1e-12);
+        }
     }
 }

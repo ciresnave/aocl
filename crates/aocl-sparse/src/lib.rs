@@ -346,7 +346,7 @@ pub enum SorType {
 }
 
 impl SorType {
-    fn raw(self) -> sys::aoclsparse_sor_type {
+    pub(crate) fn raw(self) -> sys::aoclsparse_sor_type {
         match self {
             SorType::Forward => sys::aoclsparse_sor_type__aoclsparse_sor_forward,
             SorType::Backward => sys::aoclsparse_sor_type__aoclsparse_sor_backward,
@@ -1113,7 +1113,7 @@ pub enum Order {
 }
 
 impl Order {
-    fn raw(self) -> sys::aoclsparse_order {
+    pub(crate) fn raw(self) -> sys::aoclsparse_order {
         match self {
             Order::RowMajor => sys::aoclsparse_order__aoclsparse_order_row,
             Order::ColMajor => sys::aoclsparse_order__aoclsparse_order_column,
