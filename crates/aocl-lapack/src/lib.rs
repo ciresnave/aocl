@@ -1475,6 +1475,490 @@ pub fn gelsy<T: Scalar>(
 }
 
 // =========================================================================
+//   LAPACK extras: triangular ops, factor inverses, generalised eig,
+//   non-symmetric eig, QR with column pivoting, matrix norms / copies
+// =========================================================================
+
+/// Char passed to LAPACKE for matrix norms: One / Infinity / Frobenius / Max.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Norm {
+    /// Maximum absolute value of any matrix element.
+    Max,
+    /// Maximum column sum (the 1-norm).
+    One,
+    /// Maximum row sum (the ∞-norm).
+    Inf,
+    /// Frobenius norm `√(Σ |aᵢⱼ|²)`.
+    Frobenius,
+}
+
+impl Norm {
+    fn raw(self) -> c_char {
+        match self {
+            Norm::Max => b'M' as c_char,
+            Norm::One => b'1' as c_char,
+            Norm::Inf => b'I' as c_char,
+            Norm::Frobenius => b'F' as c_char,
+        }
+    }
+}
+
+/// Char for `Diag::Unit` / `Diag::NonUnit` triangular flags.
+fn diag_char(d: aocl_types::Diag) -> c_char {
+    match d {
+        aocl_types::Diag::Unit => b'U' as c_char,
+        aocl_types::Diag::NonUnit => b'N' as c_char,
+    }
+}
+
+// ----- Triangular solve / inverse (real and complex) -----------------------
+
+/// Solve `op(A) · X = B` for triangular `A`. (`f64`)
+#[allow(clippy::too_many_arguments)]
+pub fn dtrtrs(
+    uplo: Uplo, trans: Trans, diag: aocl_types::Diag,
+    n: usize, nrhs: usize,
+    a: &[f64], lda: usize,
+    b: &mut [f64], ldb: usize,
+) -> Result<()> {
+    let info = unsafe {
+        sys::LAPACKE_dtrtrs(
+            ROW_MAJOR, uplo_char(uplo), trans_char(trans), diag_char(diag),
+            n as i32, nrhs as i32,
+            a.as_ptr(), lda as i32,
+            b.as_mut_ptr(), ldb as i32,
+        )
+    };
+    map_info("lapack", info)
+}
+
+/// `f32` triangular solve. See [`dtrtrs`].
+#[allow(clippy::too_many_arguments)]
+pub fn strtrs(
+    uplo: Uplo, trans: Trans, diag: aocl_types::Diag,
+    n: usize, nrhs: usize,
+    a: &[f32], lda: usize,
+    b: &mut [f32], ldb: usize,
+) -> Result<()> {
+    let info = unsafe {
+        sys::LAPACKE_strtrs(
+            ROW_MAJOR, uplo_char(uplo), trans_char(trans), diag_char(diag),
+            n as i32, nrhs as i32,
+            a.as_ptr(), lda as i32,
+            b.as_mut_ptr(), ldb as i32,
+        )
+    };
+    map_info("lapack", info)
+}
+
+/// Compute the inverse of a triangular matrix in place. (`f64`)
+pub fn dtrtri(uplo: Uplo, diag: aocl_types::Diag, n: usize, a: &mut [f64], lda: usize) -> Result<()> {
+    let info = unsafe {
+        sys::LAPACKE_dtrtri(ROW_MAJOR, uplo_char(uplo), diag_char(diag), n as i32, a.as_mut_ptr(), lda as i32)
+    };
+    map_info("lapack", info)
+}
+
+/// `f32` triangular inverse. See [`dtrtri`].
+pub fn strtri(uplo: Uplo, diag: aocl_types::Diag, n: usize, a: &mut [f32], lda: usize) -> Result<()> {
+    let info = unsafe {
+        sys::LAPACKE_strtri(ROW_MAJOR, uplo_char(uplo), diag_char(diag), n as i32, a.as_mut_ptr(), lda as i32)
+    };
+    map_info("lapack", info)
+}
+
+/// Compute the inverse of a positive-definite matrix from its Cholesky
+/// factor (already produced by [`potrf`]). (`f64`)
+pub fn dpotri(uplo: Uplo, n: usize, a: &mut [f64], lda: usize) -> Result<()> {
+    let info = unsafe {
+        sys::LAPACKE_dpotri(ROW_MAJOR, uplo_char(uplo), n as i32, a.as_mut_ptr(), lda as i32)
+    };
+    map_info("lapack", info)
+}
+
+/// `f32` Cholesky inverse. See [`dpotri`].
+pub fn spotri(uplo: Uplo, n: usize, a: &mut [f32], lda: usize) -> Result<()> {
+    let info = unsafe {
+        sys::LAPACKE_spotri(ROW_MAJOR, uplo_char(uplo), n as i32, a.as_mut_ptr(), lda as i32)
+    };
+    map_info("lapack", info)
+}
+
+// ----- Form / apply Q after QR or LQ ---------------------------------------
+
+/// Form the explicit `Q` factor from elementary reflectors produced by
+/// [`geqrf`]. `m × n` with `n ≤ m`, `tau` of length `k = min(m, n)`. (`f64`)
+pub fn dorgqr(m: usize, n: usize, k: usize, a: &mut [f64], lda: usize, tau: &[f64]) -> Result<()> {
+    let info = unsafe {
+        sys::LAPACKE_dorgqr(ROW_MAJOR, m as i32, n as i32, k as i32, a.as_mut_ptr(), lda as i32, tau.as_ptr())
+    };
+    map_info("lapack", info)
+}
+
+/// `f32` `Q` formation. See [`dorgqr`].
+pub fn sorgqr(m: usize, n: usize, k: usize, a: &mut [f32], lda: usize, tau: &[f32]) -> Result<()> {
+    let info = unsafe {
+        sys::LAPACKE_sorgqr(ROW_MAJOR, m as i32, n as i32, k as i32, a.as_mut_ptr(), lda as i32, tau.as_ptr())
+    };
+    map_info("lapack", info)
+}
+
+/// `Complex64` `Q` formation. See [`dorgqr`].
+pub fn zungqr(m: usize, n: usize, k: usize, a: &mut [Complex64], lda: usize, tau: &[Complex64]) -> Result<()> {
+    let info = unsafe {
+        sys::LAPACKE_zungqr(
+            ROW_MAJOR, m as i32, n as i32, k as i32,
+            a.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, lda as i32,
+            tau.as_ptr() as *const sys::__BindgenComplex<f64>,
+        )
+    };
+    map_info("lapack", info)
+}
+
+/// `Complex32` `Q` formation. See [`dorgqr`].
+pub fn cungqr(m: usize, n: usize, k: usize, a: &mut [Complex32], lda: usize, tau: &[Complex32]) -> Result<()> {
+    let info = unsafe {
+        sys::LAPACKE_cungqr(
+            ROW_MAJOR, m as i32, n as i32, k as i32,
+            a.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, lda as i32,
+            tau.as_ptr() as *const sys::__BindgenComplex<f32>,
+        )
+    };
+    map_info("lapack", info)
+}
+
+// ----- Non-symmetric eigendecomposition (geev) -----------------------------
+
+/// Compute eigenvalues `λᵢ = wr[i] + wi[i]·j` of `A`, optionally with
+/// left (`vl`) and/or right (`vr`) eigenvectors. (`f64`)
+#[allow(clippy::too_many_arguments)]
+pub fn dgeev(
+    compute_vl: bool, compute_vr: bool,
+    n: usize,
+    a: &mut [f64], lda: usize,
+    wr: &mut [f64], wi: &mut [f64],
+    vl: &mut [f64], ldvl: usize,
+    vr: &mut [f64], ldvr: usize,
+) -> Result<()> {
+    let jobvl = if compute_vl { b'V' } else { b'N' } as c_char;
+    let jobvr = if compute_vr { b'V' } else { b'N' } as c_char;
+    let info = unsafe {
+        sys::LAPACKE_dgeev(
+            ROW_MAJOR, jobvl, jobvr, n as i32,
+            a.as_mut_ptr(), lda as i32,
+            wr.as_mut_ptr(), wi.as_mut_ptr(),
+            vl.as_mut_ptr(), ldvl as i32,
+            vr.as_mut_ptr(), ldvr as i32,
+        )
+    };
+    map_info("lapack", info)
+}
+
+/// `f32` non-symmetric eig. See [`dgeev`].
+#[allow(clippy::too_many_arguments)]
+pub fn sgeev(
+    compute_vl: bool, compute_vr: bool,
+    n: usize,
+    a: &mut [f32], lda: usize,
+    wr: &mut [f32], wi: &mut [f32],
+    vl: &mut [f32], ldvl: usize,
+    vr: &mut [f32], ldvr: usize,
+) -> Result<()> {
+    let jobvl = if compute_vl { b'V' } else { b'N' } as c_char;
+    let jobvr = if compute_vr { b'V' } else { b'N' } as c_char;
+    let info = unsafe {
+        sys::LAPACKE_sgeev(
+            ROW_MAJOR, jobvl, jobvr, n as i32,
+            a.as_mut_ptr(), lda as i32,
+            wr.as_mut_ptr(), wi.as_mut_ptr(),
+            vl.as_mut_ptr(), ldvl as i32,
+            vr.as_mut_ptr(), ldvr as i32,
+        )
+    };
+    map_info("lapack", info)
+}
+
+/// Complex non-symmetric eig: complex eigenvalues `w[i]`. (`Complex64`)
+#[allow(clippy::too_many_arguments)]
+pub fn zgeev(
+    compute_vl: bool, compute_vr: bool,
+    n: usize,
+    a: &mut [Complex64], lda: usize,
+    w: &mut [Complex64],
+    vl: &mut [Complex64], ldvl: usize,
+    vr: &mut [Complex64], ldvr: usize,
+) -> Result<()> {
+    let jobvl = if compute_vl { b'V' } else { b'N' } as c_char;
+    let jobvr = if compute_vr { b'V' } else { b'N' } as c_char;
+    let info = unsafe {
+        sys::LAPACKE_zgeev(
+            ROW_MAJOR, jobvl, jobvr, n as i32,
+            a.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, lda as i32,
+            w.as_mut_ptr() as *mut sys::__BindgenComplex<f64>,
+            vl.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, ldvl as i32,
+            vr.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, ldvr as i32,
+        )
+    };
+    map_info("lapack", info)
+}
+
+/// `Complex32` non-symmetric eig. See [`zgeev`].
+#[allow(clippy::too_many_arguments)]
+pub fn cgeev(
+    compute_vl: bool, compute_vr: bool,
+    n: usize,
+    a: &mut [Complex32], lda: usize,
+    w: &mut [Complex32],
+    vl: &mut [Complex32], ldvl: usize,
+    vr: &mut [Complex32], ldvr: usize,
+) -> Result<()> {
+    let jobvl = if compute_vl { b'V' } else { b'N' } as c_char;
+    let jobvr = if compute_vr { b'V' } else { b'N' } as c_char;
+    let info = unsafe {
+        sys::LAPACKE_cgeev(
+            ROW_MAJOR, jobvl, jobvr, n as i32,
+            a.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, lda as i32,
+            w.as_mut_ptr() as *mut sys::__BindgenComplex<f32>,
+            vl.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, ldvl as i32,
+            vr.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, ldvr as i32,
+        )
+    };
+    map_info("lapack", info)
+}
+
+// ----- Generalised symmetric eig (sygv / hegv) -----------------------------
+
+/// Generalised symmetric eigenproblem `A·x = λ·B·x` (or related, per
+/// `itype`). `compute_vectors = true` requests eigenvectors in `a`.
+/// `B` must be positive definite. (`f64`)
+#[allow(clippy::too_many_arguments)]
+pub fn dsygv(
+    itype: i32,
+    compute_vectors: bool,
+    uplo: Uplo,
+    n: usize,
+    a: &mut [f64], lda: usize,
+    b: &mut [f64], ldb: usize,
+    w: &mut [f64],
+) -> Result<()> {
+    let jobz = if compute_vectors { b'V' } else { b'N' } as c_char;
+    let info = unsafe {
+        sys::LAPACKE_dsygv(
+            ROW_MAJOR, itype, jobz, uplo_char(uplo), n as i32,
+            a.as_mut_ptr(), lda as i32,
+            b.as_mut_ptr(), ldb as i32,
+            w.as_mut_ptr(),
+        )
+    };
+    map_info("lapack", info)
+}
+
+/// `f32` generalised symmetric eig. See [`dsygv`].
+#[allow(clippy::too_many_arguments)]
+pub fn ssygv(
+    itype: i32,
+    compute_vectors: bool,
+    uplo: Uplo,
+    n: usize,
+    a: &mut [f32], lda: usize,
+    b: &mut [f32], ldb: usize,
+    w: &mut [f32],
+) -> Result<()> {
+    let jobz = if compute_vectors { b'V' } else { b'N' } as c_char;
+    let info = unsafe {
+        sys::LAPACKE_ssygv(
+            ROW_MAJOR, itype, jobz, uplo_char(uplo), n as i32,
+            a.as_mut_ptr(), lda as i32,
+            b.as_mut_ptr(), ldb as i32,
+            w.as_mut_ptr(),
+        )
+    };
+    map_info("lapack", info)
+}
+
+/// Generalised hermitian eigenproblem. (`Complex64`)
+#[allow(clippy::too_many_arguments)]
+pub fn zhegv(
+    itype: i32,
+    compute_vectors: bool,
+    uplo: Uplo,
+    n: usize,
+    a: &mut [Complex64], lda: usize,
+    b: &mut [Complex64], ldb: usize,
+    w: &mut [f64],
+) -> Result<()> {
+    let jobz = if compute_vectors { b'V' } else { b'N' } as c_char;
+    let info = unsafe {
+        sys::LAPACKE_zhegv(
+            ROW_MAJOR, itype, jobz, uplo_char(uplo), n as i32,
+            a.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, lda as i32,
+            b.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, ldb as i32,
+            w.as_mut_ptr(),
+        )
+    };
+    map_info("lapack", info)
+}
+
+/// `Complex32` generalised hermitian eig. See [`zhegv`].
+#[allow(clippy::too_many_arguments)]
+pub fn chegv(
+    itype: i32,
+    compute_vectors: bool,
+    uplo: Uplo,
+    n: usize,
+    a: &mut [Complex32], lda: usize,
+    b: &mut [Complex32], ldb: usize,
+    w: &mut [f32],
+) -> Result<()> {
+    let jobz = if compute_vectors { b'V' } else { b'N' } as c_char;
+    let info = unsafe {
+        sys::LAPACKE_chegv(
+            ROW_MAJOR, itype, jobz, uplo_char(uplo), n as i32,
+            a.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, lda as i32,
+            b.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, ldb as i32,
+            w.as_mut_ptr(),
+        )
+    };
+    map_info("lapack", info)
+}
+
+// ----- QR with column pivoting --------------------------------------------
+
+/// QR factorisation with column pivoting. `jpvt[i] != 0` (1-based) means
+/// the `i`-th column is fixed at the front; on output, `jpvt` carries
+/// the actual permutation. (`f64`)
+pub fn dgeqp3(m: usize, n: usize, a: &mut [f64], lda: usize, jpvt: &mut [i32], tau: &mut [f64]) -> Result<()> {
+    let info = unsafe {
+        sys::LAPACKE_dgeqp3(
+            ROW_MAJOR, m as i32, n as i32,
+            a.as_mut_ptr(), lda as i32,
+            jpvt.as_mut_ptr(),
+            tau.as_mut_ptr(),
+        )
+    };
+    map_info("lapack", info)
+}
+
+/// `f32` QR with column pivoting. See [`dgeqp3`].
+pub fn sgeqp3(m: usize, n: usize, a: &mut [f32], lda: usize, jpvt: &mut [i32], tau: &mut [f32]) -> Result<()> {
+    let info = unsafe {
+        sys::LAPACKE_sgeqp3(
+            ROW_MAJOR, m as i32, n as i32,
+            a.as_mut_ptr(), lda as i32,
+            jpvt.as_mut_ptr(),
+            tau.as_mut_ptr(),
+        )
+    };
+    map_info("lapack", info)
+}
+
+/// `Complex64` QR with column pivoting. See [`dgeqp3`].
+pub fn zgeqp3(m: usize, n: usize, a: &mut [Complex64], lda: usize, jpvt: &mut [i32], tau: &mut [Complex64]) -> Result<()> {
+    let info = unsafe {
+        sys::LAPACKE_zgeqp3(
+            ROW_MAJOR, m as i32, n as i32,
+            a.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, lda as i32,
+            jpvt.as_mut_ptr(),
+            tau.as_mut_ptr() as *mut sys::__BindgenComplex<f64>,
+        )
+    };
+    map_info("lapack", info)
+}
+
+/// `Complex32` QR with column pivoting. See [`dgeqp3`].
+pub fn cgeqp3(m: usize, n: usize, a: &mut [Complex32], lda: usize, jpvt: &mut [i32], tau: &mut [Complex32]) -> Result<()> {
+    let info = unsafe {
+        sys::LAPACKE_cgeqp3(
+            ROW_MAJOR, m as i32, n as i32,
+            a.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, lda as i32,
+            jpvt.as_mut_ptr(),
+            tau.as_mut_ptr() as *mut sys::__BindgenComplex<f32>,
+        )
+    };
+    map_info("lapack", info)
+}
+
+// ----- Matrix copy and norm ------------------------------------------------
+
+/// Copy a sub-block of a matrix: `B := A` (or just the upper / lower
+/// triangle). Use `Uplo::Upper` or `Uplo::Lower` to copy only that
+/// triangle, or the value `b'A'` (general full copy) via the alternate
+/// underlying char — pass any non-Upper/non-Lower if you need that
+/// pathway. (`f64`)
+pub fn dlacpy(uplo: Uplo, m: usize, n: usize, a: &[f64], lda: usize, b: &mut [f64], ldb: usize) {
+    unsafe {
+        sys::LAPACKE_dlacpy(
+            ROW_MAJOR, uplo_char(uplo), m as i32, n as i32,
+            a.as_ptr(), lda as i32,
+            b.as_mut_ptr(), ldb as i32,
+        );
+    }
+}
+
+/// `f32` matrix copy. See [`dlacpy`].
+pub fn slacpy(uplo: Uplo, m: usize, n: usize, a: &[f32], lda: usize, b: &mut [f32], ldb: usize) {
+    unsafe {
+        sys::LAPACKE_slacpy(
+            ROW_MAJOR, uplo_char(uplo), m as i32, n as i32,
+            a.as_ptr(), lda as i32,
+            b.as_mut_ptr(), ldb as i32,
+        );
+    }
+}
+
+/// `Complex64` matrix copy. See [`dlacpy`].
+pub fn zlacpy(uplo: Uplo, m: usize, n: usize, a: &[Complex64], lda: usize, b: &mut [Complex64], ldb: usize) {
+    unsafe {
+        sys::LAPACKE_zlacpy(
+            ROW_MAJOR, uplo_char(uplo), m as i32, n as i32,
+            a.as_ptr() as *const sys::__BindgenComplex<f64>, lda as i32,
+            b.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, ldb as i32,
+        );
+    }
+}
+
+/// `Complex32` matrix copy. See [`dlacpy`].
+pub fn clacpy(uplo: Uplo, m: usize, n: usize, a: &[Complex32], lda: usize, b: &mut [Complex32], ldb: usize) {
+    unsafe {
+        sys::LAPACKE_clacpy(
+            ROW_MAJOR, uplo_char(uplo), m as i32, n as i32,
+            a.as_ptr() as *const sys::__BindgenComplex<f32>, lda as i32,
+            b.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, ldb as i32,
+        );
+    }
+}
+
+/// Compute a matrix norm (`Norm::Max`, `One`, `Inf`, `Frobenius`). (`f64`)
+pub fn dlange(norm: Norm, m: usize, n: usize, a: &[f64], lda: usize) -> f64 {
+    unsafe { sys::LAPACKE_dlange(ROW_MAJOR, norm.raw(), m as i32, n as i32, a.as_ptr(), lda as i32) }
+}
+
+/// `f32` matrix norm. See [`dlange`].
+pub fn slange(norm: Norm, m: usize, n: usize, a: &[f32], lda: usize) -> f32 {
+    unsafe { sys::LAPACKE_slange(ROW_MAJOR, norm.raw(), m as i32, n as i32, a.as_ptr(), lda as i32) }
+}
+
+/// `Complex64` matrix norm (returns the underlying real). See [`dlange`].
+pub fn zlange(norm: Norm, m: usize, n: usize, a: &[Complex64], lda: usize) -> f64 {
+    unsafe {
+        sys::LAPACKE_zlange(
+            ROW_MAJOR, norm.raw(), m as i32, n as i32,
+            a.as_ptr() as *const sys::__BindgenComplex<f64>, lda as i32,
+        )
+    }
+}
+
+/// `Complex32` matrix norm (returns the underlying real). See [`dlange`].
+pub fn clange(norm: Norm, m: usize, n: usize, a: &[Complex32], lda: usize) -> f32 {
+    unsafe {
+        sys::LAPACKE_clange(
+            ROW_MAJOR, norm.raw(), m as i32, n as i32,
+            a.as_ptr() as *const sys::__BindgenComplex<f32>, lda as i32,
+        )
+    }
+}
+
+// =========================================================================
 //   Tests
 // =========================================================================
 
