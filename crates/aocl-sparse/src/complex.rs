@@ -1069,6 +1069,588 @@ impl<T: ComplexScalar> std::fmt::Debug for ComplexIterSolver<T> {
     }
 }
 
+// =========================================================================
+//   Complex extras: symgs, update_values, set_value, trsm, dotmv,
+//   dotui/dotci, csr2csc, csr2dense, syrkd, syprd, gthrs/gthrz/sctrs,
+//   TCSR/CSC creators
+// =========================================================================
+
+// ----- Symmetric Gauss-Seidel (complex) -----
+
+/// Symmetric Gauss-Seidel sweep against a complex-symmetric handle. (`Complex64`)
+pub fn symgs_c64(
+    op: Trans,
+    a: &ComplexSparseMatrix<Complex64>,
+    descr: &MatDescr,
+    alpha: Complex64,
+    b: &[Complex64],
+    x: &mut [Complex64],
+) -> Result<()> {
+    let alpha_raw = sys::aoclsparse_double_complex_ { real: alpha.re, imag: alpha.im };
+    let status = unsafe {
+        sys::aoclsparse_zsymgs(
+            trans_raw(op), a.as_raw(), descr.as_raw(),
+            alpha_raw,
+            b.as_ptr() as *const sys::aoclsparse_double_complex,
+            x.as_mut_ptr() as *mut sys::aoclsparse_double_complex,
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// `Complex32` symmetric Gauss-Seidel. See [`symgs_c64`].
+pub fn symgs_c32(
+    op: Trans,
+    a: &ComplexSparseMatrix<Complex32>,
+    descr: &MatDescr,
+    alpha: Complex32,
+    b: &[Complex32],
+    x: &mut [Complex32],
+) -> Result<()> {
+    let alpha_raw = sys::aoclsparse_float_complex { real: alpha.re, imag: alpha.im };
+    let status = unsafe {
+        sys::aoclsparse_csymgs(
+            trans_raw(op), a.as_raw(), descr.as_raw(),
+            alpha_raw,
+            b.as_ptr() as *const sys::aoclsparse_float_complex,
+            x.as_mut_ptr() as *mut sys::aoclsparse_float_complex,
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// Fused symgs + mat-vec. (`Complex64`)
+#[allow(clippy::too_many_arguments)]
+pub fn symgs_mv_c64(
+    op: Trans,
+    a: &ComplexSparseMatrix<Complex64>,
+    descr: &MatDescr,
+    alpha: Complex64,
+    b: &[Complex64],
+    x: &mut [Complex64],
+    y: &mut [Complex64],
+) -> Result<()> {
+    let alpha_raw = sys::aoclsparse_double_complex_ { real: alpha.re, imag: alpha.im };
+    let status = unsafe {
+        sys::aoclsparse_zsymgs_mv(
+            trans_raw(op), a.as_raw(), descr.as_raw(),
+            alpha_raw,
+            b.as_ptr() as *const sys::aoclsparse_double_complex,
+            x.as_mut_ptr() as *mut sys::aoclsparse_double_complex,
+            y.as_mut_ptr() as *mut sys::aoclsparse_double_complex,
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// `Complex32` fused symgs + mat-vec. See [`symgs_mv_c64`].
+#[allow(clippy::too_many_arguments)]
+pub fn symgs_mv_c32(
+    op: Trans,
+    a: &ComplexSparseMatrix<Complex32>,
+    descr: &MatDescr,
+    alpha: Complex32,
+    b: &[Complex32],
+    x: &mut [Complex32],
+    y: &mut [Complex32],
+) -> Result<()> {
+    let alpha_raw = sys::aoclsparse_float_complex { real: alpha.re, imag: alpha.im };
+    let status = unsafe {
+        sys::aoclsparse_csymgs_mv(
+            trans_raw(op), a.as_raw(), descr.as_raw(),
+            alpha_raw,
+            b.as_ptr() as *const sys::aoclsparse_float_complex,
+            x.as_mut_ptr() as *mut sys::aoclsparse_float_complex,
+            y.as_mut_ptr() as *mut sys::aoclsparse_float_complex,
+        )
+    };
+    check_status("sparse", status)
+}
+
+// ----- update_values / set_value (complex) -----
+
+/// Set a single non-zero entry on a complex CSR handle. (`Complex64`)
+pub fn set_value_c64(a: &mut ComplexSparseMatrix<Complex64>, row_idx: i32, col_idx: i32, val: Complex64) -> Result<()> {
+    let val_raw = sys::aoclsparse_double_complex_ { real: val.re, imag: val.im };
+    let status = unsafe { sys::aoclsparse_zset_value(a.as_raw(), row_idx as sys::aoclsparse_int, col_idx as sys::aoclsparse_int, val_raw) };
+    check_status("sparse", status)
+}
+/// `Complex32` set_value. See [`set_value_c64`].
+pub fn set_value_c32(a: &mut ComplexSparseMatrix<Complex32>, row_idx: i32, col_idx: i32, val: Complex32) -> Result<()> {
+    let val_raw = sys::aoclsparse_float_complex { real: val.re, imag: val.im };
+    let status = unsafe { sys::aoclsparse_cset_value(a.as_raw(), row_idx as sys::aoclsparse_int, col_idx as sys::aoclsparse_int, val_raw) };
+    check_status("sparse", status)
+}
+
+/// Replace the values array on a complex CSR handle in place. (`Complex64`)
+pub fn update_values_c64(a: &mut ComplexSparseMatrix<Complex64>, val: &mut [Complex64]) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_zupdate_values(
+            a.as_raw(), val.len() as sys::aoclsparse_int,
+            val.as_mut_ptr() as *mut sys::aoclsparse_double_complex,
+        )
+    };
+    check_status("sparse", status)
+}
+/// `Complex32` update_values. See [`update_values_c64`].
+pub fn update_values_c32(a: &mut ComplexSparseMatrix<Complex32>, val: &mut [Complex32]) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_cupdate_values(
+            a.as_raw(), val.len() as sys::aoclsparse_int,
+            val.as_mut_ptr() as *mut sys::aoclsparse_float_complex,
+        )
+    };
+    check_status("sparse", status)
+}
+
+// ----- trsm (complex) -----
+
+/// Multi-RHS triangular solve `op(A) · X = α · B` for complex sparse
+/// triangular `A`. (`Complex64`)
+#[allow(clippy::too_many_arguments)]
+pub fn trsm_c64(
+    op: Trans,
+    alpha: Complex64,
+    a: &ComplexSparseMatrix<Complex64>,
+    descr: &MatDescr,
+    b: &[Complex64],
+    n_rhs: usize,
+    ldb: usize,
+    x: &mut [Complex64],
+    ldx: usize,
+) -> Result<()> {
+    let alpha_raw = sys::aoclsparse_double_complex_ { real: alpha.re, imag: alpha.im };
+    let status = unsafe {
+        sys::aoclsparse_ztrsm(
+            trans_raw(op), alpha_raw, a.as_raw(), descr.as_raw(),
+            sys::aoclsparse_order__aoclsparse_order_row,
+            b.as_ptr() as *const sys::aoclsparse_double_complex,
+            n_rhs as sys::aoclsparse_int, ldb as sys::aoclsparse_int,
+            x.as_mut_ptr() as *mut sys::aoclsparse_double_complex,
+            ldx as sys::aoclsparse_int,
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// `Complex32` multi-RHS triangular solve. See [`trsm_c64`].
+#[allow(clippy::too_many_arguments)]
+pub fn trsm_c32(
+    op: Trans,
+    alpha: Complex32,
+    a: &ComplexSparseMatrix<Complex32>,
+    descr: &MatDescr,
+    b: &[Complex32],
+    n_rhs: usize,
+    ldb: usize,
+    x: &mut [Complex32],
+    ldx: usize,
+) -> Result<()> {
+    let alpha_raw = sys::aoclsparse_float_complex { real: alpha.re, imag: alpha.im };
+    let status = unsafe {
+        sys::aoclsparse_ctrsm(
+            trans_raw(op), alpha_raw, a.as_raw(), descr.as_raw(),
+            sys::aoclsparse_order__aoclsparse_order_row,
+            b.as_ptr() as *const sys::aoclsparse_float_complex,
+            n_rhs as sys::aoclsparse_int, ldb as sys::aoclsparse_int,
+            x.as_mut_ptr() as *mut sys::aoclsparse_float_complex,
+            ldx as sys::aoclsparse_int,
+        )
+    };
+    check_status("sparse", status)
+}
+
+// ----- dotmv (fused dot + mv) and sparse complex dot (dotui/dotci) -----
+
+/// Fused dot + mat-vec: `y := α A x + β y` and `d := xᵀ y`. (`Complex64`)
+#[allow(clippy::too_many_arguments)]
+pub fn dotmv_c64(
+    op: Trans,
+    alpha: Complex64,
+    a: &ComplexSparseMatrix<Complex64>,
+    descr: &MatDescr,
+    x: &[Complex64],
+    beta: Complex64,
+    y: &mut [Complex64],
+    d: &mut Complex64,
+) -> Result<()> {
+    let alpha_raw = sys::aoclsparse_double_complex_ { real: alpha.re, imag: alpha.im };
+    let beta_raw = sys::aoclsparse_double_complex_ { real: beta.re, imag: beta.im };
+    let status = unsafe {
+        sys::aoclsparse_zdotmv(
+            trans_raw(op), alpha_raw, a.as_raw(), descr.as_raw(),
+            x.as_ptr() as *const sys::aoclsparse_double_complex,
+            beta_raw,
+            y.as_mut_ptr() as *mut sys::aoclsparse_double_complex,
+            d as *mut _ as *mut sys::aoclsparse_double_complex,
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// `Complex32` fused dot + mat-vec. See [`dotmv_c64`].
+#[allow(clippy::too_many_arguments)]
+pub fn dotmv_c32(
+    op: Trans,
+    alpha: Complex32,
+    a: &ComplexSparseMatrix<Complex32>,
+    descr: &MatDescr,
+    x: &[Complex32],
+    beta: Complex32,
+    y: &mut [Complex32],
+    d: &mut Complex32,
+) -> Result<()> {
+    let alpha_raw = sys::aoclsparse_float_complex { real: alpha.re, imag: alpha.im };
+    let beta_raw = sys::aoclsparse_float_complex { real: beta.re, imag: beta.im };
+    let status = unsafe {
+        sys::aoclsparse_cdotmv(
+            trans_raw(op), alpha_raw, a.as_raw(), descr.as_raw(),
+            x.as_ptr() as *const sys::aoclsparse_float_complex,
+            beta_raw,
+            y.as_mut_ptr() as *mut sys::aoclsparse_float_complex,
+            d as *mut _ as *mut sys::aoclsparse_float_complex,
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// Sparse-vector unconjugated dot `Σ x[i] · y[indx[i]]`. (`Complex64`)
+pub fn dotui_c64(x: &[Complex64], indx: &[sys::aoclsparse_int], y: &[Complex64]) -> Result<Complex64> {
+    let mut out = Complex64::new(0.0, 0.0);
+    let status = unsafe {
+        sys::aoclsparse_zdotui(
+            x.len() as sys::aoclsparse_int,
+            x.as_ptr() as *const std::os::raw::c_void,
+            indx.as_ptr(),
+            y.as_ptr() as *const std::os::raw::c_void,
+            &mut out as *mut _ as *mut std::os::raw::c_void,
+        )
+    };
+    check_status("sparse", status)?;
+    Ok(out)
+}
+/// `Complex32` unconjugated sparse dot. See [`dotui_c64`].
+pub fn dotui_c32(x: &[Complex32], indx: &[sys::aoclsparse_int], y: &[Complex32]) -> Result<Complex32> {
+    let mut out = Complex32::new(0.0, 0.0);
+    let status = unsafe {
+        sys::aoclsparse_cdotui(
+            x.len() as sys::aoclsparse_int,
+            x.as_ptr() as *const std::os::raw::c_void,
+            indx.as_ptr(),
+            y.as_ptr() as *const std::os::raw::c_void,
+            &mut out as *mut _ as *mut std::os::raw::c_void,
+        )
+    };
+    check_status("sparse", status)?;
+    Ok(out)
+}
+
+/// Sparse-vector conjugated dot `Σ conj(x[i]) · y[indx[i]]`. (`Complex64`)
+pub fn dotci_c64(x: &[Complex64], indx: &[sys::aoclsparse_int], y: &[Complex64]) -> Result<Complex64> {
+    let mut out = Complex64::new(0.0, 0.0);
+    let status = unsafe {
+        sys::aoclsparse_zdotci(
+            x.len() as sys::aoclsparse_int,
+            x.as_ptr() as *const std::os::raw::c_void,
+            indx.as_ptr(),
+            y.as_ptr() as *const std::os::raw::c_void,
+            &mut out as *mut _ as *mut std::os::raw::c_void,
+        )
+    };
+    check_status("sparse", status)?;
+    Ok(out)
+}
+/// `Complex32` conjugated sparse dot. See [`dotci_c64`].
+pub fn dotci_c32(x: &[Complex32], indx: &[sys::aoclsparse_int], y: &[Complex32]) -> Result<Complex32> {
+    let mut out = Complex32::new(0.0, 0.0);
+    let status = unsafe {
+        sys::aoclsparse_cdotci(
+            x.len() as sys::aoclsparse_int,
+            x.as_ptr() as *const std::os::raw::c_void,
+            indx.as_ptr(),
+            y.as_ptr() as *const std::os::raw::c_void,
+            &mut out as *mut _ as *mut std::os::raw::c_void,
+        )
+    };
+    check_status("sparse", status)?;
+    Ok(out)
+}
+
+// ----- gthrs / gthrz / sctrs (complex) -----
+
+/// `Complex64` strided sparse gather. See real `gthrs_f64`.
+pub fn gthrs_c64(y: &[Complex64], x: &mut [Complex64], stride: i32) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_zgthrs(
+            x.len() as sys::aoclsparse_int,
+            y.as_ptr() as *const std::os::raw::c_void,
+            x.as_mut_ptr() as *mut std::os::raw::c_void,
+            stride as sys::aoclsparse_int,
+        )
+    };
+    check_status("sparse", status)
+}
+/// `Complex32` strided sparse gather.
+pub fn gthrs_c32(y: &[Complex32], x: &mut [Complex32], stride: i32) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_cgthrs(
+            x.len() as sys::aoclsparse_int,
+            y.as_ptr() as *const std::os::raw::c_void,
+            x.as_mut_ptr() as *mut std::os::raw::c_void,
+            stride as sys::aoclsparse_int,
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// `Complex64` gather-and-zero.
+pub fn gthrz_c64(y: &mut [Complex64], indx: &[sys::aoclsparse_int], x: &mut [Complex64]) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_zgthrz(
+            x.len() as sys::aoclsparse_int,
+            y.as_mut_ptr() as *mut std::os::raw::c_void,
+            x.as_mut_ptr() as *mut std::os::raw::c_void,
+            indx.as_ptr(),
+        )
+    };
+    check_status("sparse", status)
+}
+/// `Complex32` gather-and-zero.
+pub fn gthrz_c32(y: &mut [Complex32], indx: &[sys::aoclsparse_int], x: &mut [Complex32]) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_cgthrz(
+            x.len() as sys::aoclsparse_int,
+            y.as_mut_ptr() as *mut std::os::raw::c_void,
+            x.as_mut_ptr() as *mut std::os::raw::c_void,
+            indx.as_ptr(),
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// `Complex64` strided sparse scatter.
+pub fn sctrs_c64(x: &[Complex64], y: &mut [Complex64], stride: i32) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_zsctrs(
+            x.len() as sys::aoclsparse_int,
+            x.as_ptr() as *const std::os::raw::c_void,
+            stride as sys::aoclsparse_int,
+            y.as_mut_ptr() as *mut std::os::raw::c_void,
+        )
+    };
+    check_status("sparse", status)
+}
+/// `Complex32` strided sparse scatter.
+pub fn sctrs_c32(x: &[Complex32], y: &mut [Complex32], stride: i32) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_csctrs(
+            x.len() as sys::aoclsparse_int,
+            x.as_ptr() as *const std::os::raw::c_void,
+            stride as sys::aoclsparse_int,
+            y.as_mut_ptr() as *mut std::os::raw::c_void,
+        )
+    };
+    check_status("sparse", status)
+}
+
+// ----- syrkd / syprd (complex) -----
+
+/// Symmetric rank-k update from a complex sparse matrix. (`Complex64`)
+#[allow(clippy::too_many_arguments)]
+pub fn syrkd_c64(
+    op_a: Trans,
+    a: &ComplexSparseMatrix<Complex64>,
+    alpha: Complex64, beta: Complex64,
+    c: &mut [Complex64],
+    order_c: Order,
+    ldc: usize,
+) -> Result<()> {
+    let alpha_raw = sys::aoclsparse_double_complex_ { real: alpha.re, imag: alpha.im };
+    let beta_raw = sys::aoclsparse_double_complex_ { real: beta.re, imag: beta.im };
+    let status = unsafe {
+        sys::aoclsparse_zsyrkd(
+            trans_raw(op_a), a.as_raw(),
+            alpha_raw, beta_raw,
+            c.as_mut_ptr() as *mut sys::aoclsparse_double_complex,
+            order_c.raw(), ldc as sys::aoclsparse_int,
+        )
+    };
+    check_status("sparse", status)
+}
+/// `Complex32` symmetric rank-k update. See [`syrkd_c64`].
+#[allow(clippy::too_many_arguments)]
+pub fn syrkd_c32(
+    op_a: Trans,
+    a: &ComplexSparseMatrix<Complex32>,
+    alpha: Complex32, beta: Complex32,
+    c: &mut [Complex32],
+    order_c: Order,
+    ldc: usize,
+) -> Result<()> {
+    let alpha_raw = sys::aoclsparse_float_complex { real: alpha.re, imag: alpha.im };
+    let beta_raw = sys::aoclsparse_float_complex { real: beta.re, imag: beta.im };
+    let status = unsafe {
+        sys::aoclsparse_csyrkd(
+            trans_raw(op_a), a.as_raw(),
+            alpha_raw, beta_raw,
+            c.as_mut_ptr() as *mut sys::aoclsparse_float_complex,
+            order_c.raw(), ldc as sys::aoclsparse_int,
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// Symmetric triple product `C := α · op(A) · B · op(A)ᵀ + β · C` for
+/// complex sparse `A`, dense `B`/`C`. (`Complex64`)
+#[allow(clippy::too_many_arguments)]
+pub fn syprd_c64(
+    op_a: Trans,
+    a: &ComplexSparseMatrix<Complex64>,
+    b: &[Complex64], order_b: Order, ldb: usize,
+    alpha: Complex64, beta: Complex64,
+    c: &mut [Complex64], order_c: Order, ldc: usize,
+) -> Result<()> {
+    let alpha_raw = sys::aoclsparse_double_complex_ { real: alpha.re, imag: alpha.im };
+    let beta_raw = sys::aoclsparse_double_complex_ { real: beta.re, imag: beta.im };
+    let status = unsafe {
+        sys::aoclsparse_zsyprd(
+            trans_raw(op_a), a.as_raw(),
+            b.as_ptr() as *const sys::aoclsparse_double_complex,
+            order_b.raw(), ldb as sys::aoclsparse_int,
+            alpha_raw, beta_raw,
+            c.as_mut_ptr() as *mut sys::aoclsparse_double_complex,
+            order_c.raw(), ldc as sys::aoclsparse_int,
+        )
+    };
+    check_status("sparse", status)
+}
+/// `Complex32` symmetric triple product. See [`syprd_c64`].
+#[allow(clippy::too_many_arguments)]
+pub fn syprd_c32(
+    op_a: Trans,
+    a: &ComplexSparseMatrix<Complex32>,
+    b: &[Complex32], order_b: Order, ldb: usize,
+    alpha: Complex32, beta: Complex32,
+    c: &mut [Complex32], order_c: Order, ldc: usize,
+) -> Result<()> {
+    let alpha_raw = sys::aoclsparse_float_complex { real: alpha.re, imag: alpha.im };
+    let beta_raw = sys::aoclsparse_float_complex { real: beta.re, imag: beta.im };
+    let status = unsafe {
+        sys::aoclsparse_csyprd(
+            trans_raw(op_a), a.as_raw(),
+            b.as_ptr() as *const sys::aoclsparse_float_complex,
+            order_b.raw(), ldb as sys::aoclsparse_int,
+            alpha_raw, beta_raw,
+            c.as_mut_ptr() as *mut sys::aoclsparse_float_complex,
+            order_c.raw(), ldc as sys::aoclsparse_int,
+        )
+    };
+    check_status("sparse", status)
+}
+
+// ----- Complex CSC and TCSR creators -----
+
+/// Build a complex CSC matrix handle. (`Complex64`)
+#[allow(clippy::too_many_arguments)]
+pub fn create_csc_c64(
+    base: IndexBase,
+    m: usize, n: usize, nnz: usize,
+    col_ptr: &mut [sys::aoclsparse_int],
+    row_idx: &mut [sys::aoclsparse_int],
+    val: &mut [Complex64],
+) -> Result<sys::aoclsparse_matrix> {
+    let mut raw: sys::aoclsparse_matrix = std::ptr::null_mut();
+    let status = unsafe {
+        sys::aoclsparse_create_zcsc(
+            &mut raw, base.raw_for_complex(),
+            m as sys::aoclsparse_int, n as sys::aoclsparse_int, nnz as sys::aoclsparse_int,
+            col_ptr.as_mut_ptr(), row_idx.as_mut_ptr(),
+            val.as_mut_ptr() as *mut sys::aoclsparse_double_complex,
+        )
+    };
+    check_status("sparse", status)?;
+    if raw.is_null() { return Err(Error::AllocationFailed("sparse")); }
+    Ok(raw)
+}
+/// `Complex32` CSC creator. See [`create_csc_c64`].
+#[allow(clippy::too_many_arguments)]
+pub fn create_csc_c32(
+    base: IndexBase,
+    m: usize, n: usize, nnz: usize,
+    col_ptr: &mut [sys::aoclsparse_int],
+    row_idx: &mut [sys::aoclsparse_int],
+    val: &mut [Complex32],
+) -> Result<sys::aoclsparse_matrix> {
+    let mut raw: sys::aoclsparse_matrix = std::ptr::null_mut();
+    let status = unsafe {
+        sys::aoclsparse_create_ccsc(
+            &mut raw, base.raw_for_complex(),
+            m as sys::aoclsparse_int, n as sys::aoclsparse_int, nnz as sys::aoclsparse_int,
+            col_ptr.as_mut_ptr(), row_idx.as_mut_ptr(),
+            val.as_mut_ptr() as *mut sys::aoclsparse_float_complex,
+        )
+    };
+    check_status("sparse", status)?;
+    if raw.is_null() { return Err(Error::AllocationFailed("sparse")); }
+    Ok(raw)
+}
+
+/// Build a complex TCSR matrix handle (parallel L / U triangular CSRs).
+/// (`Complex64`)
+#[allow(clippy::too_many_arguments)]
+pub fn create_tcsr_c64(
+    base: IndexBase,
+    m: usize, n: usize, nnz: usize,
+    row_ptr_l: &mut [sys::aoclsparse_int],
+    row_ptr_u: &mut [sys::aoclsparse_int],
+    col_idx_l: &mut [sys::aoclsparse_int],
+    col_idx_u: &mut [sys::aoclsparse_int],
+    val_l: &mut [Complex64],
+    val_u: &mut [Complex64],
+) -> Result<sys::aoclsparse_matrix> {
+    let mut raw: sys::aoclsparse_matrix = std::ptr::null_mut();
+    let status = unsafe {
+        sys::aoclsparse_create_ztcsr(
+            &mut raw, base.raw_for_complex(),
+            m as sys::aoclsparse_int, n as sys::aoclsparse_int, nnz as sys::aoclsparse_int,
+            row_ptr_l.as_mut_ptr(), row_ptr_u.as_mut_ptr(),
+            col_idx_l.as_mut_ptr(), col_idx_u.as_mut_ptr(),
+            val_l.as_mut_ptr() as *mut sys::aoclsparse_double_complex,
+            val_u.as_mut_ptr() as *mut sys::aoclsparse_double_complex,
+        )
+    };
+    check_status("sparse", status)?;
+    if raw.is_null() { return Err(Error::AllocationFailed("sparse")); }
+    Ok(raw)
+}
+/// `Complex32` TCSR creator. See [`create_tcsr_c64`].
+#[allow(clippy::too_many_arguments)]
+pub fn create_tcsr_c32(
+    base: IndexBase,
+    m: usize, n: usize, nnz: usize,
+    row_ptr_l: &mut [sys::aoclsparse_int],
+    row_ptr_u: &mut [sys::aoclsparse_int],
+    col_idx_l: &mut [sys::aoclsparse_int],
+    col_idx_u: &mut [sys::aoclsparse_int],
+    val_l: &mut [Complex32],
+    val_u: &mut [Complex32],
+) -> Result<sys::aoclsparse_matrix> {
+    let mut raw: sys::aoclsparse_matrix = std::ptr::null_mut();
+    let status = unsafe {
+        sys::aoclsparse_create_ctcsr(
+            &mut raw, base.raw_for_complex(),
+            m as sys::aoclsparse_int, n as sys::aoclsparse_int, nnz as sys::aoclsparse_int,
+            row_ptr_l.as_mut_ptr(), row_ptr_u.as_mut_ptr(),
+            col_idx_l.as_mut_ptr(), col_idx_u.as_mut_ptr(),
+            val_l.as_mut_ptr() as *mut sys::aoclsparse_float_complex,
+            val_u.as_mut_ptr() as *mut sys::aoclsparse_float_complex,
+        )
+    };
+    check_status("sparse", status)?;
+    if raw.is_null() { return Err(Error::AllocationFailed("sparse")); }
+    Ok(raw)
+}
+
 // IndexBase helper used above. Mirrors the real API's internal `raw()`
 // accessor without making the function public to outside crates.
 impl IndexBase {
