@@ -72,11 +72,9 @@ impl EcDh {
         let mut info: Box<sys::alc_ec_info> = Box::new(sys::alc_ec_info {
             ecCurveId: curve.id(),
             ecCurveType: curve.ty(),
-            ecPointFormat:
-                sys::alc_ec_point_format_id_ALCP_EC_POINT_FORMAT_UNCOMPRESSED,
+            ecPointFormat: sys::alc_ec_point_format_id_ALCP_EC_POINT_FORMAT_UNCOMPRESSED,
         });
-        let context_size =
-            unsafe { sys::alcp_ec_context_size(info.as_mut() as *mut _) } as usize;
+        let context_size = unsafe { sys::alcp_ec_context_size(info.as_mut() as *mut _) } as usize;
         if context_size == 0 {
             return Err(Error::AllocationFailed("crypto"));
         }
@@ -85,7 +83,12 @@ impl EcDh {
             context: context.as_mut_ptr() as *mut std::os::raw::c_void,
         };
         check(unsafe { sys::alcp_ec_request(info.as_mut() as *mut _, &mut handle) })?;
-        Ok(Self { handle, _context: context, _info: info, curve })
+        Ok(Self {
+            handle,
+            _context: context,
+            _info: info,
+            curve,
+        })
     }
 
     /// Set the local private key. Must be exactly `Curve::key_len()` bytes.
@@ -93,7 +96,8 @@ impl EcDh {
         if private_key.len() != self.curve.key_len() {
             return Err(Error::InvalidArgument(format!(
                 "set_private_key: expected {} bytes, got {}",
-                self.curve.key_len(), private_key.len()
+                self.curve.key_len(),
+                private_key.len()
             )));
         }
         check(unsafe { sys::alcp_ec_set_privatekey(&mut self.handle, private_key.as_ptr()) })
@@ -101,11 +105,7 @@ impl EcDh {
 
     /// Derive the local public key from the given private key, writing
     /// `Curve::key_len()` bytes into `public_key`.
-    pub fn derive_public_key(
-        &mut self,
-        private_key: &[u8],
-        public_key: &mut [u8],
-    ) -> Result<()> {
+    pub fn derive_public_key(&mut self, private_key: &[u8], public_key: &mut [u8]) -> Result<()> {
         let n = self.curve.key_len();
         if private_key.len() != n {
             return Err(Error::InvalidArgument(format!(
@@ -129,11 +129,7 @@ impl EcDh {
     /// Compute the ECDH shared secret given the peer's public key.
     /// Writes up to `Curve::key_len()` bytes into `secret`; the actual
     /// length is returned.
-    pub fn shared_secret(
-        &mut self,
-        peer_public_key: &[u8],
-        secret: &mut [u8],
-    ) -> Result<usize> {
+    pub fn shared_secret(&mut self, peer_public_key: &[u8], secret: &mut [u8]) -> Result<usize> {
         let n = self.curve.key_len();
         if peer_public_key.len() != n {
             return Err(Error::InvalidArgument(format!(
@@ -166,7 +162,9 @@ impl Drop for EcDh {
 
 impl std::fmt::Debug for EcDh {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("EcDh").field("curve", &self.curve).finish_non_exhaustive()
+        f.debug_struct("EcDh")
+            .field("curve", &self.curve)
+            .finish_non_exhaustive()
     }
 }
 
@@ -181,16 +179,14 @@ mod tests {
         // shared_secret. Splitting the lifecycle across multiple
         // handles produces non-matching secrets on AOCL 5.1.
         let alice_priv = [
-            0x77, 0x07, 0x6d, 0x0a, 0x73, 0x18, 0xa5, 0x7d,
-            0x3c, 0x16, 0xc1, 0x72, 0x51, 0xb2, 0x66, 0x45,
-            0xdf, 0x4c, 0x2f, 0x87, 0xeb, 0xc0, 0x99, 0x2a,
-            0xb1, 0x77, 0xfb, 0xa5, 0x1d, 0xb9, 0x2c, 0x2a,
+            0x77, 0x07, 0x6d, 0x0a, 0x73, 0x18, 0xa5, 0x7d, 0x3c, 0x16, 0xc1, 0x72, 0x51, 0xb2,
+            0x66, 0x45, 0xdf, 0x4c, 0x2f, 0x87, 0xeb, 0xc0, 0x99, 0x2a, 0xb1, 0x77, 0xfb, 0xa5,
+            0x1d, 0xb9, 0x2c, 0x2a,
         ];
         let bob_priv = [
-            0x5d, 0xab, 0x08, 0x7e, 0x62, 0x4a, 0x8a, 0x4b,
-            0x79, 0xe1, 0x7f, 0x8b, 0x83, 0x80, 0x0e, 0xe6,
-            0x6f, 0x3b, 0xb1, 0x29, 0x26, 0x18, 0xb6, 0xfd,
-            0x1c, 0x2f, 0x8b, 0x27, 0xff, 0x88, 0xe0, 0xeb,
+            0x5d, 0xab, 0x08, 0x7e, 0x62, 0x4a, 0x8a, 0x4b, 0x79, 0xe1, 0x7f, 0x8b, 0x83, 0x80,
+            0x0e, 0xe6, 0x6f, 0x3b, 0xb1, 0x29, 0x26, 0x18, 0xb6, 0xfd, 0x1c, 0x2f, 0x8b, 0x27,
+            0xff, 0x88, 0xe0, 0xeb,
         ];
 
         let mut alice = EcDh::new(Curve::X25519).unwrap();
@@ -201,7 +197,9 @@ mod tests {
 
         let mut alice_pub = [0u8; 32];
         let mut bob_pub = [0u8; 32];
-        alice.derive_public_key(&alice_priv, &mut alice_pub).unwrap();
+        alice
+            .derive_public_key(&alice_priv, &mut alice_pub)
+            .unwrap();
         bob.derive_public_key(&bob_priv, &mut bob_pub).unwrap();
 
         // Same handles compute the shared secret with the peer's pub key.
@@ -210,9 +208,13 @@ mod tests {
         alice.shared_secret(&bob_pub, &mut alice_secret).unwrap();
         bob.shared_secret(&alice_pub, &mut bob_secret).unwrap();
 
-        assert_eq!(alice_secret, bob_secret,
-                   "X25519 shared secrets did not match");
-        assert!(alice_secret.iter().any(|&b| b != 0),
-                "shared secret was all zeros");
+        assert_eq!(
+            alice_secret, bob_secret,
+            "X25519 shared secrets did not match"
+        );
+        assert!(
+            alice_secret.iter().any(|&b| b != 0),
+            "shared secret was all zeros"
+        );
     }
 }

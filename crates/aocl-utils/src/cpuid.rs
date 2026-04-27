@@ -141,8 +141,7 @@ pub fn has_flags_all(cpu: Cpu, flags: &[&str]) -> bool {
         // A flag with an interior NUL is malformed; treat as "not supported".
         return false;
     }
-    let pointers: Vec<*const std::os::raw::c_char> =
-        cstrings.iter().map(|c| c.as_ptr()).collect();
+    let pointers: Vec<*const std::os::raw::c_char> = cstrings.iter().map(|c| c.as_ptr()).collect();
     // SAFETY: AOCL reads `count` C-string pointers; the cstrings stay
     // alive for the duration of this call.
     unsafe {
@@ -166,8 +165,7 @@ pub fn has_flags_any(cpu: Cpu, flags: &[&str]) -> bool {
     if cstrings.len() != flags.len() {
         return false;
     }
-    let pointers: Vec<*const std::os::raw::c_char> =
-        cstrings.iter().map(|c| c.as_ptr()).collect();
+    let pointers: Vec<*const std::os::raw::c_char> = cstrings.iter().map(|c| c.as_ptr()).collect();
     unsafe {
         sys::au_cpuid_has_flags_any(
             cpu.as_raw(),

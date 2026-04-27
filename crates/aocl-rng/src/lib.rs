@@ -3,8 +3,8 @@
 #![warn(missing_debug_implementations)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-use aocl_rng_sys as sys;
 pub use aocl_error::{Error, Result};
+use aocl_rng_sys as sys;
 
 /// Integer width used by AOCL-RNG for size parameters and integer-valued
 /// distribution outputs. `i32` in the default LP64 build, `i64` in the
@@ -85,9 +85,7 @@ impl Rng {
             return Ok(());
         }
         let n_int: sys::rng_int_t = n.try_into().map_err(|_| {
-            Error::InvalidArgument(format!(
-                "uniform: n={n} exceeds rng_int_t range"
-            ))
+            Error::InvalidArgument(format!("uniform: n={n} exceeds rng_int_t range"))
         })?;
         let mut info: sys::rng_int_t = 0;
         unsafe {
@@ -124,9 +122,7 @@ impl Rng {
             return Ok(());
         }
         let n_int: sys::rng_int_t = n.try_into().map_err(|_| {
-            Error::InvalidArgument(format!(
-                "gaussian: n={n} exceeds rng_int_t range"
-            ))
+            Error::InvalidArgument(format!("gaussian: n={n} exceeds rng_int_t range"))
         })?;
         let mut info: sys::rng_int_t = 0;
         unsafe {
@@ -290,7 +286,13 @@ impl Rng {
     /// Hypergeometric distribution: number of successes in `m` draws
     /// without replacement from a population of `np` items containing
     /// `ns` successes.
-    pub fn hypergeometric(&mut self, np: RngInt, ns: RngInt, m: RngInt, out: &mut [RngInt]) -> Result<()> {
+    pub fn hypergeometric(
+        &mut self,
+        np: RngInt,
+        ns: RngInt,
+        m: RngInt,
+        out: &mut [RngInt],
+    ) -> Result<()> {
         self.fill_int("hypergeometric", out, |n, st, ptr, info| unsafe {
             sys::drandhypergeometric(n, np, ns, m, st, ptr, info)
         })
@@ -345,14 +347,20 @@ impl Rng {
             return Ok(());
         }
         let n_int: RngInt = n_samples.try_into().map_err(|_| {
-            Error::InvalidArgument(format!("multinomial: n={n_samples} exceeds rng_int_t range"))
+            Error::InvalidArgument(format!(
+                "multinomial: n={n_samples} exceeds rng_int_t range"
+            ))
         })?;
         let mut info: RngInt = 0;
         unsafe {
             sys::drandmultinomial(
-                n_int, m, p.as_mut_ptr(), k,
+                n_int,
+                m,
+                p.as_mut_ptr(),
+                k,
                 self.state.as_mut_ptr(),
-                out.as_mut_ptr(), ldx,
+                out.as_mut_ptr(),
+                ldx,
                 &mut info,
             );
         }
@@ -375,24 +383,31 @@ impl Rng {
         &mut self,
         m: RngInt,
         xmu: &mut [f64],
-        c: &mut [f64], ldc: RngInt,
-        out: &mut [f64], ldx: RngInt,
+        c: &mut [f64],
+        ldc: RngInt,
+        out: &mut [f64],
+        ldx: RngInt,
     ) -> Result<()> {
         let n_samples = if m > 0 { out.len() / m as usize } else { 0 };
         if n_samples == 0 {
             return Ok(());
         }
         let n_int: RngInt = n_samples.try_into().map_err(|_| {
-            Error::InvalidArgument(format!("multinormal: n={n_samples} exceeds rng_int_t range"))
+            Error::InvalidArgument(format!(
+                "multinormal: n={n_samples} exceeds rng_int_t range"
+            ))
         })?;
         let mut info: RngInt = 0;
         unsafe {
             sys::drandmultinormal(
-                n_int, m,
+                n_int,
+                m,
                 xmu.as_mut_ptr(),
-                c.as_mut_ptr(), ldc,
+                c.as_mut_ptr(),
+                ldc,
                 self.state.as_mut_ptr(),
-                out.as_mut_ptr(), ldx,
+                out.as_mut_ptr(),
+                ldx,
                 &mut info,
             );
         }
@@ -414,7 +429,9 @@ impl Rng {
             Error::InvalidArgument(format!("skip_ahead: n={n_skip} exceeds rng_int_t range"))
         })?;
         let mut info: RngInt = 0;
-        unsafe { sys::drandskipahead(n_int, self.state.as_mut_ptr(), &mut info); }
+        unsafe {
+            sys::drandskipahead(n_int, self.state.as_mut_ptr(), &mut info);
+        }
         if info != 0 {
             return Err(Error::Status {
                 component: "rng",
@@ -430,7 +447,9 @@ impl Rng {
     /// call subselects every `n`-th sample.
     pub fn leapfrog(&mut self, n: RngInt, k: RngInt) -> Result<()> {
         let mut info: RngInt = 0;
-        unsafe { sys::drandleapfrog(n, k, self.state.as_mut_ptr(), &mut info); }
+        unsafe {
+            sys::drandleapfrog(n, k, self.state.as_mut_ptr(), &mut info);
+        }
         if info != 0 {
             return Err(Error::Status {
                 component: "rng",
@@ -448,26 +467,35 @@ impl Rng {
     #[allow(clippy::too_many_arguments)]
     pub fn multi_students_t(
         &mut self,
-        m: RngInt, df: RngInt,
+        m: RngInt,
+        df: RngInt,
         xmu: &mut [f64],
-        c: &mut [f64], ldc: RngInt,
-        out: &mut [f64], ldx: RngInt,
+        c: &mut [f64],
+        ldc: RngInt,
+        out: &mut [f64],
+        ldx: RngInt,
     ) -> Result<()> {
         let n_samples = if m > 0 { out.len() / m as usize } else { 0 };
         if n_samples == 0 {
             return Ok(());
         }
         let n_int: RngInt = n_samples.try_into().map_err(|_| {
-            Error::InvalidArgument(format!("multi_students_t: n={n_samples} exceeds rng_int_t range"))
+            Error::InvalidArgument(format!(
+                "multi_students_t: n={n_samples} exceeds rng_int_t range"
+            ))
         })?;
         let mut info: RngInt = 0;
         unsafe {
             sys::drandmultistudentst(
-                n_int, m, df,
+                n_int,
+                m,
+                df,
                 xmu.as_mut_ptr(),
-                c.as_mut_ptr(), ldc,
+                c.as_mut_ptr(),
+                ldc,
                 self.state.as_mut_ptr(),
-                out.as_mut_ptr(), ldx,
+                out.as_mut_ptr(),
+                ldx,
                 &mut info,
             );
         }
@@ -510,10 +538,14 @@ impl BlumBlumShub {
         unsafe {
             sys::drandinitializebbs(
                 nbits,
-                p.len() as RngInt, p.as_mut_ptr(),
-                q.len() as RngInt, q.as_mut_ptr(),
-                s.len() as RngInt, s.as_mut_ptr(),
-                state.as_mut_ptr(), &mut lstate,
+                p.len() as RngInt,
+                p.as_mut_ptr(),
+                q.len() as RngInt,
+                q.as_mut_ptr(),
+                s.len() as RngInt,
+                s.as_mut_ptr(),
+                state.as_mut_ptr(),
+                &mut lstate,
                 &mut info,
             );
         }
@@ -558,7 +590,6 @@ impl std::fmt::Debug for BlumBlumShub {
 }
 
 impl Rng {
-
     // ---- internal helpers ----------------------------------------------
 
     fn fill_real<F>(&mut self, op: &'static str, out: &mut [f64], call: F) -> Result<()>
@@ -569,9 +600,9 @@ impl Rng {
         if n == 0 {
             return Ok(());
         }
-        let n_int: sys::rng_int_t = n.try_into().map_err(|_| {
-            Error::InvalidArgument(format!("{op}: n={n} exceeds rng_int_t range"))
-        })?;
+        let n_int: sys::rng_int_t = n
+            .try_into()
+            .map_err(|_| Error::InvalidArgument(format!("{op}: n={n} exceeds rng_int_t range")))?;
         let mut info: sys::rng_int_t = 0;
         call(n_int, self.state.as_mut_ptr(), out.as_mut_ptr(), &mut info);
         if info != 0 {
@@ -592,9 +623,9 @@ impl Rng {
         if n == 0 {
             return Ok(());
         }
-        let n_int: sys::rng_int_t = n.try_into().map_err(|_| {
-            Error::InvalidArgument(format!("{op}: n={n} exceeds rng_int_t range"))
-        })?;
+        let n_int: sys::rng_int_t = n
+            .try_into()
+            .map_err(|_| Error::InvalidArgument(format!("{op}: n={n} exceeds rng_int_t range")))?;
         let mut info: sys::rng_int_t = 0;
         call(n_int, self.state.as_mut_ptr(), out.as_mut_ptr(), &mut info);
         if info != 0 {

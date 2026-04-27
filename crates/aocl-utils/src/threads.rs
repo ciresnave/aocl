@@ -54,10 +54,7 @@ pub unsafe fn pin_threads(strategy: PinStrategy, threads: &mut [ThreadHandle]) {
 ///
 /// Same as [`pin_threads`]; in addition, the affinity values must
 /// reference logical processors that exist on the host.
-pub unsafe fn pin_threads_custom(
-    threads: &mut [ThreadHandle],
-    affinity_vector: &[i32],
-) {
+pub unsafe fn pin_threads_custom(threads: &mut [ThreadHandle], affinity_vector: &[i32]) {
     let n = threads.len();
     if n == 0 || affinity_vector.is_empty() {
         return;

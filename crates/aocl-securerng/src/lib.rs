@@ -8,8 +8,8 @@
 #![warn(missing_debug_implementations)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-use aocl_securerng_sys as sys;
 pub use aocl_error::{Error, Result};
+use aocl_securerng_sys as sys;
 
 const SECRNG_SUCCESS: i32 = 2;
 const SECRNG_SUPPORTED: i32 = 1;

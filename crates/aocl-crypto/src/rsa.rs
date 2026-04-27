@@ -67,7 +67,10 @@ impl Rsa {
             context: context.as_mut_ptr() as *mut std::os::raw::c_void,
         };
         check(unsafe { sys::alcp_rsa_request(&mut handle) })?;
-        Ok(Self { handle, _context: context })
+        Ok(Self {
+            handle,
+            _context: context,
+        })
     }
 
     /// Install a public key. `exponent` is typically `65537`. `modulus`
@@ -102,8 +105,12 @@ impl Rsa {
         check(unsafe {
             sys::alcp_rsa_set_privatekey(
                 &mut self.handle,
-                dp.as_ptr(), dq.as_ptr(), p.as_ptr(), q.as_ptr(),
-                qinv.as_ptr(), modulus.as_ptr(),
+                dp.as_ptr(),
+                dq.as_ptr(),
+                p.as_ptr(),
+                q.as_ptr(),
+                qinv.as_ptr(),
+                modulus.as_ptr(),
                 size,
             )
         })
@@ -140,7 +147,12 @@ impl Rsa {
 
     /// Decrypt with the private key. `padding` must match the encrypt
     /// side.
-    pub fn decrypt(&mut self, padding: Padding, ciphertext: &[u8], plaintext: &mut [u8]) -> Result<()> {
+    pub fn decrypt(
+        &mut self,
+        padding: Padding,
+        ciphertext: &[u8],
+        plaintext: &mut [u8],
+    ) -> Result<()> {
         check(unsafe {
             sys::alcp_rsa_privatekey_decrypt(
                 &mut self.handle,
@@ -200,12 +212,7 @@ impl Rsa {
 
     /// PSS sign: produce a signature over `message`. `salt` length is
     /// caller's choice (typically the digest output size).
-    pub fn sign_pss(
-        &mut self,
-        message: &[u8],
-        salt: &[u8],
-        signature: &mut [u8],
-    ) -> Result<()> {
+    pub fn sign_pss(&mut self, message: &[u8], salt: &[u8], signature: &mut [u8]) -> Result<()> {
         check(unsafe {
             sys::alcp_rsa_privatekey_sign_pss(
                 &mut self.handle,
@@ -277,11 +284,7 @@ impl Rsa {
 
     /// PKCS#1 v1.5 decrypt with private key. Returns the recovered
     /// plaintext length.
-    pub fn decrypt_pkcs1v15(
-        &mut self,
-        ciphertext: &[u8],
-        plaintext: &mut [u8],
-    ) -> Result<usize> {
+    pub fn decrypt_pkcs1v15(&mut self, ciphertext: &[u8], plaintext: &mut [u8]) -> Result<usize> {
         let mut text_len: u64 = plaintext.len() as u64;
         check(unsafe {
             sys::alcp_rsa_privatekey_decrypt_pkcs1v15(
@@ -295,12 +298,7 @@ impl Rsa {
     }
 
     /// Sign an already-computed digest using PSS padding.
-    pub fn sign_hash_pss(
-        &mut self,
-        hash: &[u8],
-        salt: &[u8],
-        signature: &mut [u8],
-    ) -> Result<()> {
+    pub fn sign_hash_pss(&mut self, hash: &[u8], salt: &[u8], signature: &mut [u8]) -> Result<()> {
         check(unsafe {
             sys::alcp_rsa_privatekey_sign_hash_pss(
                 &mut self.handle,
@@ -352,9 +350,7 @@ impl Rsa {
     /// Deep-copy this RSA context into `dest`. Both handles must
     /// already be live ([`Rsa::new`]'d).
     pub fn copy_context_into(&mut self, dest: &mut Rsa) -> Result<()> {
-        check(unsafe {
-            sys::alcp_rsa_context_copy(&mut self.handle, &mut dest.handle)
-        })
+        check(unsafe { sys::alcp_rsa_context_copy(&mut self.handle, &mut dest.handle) })
     }
 
     /// Borrow the raw `_alc_rsa_handle` for routines this crate

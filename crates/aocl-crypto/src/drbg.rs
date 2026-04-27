@@ -66,7 +66,9 @@ impl Drbg {
     ) -> Result<Self> {
         let mut info: Box<sys::_alc_drbg_info_t> = Box::new(unsafe { std::mem::zeroed() });
         info.di_type = sys::_alc_drbg_type_ALC_DRBG_HMAC;
-        info.di_algoinfo.hmac_drbg = sys::_alc_hmac_drbg_info { digest_mode: digest_mode.raw() };
+        info.di_algoinfo.hmac_drbg = sys::_alc_hmac_drbg_info {
+            digest_mode: digest_mode.raw(),
+        };
         info.max_entropy_len = 16;
         info.max_nonce_len = 16;
         Self::build(info, security_strength as i32, personalization)
@@ -113,14 +115,11 @@ impl Drbg {
             return Err(Error::Status {
                 component: "crypto",
                 code: supported as i64,
-                message: format!(
-                    "alcp_drbg_supported rejected this configuration: {supported:#x}"
-                ),
+                message: format!("alcp_drbg_supported rejected this configuration: {supported:#x}"),
             });
         }
 
-        let context_size =
-            unsafe { sys::alcp_drbg_context_size(info.as_mut() as *mut _) } as usize;
+        let context_size = unsafe { sys::alcp_drbg_context_size(info.as_mut() as *mut _) } as usize;
         if context_size == 0 {
             return Err(Error::AllocationFailed("crypto"));
         }
@@ -149,11 +148,7 @@ impl Drbg {
     /// Fill `out` with random bytes from the DRBG. Optional
     /// `additional_input` is mixed into the generator state for this
     /// call only.
-    pub fn randomize(
-        &mut self,
-        out: &mut [u8],
-        additional_input: Option<&[u8]>,
-    ) -> Result<()> {
+    pub fn randomize(&mut self, out: &mut [u8], additional_input: Option<&[u8]>) -> Result<()> {
         if out.is_empty() {
             return Ok(());
         }

@@ -18,8 +18,8 @@
 #![warn(missing_debug_implementations)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-use aocl_fft_sys as sys;
 pub use aocl_error::{Error, Result};
+use aocl_fft_sys as sys;
 use std::sync::Mutex;
 
 /// FFTW's plan-creation and plan-destruction routines mutate global state.
@@ -137,9 +137,7 @@ pub fn dft_3d_inplace(
     let ptr = data.as_mut_ptr() as *mut sys::fftw_complex;
     let plan = {
         let _g = PLANNER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        unsafe {
-            sys::fftw_plan_dft_3d(n0, n1, n2, ptr, ptr, direction.raw(), sys::FFTW_ESTIMATE)
-        }
+        unsafe { sys::fftw_plan_dft_3d(n0, n1, n2, ptr, ptr, direction.raw(), sys::FFTW_ESTIMATE) }
     };
     if plan.is_null() {
         return Err(Error::AllocationFailed("fft"));
@@ -283,13 +281,19 @@ impl Plan {
         if plan.is_null() {
             return Err(Error::AllocationFailed("fft"));
         }
-        Ok(Self { plan, kind: PlanKind::Complex, n_total: n })
+        Ok(Self {
+            plan,
+            kind: PlanKind::Complex,
+            n_total: n,
+        })
     }
 
     /// Build a 2-D complex DFT plan over `n0 × n1` samples.
     pub fn dft_2d(n0: usize, n1: usize, direction: Direction) -> Result<Self> {
         if n0 == 0 || n1 == 0 {
-            return Err(Error::InvalidArgument("dft_2d: dimensions must be positive".into()));
+            return Err(Error::InvalidArgument(
+                "dft_2d: dimensions must be positive".into(),
+            ));
         }
         let n0_i = check_n("dft_2d: n0", n0)?;
         let n1_i = check_n("dft_2d: n1", n1)?;
@@ -297,20 +301,24 @@ impl Plan {
         let p = scratch.as_mut_ptr() as *mut sys::fftw_complex;
         let plan = {
             let _g = PLANNER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-            unsafe {
-                sys::fftw_plan_dft_2d(n0_i, n1_i, p, p, direction.raw(), sys::FFTW_ESTIMATE)
-            }
+            unsafe { sys::fftw_plan_dft_2d(n0_i, n1_i, p, p, direction.raw(), sys::FFTW_ESTIMATE) }
         };
         if plan.is_null() {
             return Err(Error::AllocationFailed("fft"));
         }
-        Ok(Self { plan, kind: PlanKind::Complex, n_total: n0 * n1 })
+        Ok(Self {
+            plan,
+            kind: PlanKind::Complex,
+            n_total: n0 * n1,
+        })
     }
 
     /// Build a 3-D complex DFT plan.
     pub fn dft_3d(n0: usize, n1: usize, n2: usize, direction: Direction) -> Result<Self> {
         if n0 == 0 || n1 == 0 || n2 == 0 {
-            return Err(Error::InvalidArgument("dft_3d: dimensions must be positive".into()));
+            return Err(Error::InvalidArgument(
+                "dft_3d: dimensions must be positive".into(),
+            ));
         }
         let n0_i = check_n("dft_3d: n0", n0)?;
         let n1_i = check_n("dft_3d: n1", n1)?;
@@ -326,7 +334,11 @@ impl Plan {
         if plan.is_null() {
             return Err(Error::AllocationFailed("fft"));
         }
-        Ok(Self { plan, kind: PlanKind::Complex, n_total: n0 * n1 * n2 })
+        Ok(Self {
+            plan,
+            kind: PlanKind::Complex,
+            n_total: n0 * n1 * n2,
+        })
     }
 
     /// Build a 1-D real-to-complex forward plan.
@@ -351,7 +363,11 @@ impl Plan {
         if plan.is_null() {
             return Err(Error::AllocationFailed("fft"));
         }
-        Ok(Self { plan, kind: PlanKind::R2C, n_total: n })
+        Ok(Self {
+            plan,
+            kind: PlanKind::R2C,
+            n_total: n,
+        })
     }
 
     /// Build a 1-D complex-to-real backward plan.
@@ -376,15 +392,15 @@ impl Plan {
         if plan.is_null() {
             return Err(Error::AllocationFailed("fft"));
         }
-        Ok(Self { plan, kind: PlanKind::C2R, n_total: n })
+        Ok(Self {
+            plan,
+            kind: PlanKind::C2R,
+            n_total: n,
+        })
     }
 
     /// Execute a complex DFT plan against new buffers of the matching shape.
-    pub fn execute_dft(
-        &self,
-        input: &mut [[f64; 2]],
-        output: &mut [[f64; 2]],
-    ) -> Result<()> {
+    pub fn execute_dft(&self, input: &mut [[f64; 2]], output: &mut [[f64; 2]]) -> Result<()> {
         if self.kind != PlanKind::Complex {
             return Err(Error::InvalidArgument(
                 "execute_dft: plan is not a complex DFT".into(),
@@ -409,11 +425,7 @@ impl Plan {
     }
 
     /// Execute a real-to-complex plan against new buffers.
-    pub fn execute_r2c(
-        &self,
-        input: &mut [f64],
-        output: &mut [[f64; 2]],
-    ) -> Result<()> {
+    pub fn execute_r2c(&self, input: &mut [f64], output: &mut [[f64; 2]]) -> Result<()> {
         if self.kind != PlanKind::R2C {
             return Err(Error::InvalidArgument(
                 "execute_r2c: plan is not an r2c plan".into(),
@@ -440,11 +452,7 @@ impl Plan {
     }
 
     /// Execute a complex-to-real plan against new buffers.
-    pub fn execute_c2r(
-        &self,
-        input: &mut [[f64; 2]],
-        output: &mut [f64],
-    ) -> Result<()> {
+    pub fn execute_c2r(&self, input: &mut [[f64; 2]], output: &mut [f64]) -> Result<()> {
         if self.kind != PlanKind::C2R {
             return Err(Error::InvalidArgument(
                 "execute_c2r: plan is not a c2r plan".into(),
@@ -571,9 +579,7 @@ pub fn dft_3d_inplace_f32(
     let ptr = data.as_mut_ptr() as *mut sys::fftwf_complex;
     let plan = {
         let _g = PLANNER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        unsafe {
-            sys::fftwf_plan_dft_3d(n0, n1, n2, ptr, ptr, direction.raw(), sys::FFTW_ESTIMATE)
-        }
+        unsafe { sys::fftwf_plan_dft_3d(n0, n1, n2, ptr, ptr, direction.raw(), sys::FFTW_ESTIMATE) }
     };
     if plan.is_null() {
         return Err(Error::AllocationFailed("fft"));
@@ -698,13 +704,19 @@ impl PlanF32 {
         if plan.is_null() {
             return Err(Error::AllocationFailed("fft"));
         }
-        Ok(Self { plan, kind: PlanKind::Complex, n_total: n })
+        Ok(Self {
+            plan,
+            kind: PlanKind::Complex,
+            n_total: n,
+        })
     }
 
     /// Build a 2-D complex DFT plan over `n0 × n1` samples.
     pub fn dft_2d(n0: usize, n1: usize, direction: Direction) -> Result<Self> {
         if n0 == 0 || n1 == 0 {
-            return Err(Error::InvalidArgument("dft_2d: dimensions must be positive".into()));
+            return Err(Error::InvalidArgument(
+                "dft_2d: dimensions must be positive".into(),
+            ));
         }
         let n0_i = check_n("dft_2d: n0", n0)?;
         let n1_i = check_n("dft_2d: n1", n1)?;
@@ -712,20 +724,24 @@ impl PlanF32 {
         let p = scratch.as_mut_ptr() as *mut sys::fftwf_complex;
         let plan = {
             let _g = PLANNER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-            unsafe {
-                sys::fftwf_plan_dft_2d(n0_i, n1_i, p, p, direction.raw(), sys::FFTW_ESTIMATE)
-            }
+            unsafe { sys::fftwf_plan_dft_2d(n0_i, n1_i, p, p, direction.raw(), sys::FFTW_ESTIMATE) }
         };
         if plan.is_null() {
             return Err(Error::AllocationFailed("fft"));
         }
-        Ok(Self { plan, kind: PlanKind::Complex, n_total: n0 * n1 })
+        Ok(Self {
+            plan,
+            kind: PlanKind::Complex,
+            n_total: n0 * n1,
+        })
     }
 
     /// Build a 3-D complex DFT plan.
     pub fn dft_3d(n0: usize, n1: usize, n2: usize, direction: Direction) -> Result<Self> {
         if n0 == 0 || n1 == 0 || n2 == 0 {
-            return Err(Error::InvalidArgument("dft_3d: dimensions must be positive".into()));
+            return Err(Error::InvalidArgument(
+                "dft_3d: dimensions must be positive".into(),
+            ));
         }
         let n0_i = check_n("dft_3d: n0", n0)?;
         let n1_i = check_n("dft_3d: n1", n1)?;
@@ -741,7 +757,11 @@ impl PlanF32 {
         if plan.is_null() {
             return Err(Error::AllocationFailed("fft"));
         }
-        Ok(Self { plan, kind: PlanKind::Complex, n_total: n0 * n1 * n2 })
+        Ok(Self {
+            plan,
+            kind: PlanKind::Complex,
+            n_total: n0 * n1 * n2,
+        })
     }
 
     /// Build a 1-D real-to-complex forward plan.
@@ -766,7 +786,11 @@ impl PlanF32 {
         if plan.is_null() {
             return Err(Error::AllocationFailed("fft"));
         }
-        Ok(Self { plan, kind: PlanKind::R2C, n_total: n })
+        Ok(Self {
+            plan,
+            kind: PlanKind::R2C,
+            n_total: n,
+        })
     }
 
     /// Build a 1-D complex-to-real backward plan.
@@ -791,15 +815,15 @@ impl PlanF32 {
         if plan.is_null() {
             return Err(Error::AllocationFailed("fft"));
         }
-        Ok(Self { plan, kind: PlanKind::C2R, n_total: n })
+        Ok(Self {
+            plan,
+            kind: PlanKind::C2R,
+            n_total: n,
+        })
     }
 
     /// Execute a complex DFT plan against new buffers.
-    pub fn execute_dft(
-        &self,
-        input: &mut [[f32; 2]],
-        output: &mut [[f32; 2]],
-    ) -> Result<()> {
+    pub fn execute_dft(&self, input: &mut [[f32; 2]], output: &mut [[f32; 2]]) -> Result<()> {
         if self.kind != PlanKind::Complex {
             return Err(Error::InvalidArgument(
                 "execute_dft: plan is not a complex DFT".into(),
@@ -808,7 +832,9 @@ impl PlanF32 {
         if input.len() < self.n_total || output.len() < self.n_total {
             return Err(Error::InvalidArgument(format!(
                 "execute_dft: buffers ({}, {}) smaller than plan size {}",
-                input.len(), output.len(), self.n_total
+                input.len(),
+                output.len(),
+                self.n_total
             )));
         }
         unsafe {
@@ -822,11 +848,7 @@ impl PlanF32 {
     }
 
     /// Execute a real-to-complex plan against new buffers.
-    pub fn execute_r2c(
-        &self,
-        input: &mut [f32],
-        output: &mut [[f32; 2]],
-    ) -> Result<()> {
+    pub fn execute_r2c(&self, input: &mut [f32], output: &mut [[f32; 2]]) -> Result<()> {
         if self.kind != PlanKind::R2C {
             return Err(Error::InvalidArgument(
                 "execute_r2c: plan is not an r2c plan".into(),
@@ -836,7 +858,10 @@ impl PlanF32 {
         if input.len() < self.n_total || output.len() < need_out {
             return Err(Error::InvalidArgument(format!(
                 "execute_r2c: input {} < n={}; output {} < n/2+1={}",
-                input.len(), self.n_total, output.len(), need_out
+                input.len(),
+                self.n_total,
+                output.len(),
+                need_out
             )));
         }
         unsafe {
@@ -850,11 +875,7 @@ impl PlanF32 {
     }
 
     /// Execute a complex-to-real plan against new buffers.
-    pub fn execute_c2r(
-        &self,
-        input: &mut [[f32; 2]],
-        output: &mut [f32],
-    ) -> Result<()> {
+    pub fn execute_c2r(&self, input: &mut [[f32; 2]], output: &mut [f32]) -> Result<()> {
         if self.kind != PlanKind::C2R {
             return Err(Error::InvalidArgument(
                 "execute_c2r: plan is not a c2r plan".into(),
@@ -864,7 +885,10 @@ impl PlanF32 {
         if input.len() < need_in || output.len() < self.n_total {
             return Err(Error::InvalidArgument(format!(
                 "execute_c2r: input {} < n/2+1={}; output {} < n={}",
-                input.len(), need_in, output.len(), self.n_total
+                input.len(),
+                need_in,
+                output.len(),
+                self.n_total
             )));
         }
         unsafe {
@@ -938,7 +962,8 @@ mod tests {
     #[test]
     fn dft_2d_dc() {
         // 4×4 DC signal → spectrum has all energy at (0,0).
-        let n0 = 4; let n1 = 4;
+        let n0 = 4;
+        let n1 = 4;
         let mut buf: Vec<[f64; 2]> = vec![[1.0, 0.0]; n0 * n1];
         dft_2d_inplace(Direction::Forward, n0, n1, &mut buf).unwrap();
         let total = (n0 * n1) as f64;

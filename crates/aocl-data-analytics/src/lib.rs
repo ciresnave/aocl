@@ -5,8 +5,8 @@
 
 use aocl_data_analytics_sys as sys;
 pub use aocl_error::{Error, Result};
-pub use aocl_types::Layout;
 use aocl_types::sealed::Sealed;
+pub use aocl_types::Layout;
 
 fn layout_raw(l: Layout) -> sys::da_order {
     match l {
@@ -59,9 +59,7 @@ fn check_status(component: &'static str, status: sys::da_status) -> Result<()> {
             "invalid leading dimension"
         }
         s if s == sys::da_status__da_status_negative_data => "negative data",
-        s if s == sys::da_status__da_status_invalid_array_dimension => {
-            "invalid array dimension"
-        }
+        s if s == sys::da_status__da_status_invalid_array_dimension => "invalid array dimension",
         s if s == sys::da_status__da_status_no_data => "no data",
         s if s == sys::da_status__da_status_wrong_type => "wrong type",
         s if s == sys::da_status__da_status_invalid_handle_type => "invalid handle type",
@@ -121,7 +119,15 @@ fn check_matrix(
 /// are the most commonly used.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum QuantileType {
-    Type1, Type2, Type3, Type4, Type5, Type6, Type7, Type8, Type9,
+    Type1,
+    Type2,
+    Type3,
+    Type4,
+    Type5,
+    Type6,
+    Type7,
+    Type8,
+    Type9,
 }
 
 impl QuantileType {
@@ -176,32 +182,54 @@ pub trait Scalar: Copy + Sized + Sealed {
     /// Geometric mean. Requires non-negative data.
     #[allow(clippy::too_many_arguments)]
     fn geometric_mean(
-        layout: Layout, axis: Axis, n_rows: usize, n_cols: usize,
-        x: &[Self], ldx: usize, out: &mut [Self],
+        layout: Layout,
+        axis: Axis,
+        n_rows: usize,
+        n_cols: usize,
+        x: &[Self],
+        ldx: usize,
+        out: &mut [Self],
     ) -> Result<()>;
 
     /// Harmonic mean.
     #[allow(clippy::too_many_arguments)]
     fn harmonic_mean(
-        layout: Layout, axis: Axis, n_rows: usize, n_cols: usize,
-        x: &[Self], ldx: usize, out: &mut [Self],
+        layout: Layout,
+        axis: Axis,
+        n_rows: usize,
+        n_cols: usize,
+        x: &[Self],
+        ldx: usize,
+        out: &mut [Self],
     ) -> Result<()>;
 
     /// Mean, variance, and skewness together.
     #[allow(clippy::too_many_arguments)]
     fn skewness(
-        layout: Layout, axis: Axis, n_rows: usize, n_cols: usize,
-        x: &[Self], ldx: usize,
-        mean_out: &mut [Self], variance_out: &mut [Self], skew_out: &mut [Self],
+        layout: Layout,
+        axis: Axis,
+        n_rows: usize,
+        n_cols: usize,
+        x: &[Self],
+        ldx: usize,
+        mean_out: &mut [Self],
+        variance_out: &mut [Self],
+        skew_out: &mut [Self],
     ) -> Result<()>;
 
     /// Mean, variance, and excess kurtosis together (Fisher convention,
     /// so a normal distribution scores zero).
     #[allow(clippy::too_many_arguments)]
     fn kurtosis(
-        layout: Layout, axis: Axis, n_rows: usize, n_cols: usize,
-        x: &[Self], ldx: usize,
-        mean_out: &mut [Self], variance_out: &mut [Self], kurtosis_out: &mut [Self],
+        layout: Layout,
+        axis: Axis,
+        n_rows: usize,
+        n_cols: usize,
+        x: &[Self],
+        ldx: usize,
+        mean_out: &mut [Self],
+        variance_out: &mut [Self],
+        kurtosis_out: &mut [Self],
     ) -> Result<()>;
 
     /// `k`-th central moment. If `mean_out` already holds means and
@@ -209,45 +237,74 @@ pub trait Scalar: Copy + Sized + Sealed {
     /// they are computed and stored.
     #[allow(clippy::too_many_arguments)]
     fn moment(
-        layout: Layout, axis: Axis, n_rows: usize, n_cols: usize,
-        x: &[Self], ldx: usize, k: i64, use_precomputed_mean: bool,
-        mean_out: &mut [Self], moment_out: &mut [Self],
+        layout: Layout,
+        axis: Axis,
+        n_rows: usize,
+        n_cols: usize,
+        x: &[Self],
+        ldx: usize,
+        k: i64,
+        use_precomputed_mean: bool,
+        mean_out: &mut [Self],
+        moment_out: &mut [Self],
     ) -> Result<()>;
 
     /// Quantile of the data along `axis`. `q` ∈ [0, 1].
     #[allow(clippy::too_many_arguments)]
     fn quantile(
-        layout: Layout, axis: Axis, n_rows: usize, n_cols: usize,
-        x: &[Self], ldx: usize, q: Self,
-        quantile_out: &mut [Self], qtype: QuantileType,
+        layout: Layout,
+        axis: Axis,
+        n_rows: usize,
+        n_cols: usize,
+        x: &[Self],
+        ldx: usize,
+        q: Self,
+        quantile_out: &mut [Self],
+        qtype: QuantileType,
     ) -> Result<()>;
 
     /// Min, lower hinge (25th percentile), median, upper hinge
     /// (75th percentile), max — Tukey's "five-number summary".
     #[allow(clippy::too_many_arguments)]
     fn five_point_summary(
-        layout: Layout, axis: Axis, n_rows: usize, n_cols: usize,
-        x: &[Self], ldx: usize,
-        min: &mut [Self], lower: &mut [Self], median: &mut [Self],
-        upper: &mut [Self], max: &mut [Self],
+        layout: Layout,
+        axis: Axis,
+        n_rows: usize,
+        n_cols: usize,
+        x: &[Self],
+        ldx: usize,
+        min: &mut [Self],
+        lower: &mut [Self],
+        median: &mut [Self],
+        upper: &mut [Self],
+        max: &mut [Self],
     ) -> Result<()>;
 
     /// Compute the `n_cols × n_cols` covariance matrix (rows are
     /// observations). `dof` follows the same convention as `variance`.
     #[allow(clippy::too_many_arguments)]
     fn covariance_matrix(
-        layout: Layout, n_rows: usize, n_cols: usize,
-        x: &[Self], ldx: usize, dof: i64,
-        cov: &mut [Self], ldcov: usize,
+        layout: Layout,
+        n_rows: usize,
+        n_cols: usize,
+        x: &[Self],
+        ldx: usize,
+        dof: i64,
+        cov: &mut [Self],
+        ldcov: usize,
     ) -> Result<()>;
 
     /// Compute the `n_cols × n_cols` correlation matrix (rows are
     /// observations).
     #[allow(clippy::too_many_arguments)]
     fn correlation_matrix(
-        layout: Layout, n_rows: usize, n_cols: usize,
-        x: &[Self], ldx: usize,
-        corr: &mut [Self], ldcorr: usize,
+        layout: Layout,
+        n_rows: usize,
+        n_cols: usize,
+        x: &[Self],
+        ldx: usize,
+        corr: &mut [Self],
+        ldcorr: usize,
     ) -> Result<()>;
 }
 
@@ -333,51 +390,77 @@ macro_rules! impl_scalar {
             }
 
             fn geometric_mean(
-                layout: Layout, axis: Axis, n_rows: usize, n_cols: usize,
-                x: &[Self], ldx: usize, out: &mut [Self],
+                layout: Layout,
+                axis: Axis,
+                n_rows: usize,
+                n_cols: usize,
+                x: &[Self],
+                ldx: usize,
+                out: &mut [Self],
             ) -> Result<()> {
                 check_matrix("geometric_mean: X", layout, n_rows, n_cols, ldx, x.len())?;
                 let need = axis.output_len(n_rows, n_cols);
                 if out.len() < need {
                     return Err(Error::InvalidArgument(format!(
-                        "geometric_mean: out length {} < required {need}", out.len()
+                        "geometric_mean: out length {} < required {need}",
+                        out.len()
                     )));
                 }
                 let status = unsafe {
                     sys::$gmean(
-                        layout_raw(layout), axis.raw(),
-                        n_rows as sys::da_int, n_cols as sys::da_int,
-                        x.as_ptr(), ldx as sys::da_int, out.as_mut_ptr(),
+                        layout_raw(layout),
+                        axis.raw(),
+                        n_rows as sys::da_int,
+                        n_cols as sys::da_int,
+                        x.as_ptr(),
+                        ldx as sys::da_int,
+                        out.as_mut_ptr(),
                     )
                 };
                 check_status("data-analytics", status)
             }
 
             fn harmonic_mean(
-                layout: Layout, axis: Axis, n_rows: usize, n_cols: usize,
-                x: &[Self], ldx: usize, out: &mut [Self],
+                layout: Layout,
+                axis: Axis,
+                n_rows: usize,
+                n_cols: usize,
+                x: &[Self],
+                ldx: usize,
+                out: &mut [Self],
             ) -> Result<()> {
                 check_matrix("harmonic_mean: X", layout, n_rows, n_cols, ldx, x.len())?;
                 let need = axis.output_len(n_rows, n_cols);
                 if out.len() < need {
                     return Err(Error::InvalidArgument(format!(
-                        "harmonic_mean: out length {} < required {need}", out.len()
+                        "harmonic_mean: out length {} < required {need}",
+                        out.len()
                     )));
                 }
                 let status = unsafe {
                     sys::$hmean(
-                        layout_raw(layout), axis.raw(),
-                        n_rows as sys::da_int, n_cols as sys::da_int,
-                        x.as_ptr(), ldx as sys::da_int, out.as_mut_ptr(),
+                        layout_raw(layout),
+                        axis.raw(),
+                        n_rows as sys::da_int,
+                        n_cols as sys::da_int,
+                        x.as_ptr(),
+                        ldx as sys::da_int,
+                        out.as_mut_ptr(),
                     )
                 };
                 check_status("data-analytics", status)
             }
 
             fn skewness(
-                layout: Layout, axis: Axis, n_rows: usize, n_cols: usize,
-                x: &[Self], ldx: usize,
-                mean_out: &mut [Self], variance_out: &mut [Self], skew_out: &mut [Self],
+                layout: Layout,
+                axis: Axis,
+                n_rows: usize,
+                n_cols: usize,
+                x: &[Self],
+                ldx: usize,
+                mean_out: &mut [Self],
+                variance_out: &mut [Self],
+                skew_out: &mut [Self],
             ) -> Result<()> {
                 check_matrix("skewness: X", layout, n_rows, n_cols, ldx, x.len())?;
                 let need = axis.output_len(n_rows, n_cols);
@@ -388,19 +471,30 @@ macro_rules! impl_scalar {
                 }
                 let status = unsafe {
                     sys::$skew(
-                        layout_raw(layout), axis.raw(),
-                        n_rows as sys::da_int, n_cols as sys::da_int,
-                        x.as_ptr(), ldx as sys::da_int,
-                        mean_out.as_mut_ptr(), variance_out.as_mut_ptr(), skew_out.as_mut_ptr(),
+                        layout_raw(layout),
+                        axis.raw(),
+                        n_rows as sys::da_int,
+                        n_cols as sys::da_int,
+                        x.as_ptr(),
+                        ldx as sys::da_int,
+                        mean_out.as_mut_ptr(),
+                        variance_out.as_mut_ptr(),
+                        skew_out.as_mut_ptr(),
                     )
                 };
                 check_status("data-analytics", status)
             }
 
             fn kurtosis(
-                layout: Layout, axis: Axis, n_rows: usize, n_cols: usize,
-                x: &[Self], ldx: usize,
-                mean_out: &mut [Self], variance_out: &mut [Self], kurtosis_out: &mut [Self],
+                layout: Layout,
+                axis: Axis,
+                n_rows: usize,
+                n_cols: usize,
+                x: &[Self],
+                ldx: usize,
+                mean_out: &mut [Self],
+                variance_out: &mut [Self],
+                kurtosis_out: &mut [Self],
             ) -> Result<()> {
                 check_matrix("kurtosis: X", layout, n_rows, n_cols, ldx, x.len())?;
                 let need = axis.output_len(n_rows, n_cols);
@@ -411,19 +505,31 @@ macro_rules! impl_scalar {
                 }
                 let status = unsafe {
                     sys::$kurt(
-                        layout_raw(layout), axis.raw(),
-                        n_rows as sys::da_int, n_cols as sys::da_int,
-                        x.as_ptr(), ldx as sys::da_int,
-                        mean_out.as_mut_ptr(), variance_out.as_mut_ptr(), kurtosis_out.as_mut_ptr(),
+                        layout_raw(layout),
+                        axis.raw(),
+                        n_rows as sys::da_int,
+                        n_cols as sys::da_int,
+                        x.as_ptr(),
+                        ldx as sys::da_int,
+                        mean_out.as_mut_ptr(),
+                        variance_out.as_mut_ptr(),
+                        kurtosis_out.as_mut_ptr(),
                     )
                 };
                 check_status("data-analytics", status)
             }
 
             fn moment(
-                layout: Layout, axis: Axis, n_rows: usize, n_cols: usize,
-                x: &[Self], ldx: usize, k: i64, use_precomputed_mean: bool,
-                mean_out: &mut [Self], moment_out: &mut [Self],
+                layout: Layout,
+                axis: Axis,
+                n_rows: usize,
+                n_cols: usize,
+                x: &[Self],
+                ldx: usize,
+                k: i64,
+                use_precomputed_mean: bool,
+                mean_out: &mut [Self],
+                moment_out: &mut [Self],
             ) -> Result<()> {
                 check_matrix("moment: X", layout, n_rows, n_cols, ldx, x.len())?;
                 let need = axis.output_len(n_rows, n_cols);
@@ -434,50 +540,83 @@ macro_rules! impl_scalar {
                 }
                 let status = unsafe {
                     sys::$moment(
-                        layout_raw(layout), axis.raw(),
-                        n_rows as sys::da_int, n_cols as sys::da_int,
-                        x.as_ptr(), ldx as sys::da_int,
+                        layout_raw(layout),
+                        axis.raw(),
+                        n_rows as sys::da_int,
+                        n_cols as sys::da_int,
+                        x.as_ptr(),
+                        ldx as sys::da_int,
                         k as sys::da_int,
                         if use_precomputed_mean { 1 } else { 0 } as sys::da_int,
-                        mean_out.as_mut_ptr(), moment_out.as_mut_ptr(),
+                        mean_out.as_mut_ptr(),
+                        moment_out.as_mut_ptr(),
                     )
                 };
                 check_status("data-analytics", status)
             }
 
             fn quantile(
-                layout: Layout, axis: Axis, n_rows: usize, n_cols: usize,
-                x: &[Self], ldx: usize, q: Self,
-                quantile_out: &mut [Self], qtype: QuantileType,
+                layout: Layout,
+                axis: Axis,
+                n_rows: usize,
+                n_cols: usize,
+                x: &[Self],
+                ldx: usize,
+                q: Self,
+                quantile_out: &mut [Self],
+                qtype: QuantileType,
             ) -> Result<()> {
                 check_matrix("quantile: X", layout, n_rows, n_cols, ldx, x.len())?;
                 let need = axis.output_len(n_rows, n_cols);
                 if quantile_out.len() < need {
                     return Err(Error::InvalidArgument(format!(
-                        "quantile: out length {} < required {need}", quantile_out.len()
+                        "quantile: out length {} < required {need}",
+                        quantile_out.len()
                     )));
                 }
                 let status = unsafe {
                     sys::$quant(
-                        layout_raw(layout), axis.raw(),
-                        n_rows as sys::da_int, n_cols as sys::da_int,
-                        x.as_ptr(), ldx as sys::da_int,
-                        q, quantile_out.as_mut_ptr(), qtype.raw(),
+                        layout_raw(layout),
+                        axis.raw(),
+                        n_rows as sys::da_int,
+                        n_cols as sys::da_int,
+                        x.as_ptr(),
+                        ldx as sys::da_int,
+                        q,
+                        quantile_out.as_mut_ptr(),
+                        qtype.raw(),
                     )
                 };
                 check_status("data-analytics", status)
             }
 
             fn five_point_summary(
-                layout: Layout, axis: Axis, n_rows: usize, n_cols: usize,
-                x: &[Self], ldx: usize,
-                min: &mut [Self], lower: &mut [Self], median: &mut [Self],
-                upper: &mut [Self], max: &mut [Self],
+                layout: Layout,
+                axis: Axis,
+                n_rows: usize,
+                n_cols: usize,
+                x: &[Self],
+                ldx: usize,
+                min: &mut [Self],
+                lower: &mut [Self],
+                median: &mut [Self],
+                upper: &mut [Self],
+                max: &mut [Self],
             ) -> Result<()> {
-                check_matrix("five_point_summary: X", layout, n_rows, n_cols, ldx, x.len())?;
+                check_matrix(
+                    "five_point_summary: X",
+                    layout,
+                    n_rows,
+                    n_cols,
+                    ldx,
+                    x.len(),
+                )?;
                 let need = axis.output_len(n_rows, n_cols);
-                if min.len() < need || lower.len() < need || median.len() < need
-                    || upper.len() < need || max.len() < need
+                if min.len() < need
+                    || lower.len() < need
+                    || median.len() < need
+                    || upper.len() < need
+                    || max.len() < need
                 {
                     return Err(Error::InvalidArgument(format!(
                         "five_point_summary: each output must hold {need} elements"
@@ -485,20 +624,31 @@ macro_rules! impl_scalar {
                 }
                 let status = unsafe {
                     sys::$fps(
-                        layout_raw(layout), axis.raw(),
-                        n_rows as sys::da_int, n_cols as sys::da_int,
-                        x.as_ptr(), ldx as sys::da_int,
-                        min.as_mut_ptr(), lower.as_mut_ptr(), median.as_mut_ptr(),
-                        upper.as_mut_ptr(), max.as_mut_ptr(),
+                        layout_raw(layout),
+                        axis.raw(),
+                        n_rows as sys::da_int,
+                        n_cols as sys::da_int,
+                        x.as_ptr(),
+                        ldx as sys::da_int,
+                        min.as_mut_ptr(),
+                        lower.as_mut_ptr(),
+                        median.as_mut_ptr(),
+                        upper.as_mut_ptr(),
+                        max.as_mut_ptr(),
                     )
                 };
                 check_status("data-analytics", status)
             }
 
             fn covariance_matrix(
-                layout: Layout, n_rows: usize, n_cols: usize,
-                x: &[Self], ldx: usize, dof: i64,
-                cov: &mut [Self], ldcov: usize,
+                layout: Layout,
+                n_rows: usize,
+                n_cols: usize,
+                x: &[Self],
+                ldx: usize,
+                dof: i64,
+                cov: &mut [Self],
+                ldcov: usize,
             ) -> Result<()> {
                 check_matrix("covariance_matrix: X", layout, n_rows, n_cols, ldx, x.len())?;
                 if ldcov < n_cols {
@@ -509,27 +659,42 @@ macro_rules! impl_scalar {
                 if cov.len() < n_cols * ldcov {
                     return Err(Error::InvalidArgument(format!(
                         "covariance_matrix: cov length {} < n_cols·ldcov = {}",
-                        cov.len(), n_cols * ldcov
+                        cov.len(),
+                        n_cols * ldcov
                     )));
                 }
                 let status = unsafe {
                     sys::$cov(
                         layout_raw(layout),
-                        n_rows as sys::da_int, n_cols as sys::da_int,
-                        x.as_ptr(), ldx as sys::da_int,
+                        n_rows as sys::da_int,
+                        n_cols as sys::da_int,
+                        x.as_ptr(),
+                        ldx as sys::da_int,
                         dof as sys::da_int,
-                        cov.as_mut_ptr(), ldcov as sys::da_int,
+                        cov.as_mut_ptr(),
+                        ldcov as sys::da_int,
                     )
                 };
                 check_status("data-analytics", status)
             }
 
             fn correlation_matrix(
-                layout: Layout, n_rows: usize, n_cols: usize,
-                x: &[Self], ldx: usize,
-                corr: &mut [Self], ldcorr: usize,
+                layout: Layout,
+                n_rows: usize,
+                n_cols: usize,
+                x: &[Self],
+                ldx: usize,
+                corr: &mut [Self],
+                ldcorr: usize,
             ) -> Result<()> {
-                check_matrix("correlation_matrix: X", layout, n_rows, n_cols, ldx, x.len())?;
+                check_matrix(
+                    "correlation_matrix: X",
+                    layout,
+                    n_rows,
+                    n_cols,
+                    ldx,
+                    x.len(),
+                )?;
                 if ldcorr < n_cols {
                     return Err(Error::InvalidArgument(format!(
                         "correlation_matrix: ldcorr={ldcorr} < n_cols={n_cols}"
@@ -538,15 +703,19 @@ macro_rules! impl_scalar {
                 if corr.len() < n_cols * ldcorr {
                     return Err(Error::InvalidArgument(format!(
                         "correlation_matrix: corr length {} < n_cols·ldcorr = {}",
-                        corr.len(), n_cols * ldcorr
+                        corr.len(),
+                        n_cols * ldcorr
                     )));
                 }
                 let status = unsafe {
                     sys::$corr(
                         layout_raw(layout),
-                        n_rows as sys::da_int, n_cols as sys::da_int,
-                        x.as_ptr(), ldx as sys::da_int,
-                        corr.as_mut_ptr(), ldcorr as sys::da_int,
+                        n_rows as sys::da_int,
+                        n_cols as sys::da_int,
+                        x.as_ptr(),
+                        ldx as sys::da_int,
+                        corr.as_mut_ptr(),
+                        ldcorr as sys::da_int,
                     )
                 };
                 check_status("data-analytics", status)
@@ -621,7 +790,11 @@ pub fn variance<T: Scalar>(
 /// Compute the geometric mean along `axis` for a tightly-packed
 /// row-major matrix. All entries must be non-negative.
 pub fn geometric_mean<T: Scalar>(
-    axis: Axis, n_rows: usize, n_cols: usize, x: &[T], out: &mut [T],
+    axis: Axis,
+    n_rows: usize,
+    n_cols: usize,
+    x: &[T],
+    out: &mut [T],
 ) -> Result<()> {
     T::geometric_mean(Layout::RowMajor, axis, n_rows, n_cols, x, n_cols, out)
 }
@@ -629,28 +802,60 @@ pub fn geometric_mean<T: Scalar>(
 /// Compute the harmonic mean along `axis` for a tightly-packed
 /// row-major matrix.
 pub fn harmonic_mean<T: Scalar>(
-    axis: Axis, n_rows: usize, n_cols: usize, x: &[T], out: &mut [T],
+    axis: Axis,
+    n_rows: usize,
+    n_cols: usize,
+    x: &[T],
+    out: &mut [T],
 ) -> Result<()> {
     T::harmonic_mean(Layout::RowMajor, axis, n_rows, n_cols, x, n_cols, out)
 }
 
 /// Compute means, variances, and Fisher–Pearson skewness along `axis`.
 pub fn skewness<T: Scalar>(
-    axis: Axis, n_rows: usize, n_cols: usize, x: &[T],
-    mean_out: &mut [T], variance_out: &mut [T], skew_out: &mut [T],
+    axis: Axis,
+    n_rows: usize,
+    n_cols: usize,
+    x: &[T],
+    mean_out: &mut [T],
+    variance_out: &mut [T],
+    skew_out: &mut [T],
 ) -> Result<()> {
-    T::skewness(Layout::RowMajor, axis, n_rows, n_cols, x, n_cols,
-                mean_out, variance_out, skew_out)
+    T::skewness(
+        Layout::RowMajor,
+        axis,
+        n_rows,
+        n_cols,
+        x,
+        n_cols,
+        mean_out,
+        variance_out,
+        skew_out,
+    )
 }
 
 /// Compute means, variances, and excess kurtosis (Fisher convention,
 /// so a normal distribution scores zero) along `axis`.
 pub fn kurtosis<T: Scalar>(
-    axis: Axis, n_rows: usize, n_cols: usize, x: &[T],
-    mean_out: &mut [T], variance_out: &mut [T], kurtosis_out: &mut [T],
+    axis: Axis,
+    n_rows: usize,
+    n_cols: usize,
+    x: &[T],
+    mean_out: &mut [T],
+    variance_out: &mut [T],
+    kurtosis_out: &mut [T],
 ) -> Result<()> {
-    T::kurtosis(Layout::RowMajor, axis, n_rows, n_cols, x, n_cols,
-                mean_out, variance_out, kurtosis_out)
+    T::kurtosis(
+        Layout::RowMajor,
+        axis,
+        n_rows,
+        n_cols,
+        x,
+        n_cols,
+        mean_out,
+        variance_out,
+        kurtosis_out,
+    )
 }
 
 /// Compute the `k`-th central moment along `axis`. If `mean_out` already
@@ -658,12 +863,27 @@ pub fn kurtosis<T: Scalar>(
 /// directly; otherwise means are computed and stored.
 #[allow(clippy::too_many_arguments)]
 pub fn moment<T: Scalar>(
-    axis: Axis, n_rows: usize, n_cols: usize, x: &[T],
-    k: i64, use_precomputed_mean: bool,
-    mean_out: &mut [T], moment_out: &mut [T],
+    axis: Axis,
+    n_rows: usize,
+    n_cols: usize,
+    x: &[T],
+    k: i64,
+    use_precomputed_mean: bool,
+    mean_out: &mut [T],
+    moment_out: &mut [T],
 ) -> Result<()> {
-    T::moment(Layout::RowMajor, axis, n_rows, n_cols, x, n_cols,
-              k, use_precomputed_mean, mean_out, moment_out)
+    T::moment(
+        Layout::RowMajor,
+        axis,
+        n_rows,
+        n_cols,
+        x,
+        n_cols,
+        k,
+        use_precomputed_mean,
+        mean_out,
+        moment_out,
+    )
 }
 
 /// Compute the `q`-th quantile along `axis` (`q` ∈ [0, 1]). The
@@ -671,40 +891,85 @@ pub fn moment<T: Scalar>(
 /// `QuantileType::Type7` matches numpy and R's defaults.
 #[allow(clippy::too_many_arguments)]
 pub fn quantile<T: Scalar>(
-    axis: Axis, n_rows: usize, n_cols: usize, x: &[T],
-    q: T, quantile_out: &mut [T], qtype: QuantileType,
+    axis: Axis,
+    n_rows: usize,
+    n_cols: usize,
+    x: &[T],
+    q: T,
+    quantile_out: &mut [T],
+    qtype: QuantileType,
 ) -> Result<()> {
-    T::quantile(Layout::RowMajor, axis, n_rows, n_cols, x, n_cols,
-                q, quantile_out, qtype)
+    T::quantile(
+        Layout::RowMajor,
+        axis,
+        n_rows,
+        n_cols,
+        x,
+        n_cols,
+        q,
+        quantile_out,
+        qtype,
+    )
 }
 
 /// Compute Tukey's five-number summary (min, lower hinge, median,
 /// upper hinge, max) along `axis`.
 #[allow(clippy::too_many_arguments)]
 pub fn five_point_summary<T: Scalar>(
-    axis: Axis, n_rows: usize, n_cols: usize, x: &[T],
-    min: &mut [T], lower: &mut [T], median: &mut [T],
-    upper: &mut [T], max: &mut [T],
+    axis: Axis,
+    n_rows: usize,
+    n_cols: usize,
+    x: &[T],
+    min: &mut [T],
+    lower: &mut [T],
+    median: &mut [T],
+    upper: &mut [T],
+    max: &mut [T],
 ) -> Result<()> {
-    T::five_point_summary(Layout::RowMajor, axis, n_rows, n_cols, x, n_cols,
-                          min, lower, median, upper, max)
+    T::five_point_summary(
+        Layout::RowMajor,
+        axis,
+        n_rows,
+        n_cols,
+        x,
+        n_cols,
+        min,
+        lower,
+        median,
+        upper,
+        max,
+    )
 }
 
 /// Compute the `n_cols × n_cols` covariance matrix (rows are observations).
 /// `dof` follows the same convention as [`variance`].
 pub fn covariance_matrix<T: Scalar>(
-    n_rows: usize, n_cols: usize, x: &[T], dof: i64, cov: &mut [T],
+    n_rows: usize,
+    n_cols: usize,
+    x: &[T],
+    dof: i64,
+    cov: &mut [T],
 ) -> Result<()> {
-    T::covariance_matrix(Layout::RowMajor, n_rows, n_cols, x, n_cols,
-                         dof, cov, n_cols)
+    T::covariance_matrix(
+        Layout::RowMajor,
+        n_rows,
+        n_cols,
+        x,
+        n_cols,
+        dof,
+        cov,
+        n_cols,
+    )
 }
 
 /// Compute the `n_cols × n_cols` correlation matrix (rows are observations).
 pub fn correlation_matrix<T: Scalar>(
-    n_rows: usize, n_cols: usize, x: &[T], corr: &mut [T],
+    n_rows: usize,
+    n_cols: usize,
+    x: &[T],
+    corr: &mut [T],
 ) -> Result<()> {
-    T::correlation_matrix(Layout::RowMajor, n_rows, n_cols, x, n_cols,
-                          corr, n_cols)
+    T::correlation_matrix(Layout::RowMajor, n_rows, n_cols, x, n_cols, corr, n_cols)
 }
 
 // =========================================================================
@@ -758,16 +1023,12 @@ unsafe extern "C" fn nlls_resgrd_shim(
 ) -> sys::da_int {
     let cbs = unsafe { &mut *(data as *mut NllsCallbacks) };
     let x_slice = unsafe { std::slice::from_raw_parts(x, cbs.n_coef) };
-    let jac_slice = unsafe {
-        std::slice::from_raw_parts_mut(jac, cbs.n_res * cbs.n_coef)
-    };
+    let jac_slice = unsafe { std::slice::from_raw_parts_mut(jac, cbs.n_res * cbs.n_coef) };
     let f = match cbs.resgrd.as_mut() {
         Some(f) => f,
         None => return 1,
     };
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        f(x_slice, jac_slice)
-    }));
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(x_slice, jac_slice)));
     match result {
         Ok(rc) => rc as sys::da_int,
         Err(_) => 1,
@@ -861,13 +1122,18 @@ impl<'a> Nlls<'a> {
         upper: Option<&mut [f64]>,
     ) -> Result<()> {
         let n_coef = self.callbacks.n_coef as sys::da_int;
-        let l_ptr = lower.as_ref().map_or(std::ptr::null_mut(), |s| s.as_ptr() as *mut f64);
-        let u_ptr = upper.as_ref().map_or(std::ptr::null_mut(), |s| s.as_ptr() as *mut f64);
+        let l_ptr = lower
+            .as_ref()
+            .map_or(std::ptr::null_mut(), |s| s.as_ptr() as *mut f64);
+        let u_ptr = upper
+            .as_ref()
+            .map_or(std::ptr::null_mut(), |s| s.as_ptr() as *mut f64);
         if let Some(l) = lower.as_ref() {
             if l.len() < self.callbacks.n_coef {
                 return Err(Error::InvalidArgument(format!(
                     "set_bounds: lower length {} < n_coef = {}",
-                    l.len(), self.callbacks.n_coef
+                    l.len(),
+                    self.callbacks.n_coef
                 )));
             }
         }
@@ -875,13 +1141,12 @@ impl<'a> Nlls<'a> {
             if u.len() < self.callbacks.n_coef {
                 return Err(Error::InvalidArgument(format!(
                     "set_bounds: upper length {} < n_coef = {}",
-                    u.len(), self.callbacks.n_coef
+                    u.len(),
+                    self.callbacks.n_coef
                 )));
             }
         }
-        let status = unsafe {
-            sys::da_nlls_define_bounds_d(self.handle.raw, n_coef, l_ptr, u_ptr)
-        };
+        let status = unsafe { sys::da_nlls_define_bounds_d(self.handle.raw, n_coef, l_ptr, u_ptr) };
         check_status("data-analytics", status)
     }
 
@@ -890,7 +1155,8 @@ impl<'a> Nlls<'a> {
         if weights.len() < self.callbacks.n_res {
             return Err(Error::InvalidArgument(format!(
                 "set_weights: weights length {} < n_res = {}",
-                weights.len(), self.callbacks.n_res
+                weights.len(),
+                self.callbacks.n_res
             )));
         }
         let status = unsafe {
@@ -909,11 +1175,11 @@ impl<'a> Nlls<'a> {
         if coef.len() < self.callbacks.n_coef {
             return Err(Error::InvalidArgument(format!(
                 "nlls fit: coef length {} < n_coef = {}",
-                coef.len(), self.callbacks.n_coef
+                coef.len(),
+                self.callbacks.n_coef
             )));
         }
-        let udata = self.callbacks.as_mut() as *mut NllsCallbacks
-            as *mut std::os::raw::c_void;
+        let udata = self.callbacks.as_mut() as *mut NllsCallbacks as *mut std::os::raw::c_void;
         let status = unsafe {
             sys::da_nlls_fit_d(
                 self.handle.raw,
@@ -1018,9 +1284,8 @@ impl Datastore {
             .map_err(|e| Error::InvalidArgument(format!("set_string_option: {e}")))?;
         let v = std::ffi::CString::new(value)
             .map_err(|e| Error::InvalidArgument(format!("set_string_option: {e}")))?;
-        let status = unsafe {
-            sys::da_datastore_options_set_string(self.raw, n.as_ptr(), v.as_ptr())
-        };
+        let status =
+            unsafe { sys::da_datastore_options_set_string(self.raw, n.as_ptr(), v.as_ptr()) };
         check_status("data-analytics", status)
     }
 
@@ -1209,10 +1474,14 @@ macro_rules! impl_dist_scalar {
                         m as sys::da_int,
                         n as sys::da_int,
                         k as sys::da_int,
-                        x.as_ptr(), ldx as sys::da_int,
-                        y_ptr, ldy as sys::da_int,
-                        d.as_mut_ptr(), ldd as sys::da_int,
-                        p, metric.raw(),
+                        x.as_ptr(),
+                        ldx as sys::da_int,
+                        y_ptr,
+                        ldy as sys::da_int,
+                        d.as_mut_ptr(),
+                        ldd as sys::da_int,
+                        p,
+                        metric.raw(),
                     )
                 };
                 check_status("data-analytics", status)
@@ -1233,36 +1502,67 @@ pub trait KernelScalar: Scalar {
     /// Linear kernel: `K(x, y) = x · y`.
     #[allow(clippy::too_many_arguments)]
     fn linear_kernel(
-        layout: Layout, m: usize, n: usize, k: usize,
-        x: &[Self], ldx: usize, y: Option<&[Self]>, ldy: usize,
-        d: &mut [Self], ldd: usize,
+        layout: Layout,
+        m: usize,
+        n: usize,
+        k: usize,
+        x: &[Self],
+        ldx: usize,
+        y: Option<&[Self]>,
+        ldy: usize,
+        d: &mut [Self],
+        ldd: usize,
     ) -> Result<()>;
 
     /// RBF (Gaussian) kernel: `K(x, y) = exp(-γ · ‖x − y‖²)`.
     #[allow(clippy::too_many_arguments)]
     fn rbf_kernel(
-        layout: Layout, m: usize, n: usize, k: usize,
-        x: &[Self], ldx: usize, y: Option<&[Self]>, ldy: usize,
-        d: &mut [Self], ldd: usize,
+        layout: Layout,
+        m: usize,
+        n: usize,
+        k: usize,
+        x: &[Self],
+        ldx: usize,
+        y: Option<&[Self]>,
+        ldy: usize,
+        d: &mut [Self],
+        ldd: usize,
         gamma: Self,
     ) -> Result<()>;
 
     /// Polynomial kernel: `K(x, y) = (γ · x · y + c)^degree`.
     #[allow(clippy::too_many_arguments)]
     fn polynomial_kernel(
-        layout: Layout, m: usize, n: usize, k: usize,
-        x: &[Self], ldx: usize, y: Option<&[Self]>, ldy: usize,
-        d: &mut [Self], ldd: usize,
-        gamma: Self, degree: i64, coef0: Self,
+        layout: Layout,
+        m: usize,
+        n: usize,
+        k: usize,
+        x: &[Self],
+        ldx: usize,
+        y: Option<&[Self]>,
+        ldy: usize,
+        d: &mut [Self],
+        ldd: usize,
+        gamma: Self,
+        degree: i64,
+        coef0: Self,
     ) -> Result<()>;
 
     /// Sigmoid kernel: `K(x, y) = tanh(γ · x · y + c)`.
     #[allow(clippy::too_many_arguments)]
     fn sigmoid_kernel(
-        layout: Layout, m: usize, n: usize, k: usize,
-        x: &[Self], ldx: usize, y: Option<&[Self]>, ldy: usize,
-        d: &mut [Self], ldd: usize,
-        gamma: Self, coef0: Self,
+        layout: Layout,
+        m: usize,
+        n: usize,
+        k: usize,
+        x: &[Self],
+        ldx: usize,
+        y: Option<&[Self]>,
+        ldy: usize,
+        d: &mut [Self],
+        ldd: usize,
+        gamma: Self,
+        coef0: Self,
     ) -> Result<()>;
 }
 
@@ -1270,37 +1570,61 @@ macro_rules! impl_kernel_scalar {
     ($t:ty, $linear:ident, $rbf:ident, $poly:ident, $sigmoid:ident) => {
         impl KernelScalar for $t {
             fn linear_kernel(
-                layout: Layout, m: usize, n: usize, k: usize,
-                x: &[Self], ldx: usize, y: Option<&[Self]>, ldy: usize,
-                d: &mut [Self], ldd: usize,
+                layout: Layout,
+                m: usize,
+                n: usize,
+                k: usize,
+                x: &[Self],
+                ldx: usize,
+                y: Option<&[Self]>,
+                ldy: usize,
+                d: &mut [Self],
+                ldd: usize,
             ) -> Result<()> {
                 let y_ptr = y.map(|s| s.as_ptr()).unwrap_or(std::ptr::null());
                 let status = unsafe {
                     sys::$linear(
                         layout_raw(layout),
-                        m as sys::da_int, n as sys::da_int, k as sys::da_int,
-                        x.as_ptr(), ldx as sys::da_int,
-                        y_ptr, ldy as sys::da_int,
-                        d.as_mut_ptr(), ldd as sys::da_int,
+                        m as sys::da_int,
+                        n as sys::da_int,
+                        k as sys::da_int,
+                        x.as_ptr(),
+                        ldx as sys::da_int,
+                        y_ptr,
+                        ldy as sys::da_int,
+                        d.as_mut_ptr(),
+                        ldd as sys::da_int,
                     )
                 };
                 check_status("data-analytics", status)
             }
 
             fn rbf_kernel(
-                layout: Layout, m: usize, n: usize, k: usize,
-                x: &[Self], ldx: usize, y: Option<&[Self]>, ldy: usize,
-                d: &mut [Self], ldd: usize,
+                layout: Layout,
+                m: usize,
+                n: usize,
+                k: usize,
+                x: &[Self],
+                ldx: usize,
+                y: Option<&[Self]>,
+                ldy: usize,
+                d: &mut [Self],
+                ldd: usize,
                 gamma: Self,
             ) -> Result<()> {
                 let y_ptr = y.map(|s| s.as_ptr()).unwrap_or(std::ptr::null());
                 let status = unsafe {
                     sys::$rbf(
                         layout_raw(layout),
-                        m as sys::da_int, n as sys::da_int, k as sys::da_int,
-                        x.as_ptr(), ldx as sys::da_int,
-                        y_ptr, ldy as sys::da_int,
-                        d.as_mut_ptr(), ldd as sys::da_int,
+                        m as sys::da_int,
+                        n as sys::da_int,
+                        k as sys::da_int,
+                        x.as_ptr(),
+                        ldx as sys::da_int,
+                        y_ptr,
+                        ldy as sys::da_int,
+                        d.as_mut_ptr(),
+                        ldd as sys::da_int,
                         gamma,
                     )
                 };
@@ -1308,40 +1632,70 @@ macro_rules! impl_kernel_scalar {
             }
 
             fn polynomial_kernel(
-                layout: Layout, m: usize, n: usize, k: usize,
-                x: &[Self], ldx: usize, y: Option<&[Self]>, ldy: usize,
-                d: &mut [Self], ldd: usize,
-                gamma: Self, degree: i64, coef0: Self,
+                layout: Layout,
+                m: usize,
+                n: usize,
+                k: usize,
+                x: &[Self],
+                ldx: usize,
+                y: Option<&[Self]>,
+                ldy: usize,
+                d: &mut [Self],
+                ldd: usize,
+                gamma: Self,
+                degree: i64,
+                coef0: Self,
             ) -> Result<()> {
                 let y_ptr = y.map(|s| s.as_ptr()).unwrap_or(std::ptr::null());
                 let status = unsafe {
                     sys::$poly(
                         layout_raw(layout),
-                        m as sys::da_int, n as sys::da_int, k as sys::da_int,
-                        x.as_ptr(), ldx as sys::da_int,
-                        y_ptr, ldy as sys::da_int,
-                        d.as_mut_ptr(), ldd as sys::da_int,
-                        gamma, degree as sys::da_int, coef0,
+                        m as sys::da_int,
+                        n as sys::da_int,
+                        k as sys::da_int,
+                        x.as_ptr(),
+                        ldx as sys::da_int,
+                        y_ptr,
+                        ldy as sys::da_int,
+                        d.as_mut_ptr(),
+                        ldd as sys::da_int,
+                        gamma,
+                        degree as sys::da_int,
+                        coef0,
                     )
                 };
                 check_status("data-analytics", status)
             }
 
             fn sigmoid_kernel(
-                layout: Layout, m: usize, n: usize, k: usize,
-                x: &[Self], ldx: usize, y: Option<&[Self]>, ldy: usize,
-                d: &mut [Self], ldd: usize,
-                gamma: Self, coef0: Self,
+                layout: Layout,
+                m: usize,
+                n: usize,
+                k: usize,
+                x: &[Self],
+                ldx: usize,
+                y: Option<&[Self]>,
+                ldy: usize,
+                d: &mut [Self],
+                ldd: usize,
+                gamma: Self,
+                coef0: Self,
             ) -> Result<()> {
                 let y_ptr = y.map(|s| s.as_ptr()).unwrap_or(std::ptr::null());
                 let status = unsafe {
                     sys::$sigmoid(
                         layout_raw(layout),
-                        m as sys::da_int, n as sys::da_int, k as sys::da_int,
-                        x.as_ptr(), ldx as sys::da_int,
-                        y_ptr, ldy as sys::da_int,
-                        d.as_mut_ptr(), ldd as sys::da_int,
-                        gamma, coef0,
+                        m as sys::da_int,
+                        n as sys::da_int,
+                        k as sys::da_int,
+                        x.as_ptr(),
+                        ldx as sys::da_int,
+                        y_ptr,
+                        ldy as sys::da_int,
+                        d.as_mut_ptr(),
+                        ldd as sys::da_int,
+                        gamma,
+                        coef0,
                     )
                 };
                 check_status("data-analytics", status)
@@ -1350,15 +1704,31 @@ macro_rules! impl_kernel_scalar {
     };
 }
 
-impl_kernel_scalar!(f32, da_linear_kernel_s, da_rbf_kernel_s, da_polynomial_kernel_s, da_sigmoid_kernel_s);
-impl_kernel_scalar!(f64, da_linear_kernel_d, da_rbf_kernel_d, da_polynomial_kernel_d, da_sigmoid_kernel_d);
+impl_kernel_scalar!(
+    f32,
+    da_linear_kernel_s,
+    da_rbf_kernel_s,
+    da_polynomial_kernel_s,
+    da_sigmoid_kernel_s
+);
+impl_kernel_scalar!(
+    f64,
+    da_linear_kernel_d,
+    da_rbf_kernel_d,
+    da_polynomial_kernel_d,
+    da_sigmoid_kernel_d
+);
 
 /// Linear kernel `K(x, y) = x · y` between rows of row-major matrices
 /// `x` (`m × k`) and optionally `y` (`n × k`). Output `d` is `m × n`
 /// (or `m × m` if `y` is `None`).
 pub fn linear_kernel<T: KernelScalar>(
-    m: usize, n: usize, k: usize,
-    x: &[T], y: Option<&[T]>, d: &mut [T],
+    m: usize,
+    n: usize,
+    k: usize,
+    x: &[T],
+    y: Option<&[T]>,
+    d: &mut [T],
 ) -> Result<()> {
     let ldd = if y.is_none() { m } else { n };
     T::linear_kernel(Layout::RowMajor, m, n, k, x, k, y, k, d, ldd)
@@ -1367,8 +1737,12 @@ pub fn linear_kernel<T: KernelScalar>(
 /// RBF kernel `K(x, y) = exp(-γ · ‖x − y‖²)` (row-major).
 #[allow(clippy::too_many_arguments)]
 pub fn rbf_kernel<T: KernelScalar>(
-    m: usize, n: usize, k: usize,
-    x: &[T], y: Option<&[T]>, d: &mut [T],
+    m: usize,
+    n: usize,
+    k: usize,
+    x: &[T],
+    y: Option<&[T]>,
+    d: &mut [T],
     gamma: T,
 ) -> Result<()> {
     let ldd = if y.is_none() { m } else { n };
@@ -1378,25 +1752,48 @@ pub fn rbf_kernel<T: KernelScalar>(
 /// Polynomial kernel `K(x, y) = (γ · x · y + c)^degree` (row-major).
 #[allow(clippy::too_many_arguments)]
 pub fn polynomial_kernel<T: KernelScalar>(
-    m: usize, n: usize, k: usize,
-    x: &[T], y: Option<&[T]>, d: &mut [T],
-    gamma: T, degree: i64, coef0: T,
+    m: usize,
+    n: usize,
+    k: usize,
+    x: &[T],
+    y: Option<&[T]>,
+    d: &mut [T],
+    gamma: T,
+    degree: i64,
+    coef0: T,
 ) -> Result<()> {
     let ldd = if y.is_none() { m } else { n };
-    T::polynomial_kernel(Layout::RowMajor, m, n, k, x, k, y, k, d, ldd,
-                         gamma, degree, coef0)
+    T::polynomial_kernel(
+        Layout::RowMajor,
+        m,
+        n,
+        k,
+        x,
+        k,
+        y,
+        k,
+        d,
+        ldd,
+        gamma,
+        degree,
+        coef0,
+    )
 }
 
 /// Sigmoid kernel `K(x, y) = tanh(γ · x · y + c)` (row-major).
 #[allow(clippy::too_many_arguments)]
 pub fn sigmoid_kernel<T: KernelScalar>(
-    m: usize, n: usize, k: usize,
-    x: &[T], y: Option<&[T]>, d: &mut [T],
-    gamma: T, coef0: T,
+    m: usize,
+    n: usize,
+    k: usize,
+    x: &[T],
+    y: Option<&[T]>,
+    d: &mut [T],
+    gamma: T,
+    coef0: T,
 ) -> Result<()> {
     let ldd = if y.is_none() { m } else { n };
-    T::sigmoid_kernel(Layout::RowMajor, m, n, k, x, k, y, k, d, ldd,
-                      gamma, coef0)
+    T::sigmoid_kernel(Layout::RowMajor, m, n, k, x, k, y, k, d, ldd, gamma, coef0)
 }
 
 /// Compute the pairwise distance matrix between rows of `x` (and
@@ -1486,7 +1883,11 @@ impl Handle {
         if raw.is_null() {
             return Err(Error::AllocationFailed("data-analytics"));
         }
-        Ok(Self { raw, kind, precision: Precision::Double })
+        Ok(Self {
+            raw,
+            kind,
+            precision: Precision::Double,
+        })
     }
 
     /// Create an `f32` handle.
@@ -1497,31 +1898,29 @@ impl Handle {
         if raw.is_null() {
             return Err(Error::AllocationFailed("data-analytics"));
         }
-        Ok(Self { raw, kind, precision: Precision::Single })
+        Ok(Self {
+            raw,
+            kind,
+            precision: Precision::Single,
+        })
     }
 
     /// Set an integer-valued option.
     pub fn set_int_option(&mut self, name: &str, value: i64) -> Result<()> {
-        let cs = std::ffi::CString::new(name).map_err(|e| {
-            Error::InvalidArgument(format!("set_int_option: {e}"))
-        })?;
-        let status = unsafe {
-            sys::da_options_set_int(self.raw, cs.as_ptr(), value as sys::da_int)
-        };
+        let cs = std::ffi::CString::new(name)
+            .map_err(|e| Error::InvalidArgument(format!("set_int_option: {e}")))?;
+        let status =
+            unsafe { sys::da_options_set_int(self.raw, cs.as_ptr(), value as sys::da_int) };
         check_status("data-analytics", status)
     }
 
     /// Set a string-valued option.
     pub fn set_string_option(&mut self, name: &str, value: &str) -> Result<()> {
-        let n = std::ffi::CString::new(name).map_err(|e| {
-            Error::InvalidArgument(format!("set_string_option: {e}"))
-        })?;
-        let v = std::ffi::CString::new(value).map_err(|e| {
-            Error::InvalidArgument(format!("set_string_option: {e}"))
-        })?;
-        let status = unsafe {
-            sys::da_options_set_string(self.raw, n.as_ptr(), v.as_ptr())
-        };
+        let n = std::ffi::CString::new(name)
+            .map_err(|e| Error::InvalidArgument(format!("set_string_option: {e}")))?;
+        let v = std::ffi::CString::new(value)
+            .map_err(|e| Error::InvalidArgument(format!("set_string_option: {e}")))?;
+        let status = unsafe { sys::da_options_set_string(self.raw, n.as_ptr(), v.as_ptr()) };
         check_status("data-analytics", status)
     }
 
@@ -1599,7 +1998,8 @@ impl KMeans {
         if data.len() < n_samples * n_features {
             return Err(Error::InvalidArgument(format!(
                 "fit: data length {} < n_samples·n_features = {}",
-                data.len(), n_samples * n_features
+                data.len(),
+                n_samples * n_features
             )));
         }
         let lda = n_samples;
@@ -1647,7 +2047,9 @@ impl KMeans {
 
 impl std::fmt::Debug for KMeans {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("KMeans").field("handle", &self.handle).finish()
+        f.debug_struct("KMeans")
+            .field("handle", &self.handle)
+            .finish()
     }
 }
 
@@ -1671,7 +2073,8 @@ impl Pca {
         if data.len() < n_samples * n_features {
             return Err(Error::InvalidArgument(format!(
                 "PCA fit: data length {} < n_samples·n_features = {}",
-                data.len(), n_samples * n_features
+                data.len(),
+                n_samples * n_features
             )));
         }
         let lda = n_samples;
@@ -1704,13 +2107,15 @@ impl Pca {
         if x.len() < m_samples * m_features {
             return Err(Error::InvalidArgument(format!(
                 "PCA transform: x length {} < m_samples·m_features = {}",
-                x.len(), m_samples * m_features
+                x.len(),
+                m_samples * m_features
             )));
         }
         if out.len() < m_samples * n_components {
             return Err(Error::InvalidArgument(format!(
                 "PCA transform: out length {} < m_samples·n_components = {}",
-                out.len(), m_samples * n_components
+                out.len(),
+                m_samples * n_components
             )));
         }
         let status = unsafe {
@@ -1767,7 +2172,8 @@ impl KNearestNeighbours {
         if x_train.len() < n_samples * n_features {
             return Err(Error::InvalidArgument(format!(
                 "knn fit: x_train length {} < n_samples·n_features = {}",
-                x_train.len(), n_samples * n_features
+                x_train.len(),
+                n_samples * n_features
             )));
         }
         if y_train.len() < n_samples {
@@ -1800,7 +2206,8 @@ impl KNearestNeighbours {
         if x_test.len() < n_queries * n_features {
             return Err(Error::InvalidArgument(format!(
                 "knn predict: x_test length {} < n_queries·n_features = {}",
-                x_test.len(), n_queries * n_features
+                x_test.len(),
+                n_queries * n_features
             )));
         }
         if labels.len() < n_queries {
@@ -1894,7 +2301,9 @@ impl KNearestNeighbours {
 
 impl std::fmt::Debug for KNearestNeighbours {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("KNearestNeighbours").field("handle", &self.handle).finish()
+        f.debug_struct("KNearestNeighbours")
+            .field("handle", &self.handle)
+            .finish()
     }
 }
 
@@ -1951,7 +2360,11 @@ impl Linmod {
         let handle = Handle::new_double(HandleKind::Linmod)?;
         let status = unsafe { sys::da_linmod_select_model_d(handle.raw, kind.raw()) };
         check_status("data-analytics", status)?;
-        Ok(Self { handle, kind, n_features_at_fit: None })
+        Ok(Self {
+            handle,
+            kind,
+            n_features_at_fit: None,
+        })
     }
 
     /// Borrow the underlying handle to set algorithm-specific options
@@ -1967,17 +2380,12 @@ impl Linmod {
 
     /// Fit the model on `n_samples × n_features` training data (column-major
     /// by default) with a length-`n_samples` response vector `y`.
-    pub fn fit(
-        &mut self,
-        n_samples: usize,
-        n_features: usize,
-        x: &[f64],
-        y: &[f64],
-    ) -> Result<()> {
+    pub fn fit(&mut self, n_samples: usize, n_features: usize, x: &[f64], y: &[f64]) -> Result<()> {
         if x.len() < n_samples * n_features {
             return Err(Error::InvalidArgument(format!(
                 "linmod fit: x length {} < n_samples·n_features = {}",
-                x.len(), n_samples * n_features
+                x.len(),
+                n_samples * n_features
             )));
         }
         if y.len() < n_samples {
@@ -2094,7 +2502,8 @@ impl Linmod {
         if x.len() < n_samples * n_features {
             return Err(Error::InvalidArgument(format!(
                 "linmod predict: x length {} < n_samples·n_features = {}",
-                x.len(), n_samples * n_features
+                x.len(),
+                n_samples * n_features
             )));
         }
         if predictions.len() < n_samples {
@@ -2136,7 +2545,8 @@ impl Linmod {
         if x.len() < n_samples * n_features {
             return Err(Error::InvalidArgument(format!(
                 "linmod evaluate: x length {} < n_samples·n_features = {}",
-                x.len(), n_samples * n_features
+                x.len(),
+                n_samples * n_features
             )));
         }
         if predictions.len() < n_samples {
@@ -2194,7 +2604,10 @@ impl Dbscan {
     /// Build a new DBSCAN handle in `f64` precision.
     pub fn new() -> Result<Self> {
         let handle = Handle::new_double(HandleKind::Dbscan)?;
-        Ok(Self { handle, n_samples_at_fit: None })
+        Ok(Self {
+            handle,
+            n_samples_at_fit: None,
+        })
     }
 
     /// Borrow the underlying handle to set DBSCAN-specific options:
@@ -2210,7 +2623,8 @@ impl Dbscan {
         if data.len() < n_samples * n_features {
             return Err(Error::InvalidArgument(format!(
                 "dbscan fit: data length {} < n_samples·n_features = {}",
-                data.len(), n_samples * n_features
+                data.len(),
+                n_samples * n_features
             )));
         }
         let lda = n_samples;
@@ -2280,8 +2694,9 @@ impl Dbscan {
     /// Labels assigned to each input sample. `-1` indicates noise; other
     /// values index a cluster `0 .. n_clusters()`.
     pub fn labels(&self) -> Result<Vec<i32>> {
-        let n = self.n_samples_at_fit.ok_or_else(|| Error::InvalidArgument(
-            "dbscan labels: model has not been fit yet".into()))?;
+        let n = self.n_samples_at_fit.ok_or_else(|| {
+            Error::InvalidArgument("dbscan labels: model has not been fit yet".into())
+        })?;
         let mut dim: sys::da_int = n as sys::da_int;
         let mut out: Vec<sys::da_int> = vec![0; n];
         let status = unsafe {
@@ -2321,7 +2736,9 @@ impl Dbscan {
 
 impl std::fmt::Debug for Dbscan {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Dbscan").field("handle", &self.handle).finish()
+        f.debug_struct("Dbscan")
+            .field("handle", &self.handle)
+            .finish()
     }
 }
 
@@ -2362,7 +2779,8 @@ impl DecisionTree {
         if x.len() < n_samples * n_features {
             return Err(Error::InvalidArgument(format!(
                 "tree fit: x length {} < n_samples·n_features = {}",
-                x.len(), n_samples * n_features
+                x.len(),
+                n_samples * n_features
             )));
         }
         if y.len() < n_samples {
@@ -2414,7 +2832,8 @@ impl DecisionTree {
         if x_test.len() < n_samples * n_features {
             return Err(Error::InvalidArgument(format!(
                 "tree predict: x_test length {} < n_samples·n_features = {}",
-                x_test.len(), n_samples * n_features
+                x_test.len(),
+                n_samples * n_features
             )));
         }
         if labels.len() < n_samples {
@@ -2477,8 +2896,10 @@ impl DecisionTree {
         let status = unsafe {
             sys::da_tree_predict_proba_d(
                 self.handle.raw,
-                n_samples as sys::da_int, n_features as sys::da_int,
-                x_test.as_ptr(), n_samples as sys::da_int,
+                n_samples as sys::da_int,
+                n_features as sys::da_int,
+                x_test.as_ptr(),
+                n_samples as sys::da_int,
                 y_proba.as_mut_ptr(),
                 n_class as sys::da_int,
                 ldy as sys::da_int,
@@ -2501,8 +2922,10 @@ impl DecisionTree {
         let status = unsafe {
             sys::da_tree_predict_log_proba_d(
                 self.handle.raw,
-                n_samples as sys::da_int, n_features as sys::da_int,
-                x_test.as_ptr(), n_samples as sys::da_int,
+                n_samples as sys::da_int,
+                n_features as sys::da_int,
+                x_test.as_ptr(),
+                n_samples as sys::da_int,
                 y_log_proba.as_mut_ptr(),
                 n_class as sys::da_int,
                 ldy as sys::da_int,
@@ -2514,7 +2937,9 @@ impl DecisionTree {
 
 impl std::fmt::Debug for DecisionTree {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DecisionTree").field("handle", &self.handle).finish()
+        f.debug_struct("DecisionTree")
+            .field("handle", &self.handle)
+            .finish()
     }
 }
 
@@ -2550,7 +2975,8 @@ impl DecisionForest {
         if x.len() < n_samples * n_features {
             return Err(Error::InvalidArgument(format!(
                 "forest fit: x length {} < n_samples·n_features = {}",
-                x.len(), n_samples * n_features
+                x.len(),
+                n_samples * n_features
             )));
         }
         if y.len() < n_samples {
@@ -2602,7 +3028,8 @@ impl DecisionForest {
         if x_test.len() < n_samples * n_features {
             return Err(Error::InvalidArgument(format!(
                 "forest predict: x_test length {} < n_samples·n_features = {}",
-                x_test.len(), n_samples * n_features
+                x_test.len(),
+                n_samples * n_features
             )));
         }
         if labels.len() < n_samples {
@@ -2663,8 +3090,10 @@ impl DecisionForest {
         let status = unsafe {
             sys::da_forest_predict_proba_d(
                 self.handle.raw,
-                n_samples as sys::da_int, n_features as sys::da_int,
-                x_test.as_ptr(), n_samples as sys::da_int,
+                n_samples as sys::da_int,
+                n_features as sys::da_int,
+                x_test.as_ptr(),
+                n_samples as sys::da_int,
                 y_proba.as_mut_ptr(),
                 n_class as sys::da_int,
                 ldy as sys::da_int,
@@ -2687,8 +3116,10 @@ impl DecisionForest {
         let status = unsafe {
             sys::da_forest_predict_log_proba_d(
                 self.handle.raw,
-                n_samples as sys::da_int, n_features as sys::da_int,
-                x_test.as_ptr(), n_samples as sys::da_int,
+                n_samples as sys::da_int,
+                n_features as sys::da_int,
+                x_test.as_ptr(),
+                n_samples as sys::da_int,
                 y_log_proba.as_mut_ptr(),
                 n_class as sys::da_int,
                 ldy as sys::da_int,
@@ -2700,7 +3131,9 @@ impl DecisionForest {
 
 impl std::fmt::Debug for DecisionForest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DecisionForest").field("handle", &self.handle).finish()
+        f.debug_struct("DecisionForest")
+            .field("handle", &self.handle)
+            .finish()
     }
 }
 
@@ -2764,13 +3197,21 @@ pub struct Svm {
 
 impl Svm {
     /// Build a C-SVC classifier in `f64` precision.
-    pub fn new_svc() -> Result<Self> { Self::new_with(SvmKind::Svc) }
+    pub fn new_svc() -> Result<Self> {
+        Self::new_with(SvmKind::Svc)
+    }
     /// Build a Nu-SVC classifier in `f64` precision.
-    pub fn new_nu_svc() -> Result<Self> { Self::new_with(SvmKind::NuSvc) }
+    pub fn new_nu_svc() -> Result<Self> {
+        Self::new_with(SvmKind::NuSvc)
+    }
     /// Build an epsilon-SVR regressor in `f64` precision.
-    pub fn new_svr() -> Result<Self> { Self::new_with(SvmKind::Svr) }
+    pub fn new_svr() -> Result<Self> {
+        Self::new_with(SvmKind::Svr)
+    }
     /// Build a Nu-SVR regressor in `f64` precision.
-    pub fn new_nu_svr() -> Result<Self> { Self::new_with(SvmKind::NuSvr) }
+    pub fn new_nu_svr() -> Result<Self> {
+        Self::new_with(SvmKind::NuSvr)
+    }
 
     fn new_with(kind: SvmKind) -> Result<Self> {
         let handle = Handle::new_double(HandleKind::Svm)?;
@@ -2780,26 +3221,25 @@ impl Svm {
     }
 
     /// Borrow the underlying handle to set SVM-specific options.
-    pub fn handle_mut(&mut self) -> &mut Handle { &mut self.handle }
+    pub fn handle_mut(&mut self) -> &mut Handle {
+        &mut self.handle
+    }
 
     /// Family of SVM model that this handle was constructed for.
-    pub fn kind(&self) -> SvmKind { self.kind }
+    pub fn kind(&self) -> SvmKind {
+        self.kind
+    }
 
     /// Fit on column-major `n_samples × n_features` features `x` and a
     /// length-`n_samples` response vector `y`. For classification, `y`
     /// holds class indices `0..n_class-1` (as floats); for regression
     /// it holds the real target.
-    pub fn fit(
-        &mut self,
-        n_samples: usize,
-        n_features: usize,
-        x: &[f64],
-        y: &[f64],
-    ) -> Result<()> {
+    pub fn fit(&mut self, n_samples: usize, n_features: usize, x: &[f64], y: &[f64]) -> Result<()> {
         if x.len() < n_samples * n_features {
             return Err(Error::InvalidArgument(format!(
                 "svm fit: x length {} < n_samples·n_features = {}",
-                x.len(), n_samples * n_features
+                x.len(),
+                n_samples * n_features
             )));
         }
         if y.len() < n_samples {
@@ -2851,7 +3291,8 @@ impl Svm {
         if x_test.len() < n_samples * n_features {
             return Err(Error::InvalidArgument(format!(
                 "svm predict: x_test length {} < n_samples·n_features = {}",
-                x_test.len(), n_samples * n_features
+                x_test.len(),
+                n_samples * n_features
             )));
         }
         if predictions.len() < n_samples {
@@ -2970,10 +3411,18 @@ mod tests {
         assert!((var[0] - 2.0).abs() < 1e-12, "n-divisor var = {}", var[0]);
 
         variance(Axis::All, 1, 5, &x, 0, &mut mu, &mut var).unwrap();
-        assert!((var[0] - 2.5).abs() < 1e-12, "(n-1)-divisor var = {}", var[0]);
+        assert!(
+            (var[0] - 2.5).abs() < 1e-12,
+            "(n-1)-divisor var = {}",
+            var[0]
+        );
 
         variance(Axis::All, 1, 5, &x, 2, &mut mu, &mut var).unwrap();
-        assert!((var[0] - 5.0).abs() < 1e-12, "literal-divisor var = {}", var[0]);
+        assert!(
+            (var[0] - 5.0).abs() < 1e-12,
+            "literal-divisor var = {}",
+            var[0]
+        );
     }
 
     #[test]
@@ -2999,10 +3448,8 @@ mod tests {
         // Stored column-major (column = feature).
         let data: Vec<f64> = vec![
             // feature 0 (x): values 1, 2, 3, 4
-            1.0, 2.0, 3.0, 4.0,
-            // feature 1 (y): values 4, 3, 2, 1
-            4.0, 3.0, 2.0, 1.0,
-            // feature 2 (z): tiny noise
+            1.0, 2.0, 3.0, 4.0, // feature 1 (y): values 4, 3, 2, 1
+            4.0, 3.0, 2.0, 1.0, // feature 2 (z): tiny noise
             0.01, 0.02, 0.01, 0.02,
         ];
         let mut pca = Pca::new(2).unwrap();
@@ -3022,8 +3469,7 @@ mod tests {
         // label 1 around (10,10).
         let x_train: Vec<f64> = vec![
             // feature 0
-            0.0, 0.1, 0.2, 10.0, 10.1, 10.2,
-            // feature 1
+            0.0, 0.1, 0.2, 10.0, 10.1, 10.2, // feature 1
             0.1, 0.0, 0.1, 10.1, 10.0, 10.1,
         ];
         let y_train = vec![0_i32, 0, 0, 1, 1, 1];
@@ -3032,7 +3478,7 @@ mod tests {
 
         // A query point near (0, 0) → label 0; near (10, 10) → label 1.
         let x_test = vec![
-            0.05, 9.95,  // feature 0
+            0.05, 9.95, // feature 0
             0.05, 10.05, // feature 1
         ];
         let mut labels = vec![0_i32; 2];
@@ -3046,8 +3492,7 @@ mod tests {
         // Same separable two-class setup as the KNN test.
         let x_train: Vec<f64> = vec![
             // feature 0
-            0.0, 0.1, 0.2, 10.0, 10.1, 10.2,
-            // feature 1
+            0.0, 0.1, 0.2, 10.0, 10.1, 10.2, // feature 1
             0.1, 0.0, 0.1, 10.1, 10.0, 10.1,
         ];
         let y_train = vec![0_i32, 0, 0, 1, 1, 1];
@@ -3068,8 +3513,7 @@ mod tests {
     #[test]
     fn decision_forest_two_class_separation() {
         let x_train: Vec<f64> = vec![
-            0.0, 0.1, 0.2, 10.0, 10.1, 10.2,
-            0.1, 0.0, 0.1, 10.1, 10.0, 10.1,
+            0.0, 0.1, 0.2, 10.0, 10.1, 10.2, 0.1, 0.0, 0.1, 10.1, 10.0, 10.1,
         ];
         let y_train = vec![0_i32, 0, 0, 1, 1, 1];
         let mut forest = DecisionForest::new().unwrap();
@@ -3121,7 +3565,9 @@ mod tests {
         store.select_columns("all", 0, 1).unwrap();
         let mut buf = vec![0.0_f64; 6];
         // Column-major layout, lddata = n_rows.
-        store.extract_f64("all", Layout::ColMajor, &mut buf, 3).unwrap();
+        store
+            .extract_f64("all", Layout::ColMajor, &mut buf, 3)
+            .unwrap();
         // Column 0 = [1, 3, 5]; column 1 = [2, 4, 6].
         assert!((buf[0] - 1.0).abs() < 1e-12);
         assert!((buf[1] - 3.0).abs() < 1e-12);
@@ -3175,7 +3621,7 @@ mod tests {
     fn linear_kernel_self_gram() {
         // X = [[1, 0], [0, 1], [1, 1]] row-major; Gram = X·Xᵀ
         // = [[1, 0, 1], [0, 1, 1], [1, 1, 2]]
-        let x = [1.0_f64, 0.0,  0.0, 1.0,  1.0, 1.0];
+        let x = [1.0_f64, 0.0, 0.0, 1.0, 1.0, 1.0];
         let mut d = [0.0_f64; 9];
         linear_kernel::<f64>(3, 0, 2, &x, None, &mut d).unwrap();
         let want = [1.0, 0.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 2.0];
@@ -3188,7 +3634,7 @@ mod tests {
     fn rbf_kernel_diagonal_is_one() {
         // RBF kernel of any vector with itself is exp(0) = 1.
         // Two-point set; check the diagonal entries.
-        let x = [1.0_f64, 2.0, 3.0,  4.0, 5.0, 6.0]; // 2 rows × 3 cols
+        let x = [1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0]; // 2 rows × 3 cols
         let mut d = [0.0_f64; 4];
         rbf_kernel::<f64>(2, 0, 3, &x, None, &mut d, 0.5).unwrap();
         // d[0] (= K(x0, x0)) and d[3] (= K(x1, x1)) should be 1.
@@ -3204,11 +3650,7 @@ mod tests {
         // Three 2-D points on the corners of a 3-4-5 right triangle:
         // p0 = (0, 0); p1 = (3, 0); p2 = (0, 4)
         // Row-major 3×2 matrix.
-        let x = [
-            0.0_f64, 0.0,
-            3.0, 0.0,
-            0.0, 4.0,
-        ];
+        let x = [0.0_f64, 0.0, 3.0, 0.0, 0.0, 4.0];
         let mut d = [0.0_f64; 9];
         pairwise_distances::<f64>(3, 0, 2, &x, None, &mut d, 2.0, Metric::Euclidean).unwrap();
         // d is 3×3 row-major; diagonal = 0, off-diagonals are 3, 4, 5.
@@ -3238,7 +3680,18 @@ mod tests {
         let mut med = [0.0_f64; 1];
         let mut upper = [0.0_f64; 1];
         let mut max = [0.0_f64; 1];
-        five_point_summary(Axis::All, 1, 5, &x, &mut min, &mut lower, &mut med, &mut upper, &mut max).unwrap();
+        five_point_summary(
+            Axis::All,
+            1,
+            5,
+            &x,
+            &mut min,
+            &mut lower,
+            &mut med,
+            &mut upper,
+            &mut max,
+        )
+        .unwrap();
         assert!((min[0] - 1.0).abs() < 1e-12);
         assert!((max[0] - 5.0).abs() < 1e-12);
         assert!((med[0] - 3.0).abs() < 1e-12);
@@ -3252,12 +3705,7 @@ mod tests {
         // Two perfectly correlated columns: y = 2*x + 1. Correlation
         // matrix is the 2x2 all-ones matrix.
         // Row-major: 4 rows, 2 columns.
-        let x = [
-            1.0_f64, 3.0,
-            2.0,     5.0,
-            3.0,     7.0,
-            4.0,     9.0,
-        ];
+        let x = [1.0_f64, 3.0, 2.0, 5.0, 3.0, 7.0, 4.0, 9.0];
         let mut corr = [0.0_f64; 4];
         correlation_matrix(4, 2, &x, &mut corr).unwrap();
         for v in &corr {
@@ -3287,8 +3735,7 @@ mod tests {
         // Same separable two-class setup; SVM uses f64 labels (class
         // indices stored as floats).
         let x_train: Vec<f64> = vec![
-            0.0, 0.1, 0.2, 10.0, 10.1, 10.2,
-            0.1, 0.0, 0.1, 10.1, 10.0, 10.1,
+            0.0, 0.1, 0.2, 10.0, 10.1, 10.2, 0.1, 0.0, 0.1, 10.1, 10.0, 10.1,
         ];
         let y_train = vec![0.0_f64, 0.0, 0.0, 1.0, 1.0, 1.0];
         let mut svm = Svm::new_svc().unwrap();
@@ -3297,8 +3744,16 @@ mod tests {
         let x_test = vec![0.05, 9.95, 0.05, 10.05];
         let mut predictions = vec![0.0_f64; 2];
         svm.predict(2, 2, &x_test, &mut predictions).unwrap();
-        assert!((predictions[0] - 0.0).abs() < 1e-9, "pred[0] = {}", predictions[0]);
-        assert!((predictions[1] - 1.0).abs() < 1e-9, "pred[1] = {}", predictions[1]);
+        assert!(
+            (predictions[0] - 0.0).abs() < 1e-9,
+            "pred[0] = {}",
+            predictions[0]
+        );
+        assert!(
+            (predictions[1] - 1.0).abs() < 1e-9,
+            "pred[1] = {}",
+            predictions[1]
+        );
 
         let acc = svm.score(6, 2, &x_train, &y_train).unwrap();
         assert!((acc - 1.0).abs() < 1e-9, "score = {acc}");
@@ -3310,8 +3765,7 @@ mod tests {
         // each cluster's samples sharing a positive label.
         let data: Vec<f64> = vec![
             // feature 0 (column 0): cluster A near 0, cluster B near 10
-            0.0, 0.1, 0.2, 0.0, 0.1, 10.0, 10.1, 10.0, 10.2, 10.1,
-            // feature 1 (column 1)
+            0.0, 0.1, 0.2, 0.0, 0.1, 10.0, 10.1, 10.0, 10.2, 10.1, // feature 1 (column 1)
             0.0, 0.1, 0.0, 0.2, 0.1, 10.0, 10.1, 10.2, 10.0, 10.1,
         ];
         let mut db = Dbscan::new().unwrap();
@@ -3319,9 +3773,8 @@ mod tests {
         // default (which is ~0.5 in AOCL) is not enough so widen it.
         // We use the underlying real-valued setter directly.
         let cs = std::ffi::CString::new("eps").unwrap();
-        let status = unsafe {
-            sys::da_options_set_real_d(db.handle_mut().as_raw(), cs.as_ptr(), 1.0)
-        };
+        let status =
+            unsafe { sys::da_options_set_real_d(db.handle_mut().as_raw(), cs.as_ptr(), 1.0) };
         assert_eq!(status, sys::da_status__da_status_success);
         db.handle_mut().set_int_option("min samples", 3).unwrap();
         db.fit(10, 2, &data).unwrap();
@@ -3343,8 +3796,7 @@ mod tests {
         // Use 5 samples to give the solver something to work with.
         let x: Vec<f64> = vec![
             // feature 0
-            1.0, 2.0, 3.0, 4.0, 5.0,
-            // feature 1
+            1.0, 2.0, 3.0, 4.0, 5.0, // feature 1
             5.0, 4.0, 3.0, 2.0, 1.0,
         ];
         // y = 2·x0 + 3·x1 (no noise)
@@ -3379,8 +3831,7 @@ mod tests {
         // then feature 1.
         let data: Vec<f64> = vec![
             // feature 0 (column 0)
-            0.0, 0.1, 0.2, 10.0, 10.1, 10.2,
-            // feature 1 (column 1)
+            0.0, 0.1, 0.2, 10.0, 10.1, 10.2, // feature 1 (column 1)
             0.1, 0.0, 0.1, 10.1, 10.0, 10.1,
         ];
         let mut km = KMeans::new(2).unwrap();

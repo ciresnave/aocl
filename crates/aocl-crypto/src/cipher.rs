@@ -91,7 +91,10 @@ impl Cipher {
                 iv.len() as u64,
             )
         })?;
-        Ok(Self { handle, _context: context })
+        Ok(Self {
+            handle,
+            _context: context,
+        })
     }
 
     /// Encrypt `plaintext` into `ciphertext`. Both buffers must be the
@@ -100,7 +103,8 @@ impl Cipher {
         if plaintext.len() != ciphertext.len() {
             return Err(Error::InvalidArgument(format!(
                 "encrypt: plaintext.len()={}, ciphertext.len()={}",
-                plaintext.len(), ciphertext.len()
+                plaintext.len(),
+                ciphertext.len()
             )));
         }
         check(unsafe {
@@ -118,7 +122,8 @@ impl Cipher {
         if ciphertext.len() != plaintext.len() {
             return Err(Error::InvalidArgument(format!(
                 "decrypt: ciphertext.len()={}, plaintext.len()={}",
-                ciphertext.len(), plaintext.len()
+                ciphertext.len(),
+                plaintext.len()
             )));
         }
         check(unsafe {
@@ -193,7 +198,7 @@ mod tests {
         // followed by a 12-byte nonce. Passing the bare 12-byte IETF
         // nonce returns init-failure.
         let iv: [u8; 16] = [
-            0x01, 0x00, 0x00, 0x00,           // counter = 1 (LE)
+            0x01, 0x00, 0x00, 0x00, // counter = 1 (LE)
             0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77,
         ];
         let plaintext = b"chacha20 sample message of arbitrary length".to_vec();

@@ -230,7 +230,10 @@ mod tests {
         // Repr-C struct of two f32s must be exactly 8 bytes laid out
         // [re, im], matching [f32; 2] for FFI cast safety.
         assert_eq!(std::mem::size_of::<Complex32>(), 8);
-        assert_eq!(std::mem::align_of::<Complex32>(), std::mem::align_of::<f32>());
+        assert_eq!(
+            std::mem::align_of::<Complex32>(),
+            std::mem::align_of::<f32>()
+        );
         let c = Complex32::new(1.5, -2.0);
         let arr: [f32; 2] = c.into();
         assert_eq!(arr, [1.5, -2.0]);
@@ -239,7 +242,10 @@ mod tests {
     #[test]
     fn complex64_layout_matches_array() {
         assert_eq!(std::mem::size_of::<Complex64>(), 16);
-        assert_eq!(std::mem::align_of::<Complex64>(), std::mem::align_of::<f64>());
+        assert_eq!(
+            std::mem::align_of::<Complex64>(),
+            std::mem::align_of::<f64>()
+        );
         let c = Complex64::new(3.0, 4.0);
         assert_eq!(c.abs(), 5.0);
         assert_eq!(c.norm_sqr(), 25.0);

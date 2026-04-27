@@ -144,12 +144,14 @@ pub mod lz4 {
     /// Compress with the default acceleration. Returns the number of bytes
     /// written to `dst`.
     pub fn compress(src: &[u8], dst: &mut [u8]) -> Result<usize> {
-        let src_size: i32 = src.len().try_into().map_err(|_| {
-            Error::InvalidArgument("lz4::compress: src too large for LZ4".into())
-        })?;
-        let dst_cap: i32 = dst.len().try_into().map_err(|_| {
-            Error::InvalidArgument("lz4::compress: dst too large for LZ4".into())
-        })?;
+        let src_size: i32 = src
+            .len()
+            .try_into()
+            .map_err(|_| Error::InvalidArgument("lz4::compress: src too large for LZ4".into()))?;
+        let dst_cap: i32 = dst
+            .len()
+            .try_into()
+            .map_err(|_| Error::InvalidArgument("lz4::compress: dst too large for LZ4".into()))?;
         let n = unsafe {
             sys::LZ4_compress_default(
                 src.as_ptr() as *const std::os::raw::c_char,
@@ -204,12 +206,14 @@ pub mod lz4 {
     /// Decompress LZ4 stream into `dst`. Returns the number of bytes
     /// written.
     pub fn decompress(src: &[u8], dst: &mut [u8]) -> Result<usize> {
-        let src_size: i32 = src.len().try_into().map_err(|_| {
-            Error::InvalidArgument("lz4::decompress: src too large for LZ4".into())
-        })?;
-        let dst_cap: i32 = dst.len().try_into().map_err(|_| {
-            Error::InvalidArgument("lz4::decompress: dst too large for LZ4".into())
-        })?;
+        let src_size: i32 = src
+            .len()
+            .try_into()
+            .map_err(|_| Error::InvalidArgument("lz4::decompress: src too large for LZ4".into()))?;
+        let dst_cap: i32 = dst
+            .len()
+            .try_into()
+            .map_err(|_| Error::InvalidArgument("lz4::decompress: dst too large for LZ4".into()))?;
         let n = unsafe {
             sys::LZ4_decompress_safe(
                 src.as_ptr() as *const std::os::raw::c_char,
@@ -349,7 +353,9 @@ mod tests {
 
     #[test]
     fn zstd_round_trip() {
-        let payload: Vec<u8> = (0..4096_u32).flat_map(|i| (i as u8).to_le_bytes()).collect();
+        let payload: Vec<u8> = (0..4096_u32)
+            .flat_map(|i| (i as u8).to_le_bytes())
+            .collect();
         round_trip(Codec::Zstd, 3, &payload);
     }
 

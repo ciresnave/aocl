@@ -21,8 +21,8 @@
 #![warn(missing_debug_implementations)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-use aocl_scalapack_sys as sys;
 pub use aocl_error::{Error, Result};
+use aocl_scalapack_sys as sys;
 pub use aocl_types::{Layout, Trans, Uplo};
 
 use std::os::raw::{c_char, c_int};
@@ -108,9 +108,7 @@ impl Grid {
         let mut g_npcol = 0;
         let mut myprow = -1;
         let mut mypcol = -1;
-        unsafe {
-            sys::Cblacs_gridinfo(ctxt, &mut g_nprow, &mut g_npcol, &mut myprow, &mut mypcol)
-        };
+        unsafe { sys::Cblacs_gridinfo(ctxt, &mut g_nprow, &mut g_npcol, &mut myprow, &mut mypcol) };
         Ok(Self {
             context: ctxt,
             nprow: g_nprow,
@@ -211,8 +209,14 @@ impl BlockCyclic {
         unsafe {
             sys::descinit_(
                 desc.as_mut_ptr(),
-                &m_i, &n_i, &mb_i, &nb_i,
-                &rsrc_i, &csrc_i, &ctxt, &lld_i,
+                &m_i,
+                &n_i,
+                &mb_i,
+                &nb_i,
+                &rsrc_i,
+                &csrc_i,
+                &ctxt,
+                &lld_i,
                 &mut info,
             );
         }
@@ -241,10 +245,12 @@ pub fn numroc(n: usize, nb: usize, iproc: usize, isrcproc: usize, nprocs: usize)
     let iproc_i = iproc as c_int;
     let isrcproc_i = isrcproc as c_int;
     let nprocs_i = nprocs as c_int;
-    let r = unsafe {
-        sys::numroc_(&n_i, &nb_i, &iproc_i, &isrcproc_i, &nprocs_i)
-    };
-    if r < 0 { 0 } else { r as usize }
+    let r = unsafe { sys::numroc_(&n_i, &nb_i, &iproc_i, &isrcproc_i, &nprocs_i) };
+    if r < 0 {
+        0
+    } else {
+        r as usize
+    }
 }
 
 // =========================================================================
@@ -258,19 +264,32 @@ pub fn numroc(n: usize, nb: usize, iproc: usize, isrcproc: usize, nprocs: usize)
 pub fn pdgesv(
     n: usize,
     nrhs: usize,
-    a: &mut [f64], ia: i32, ja: i32, desca: &BlockCyclic,
+    a: &mut [f64],
+    ia: i32,
+    ja: i32,
+    desca: &BlockCyclic,
     ipiv: &mut [i32],
-    b: &mut [f64], ib: i32, jb: i32, descb: &BlockCyclic,
+    b: &mut [f64],
+    ib: i32,
+    jb: i32,
+    descb: &BlockCyclic,
 ) -> Result<()> {
     let n_i = n as c_int;
     let nrhs_i = nrhs as c_int;
     let mut info: c_int = 0;
     unsafe {
         sys::pdgesv_(
-            &n_i, &nrhs_i,
-            a.as_mut_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
+            &n_i,
+            &nrhs_i,
+            a.as_mut_ptr(),
+            &ia,
+            &ja,
+            desca.as_raw().as_ptr(),
             ipiv.as_mut_ptr(),
-            b.as_mut_ptr(), &ib, &jb, descb.as_raw().as_ptr(),
+            b.as_mut_ptr(),
+            &ib,
+            &jb,
+            descb.as_raw().as_ptr(),
             &mut info,
         );
     }
@@ -280,13 +299,25 @@ pub fn pdgesv(
 /// Distributed double-precision `C := α · op(A) · op(B) + β · C`.
 #[allow(clippy::too_many_arguments)]
 pub fn pdgemm(
-    trans_a: Trans, trans_b: Trans,
-    m: usize, n: usize, k: usize,
+    trans_a: Trans,
+    trans_b: Trans,
+    m: usize,
+    n: usize,
+    k: usize,
     alpha: f64,
-    a: &[f64], ia: i32, ja: i32, desca: &BlockCyclic,
-    b: &[f64], ib: i32, jb: i32, descb: &BlockCyclic,
+    a: &[f64],
+    ia: i32,
+    ja: i32,
+    desca: &BlockCyclic,
+    b: &[f64],
+    ib: i32,
+    jb: i32,
+    descb: &BlockCyclic,
     beta: f64,
-    c: &mut [f64], ic: i32, jc: i32, descc: &BlockCyclic,
+    c: &mut [f64],
+    ic: i32,
+    jc: i32,
+    descc: &BlockCyclic,
 ) {
     let m_i = m as c_int;
     let n_i = n as c_int;
@@ -295,13 +326,25 @@ pub fn pdgemm(
     let tb = trans_char(trans_b);
     unsafe {
         sys::pdgemm_(
-            &ta, &tb,
-            &m_i, &n_i, &k_i,
+            &ta,
+            &tb,
+            &m_i,
+            &n_i,
+            &k_i,
             &alpha,
-            a.as_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
-            b.as_ptr(), &ib, &jb, descb.as_raw().as_ptr(),
+            a.as_ptr(),
+            &ia,
+            &ja,
+            desca.as_raw().as_ptr(),
+            b.as_ptr(),
+            &ib,
+            &jb,
+            descb.as_raw().as_ptr(),
             &beta,
-            c.as_mut_ptr(), &ic, &jc, descc.as_raw().as_ptr(),
+            c.as_mut_ptr(),
+            &ic,
+            &jc,
+            descc.as_raw().as_ptr(),
         );
     }
 }
@@ -311,15 +354,22 @@ pub fn pdgemm(
 pub fn pdpotrf(
     uplo: Uplo,
     n: usize,
-    a: &mut [f64], ia: i32, ja: i32, desca: &BlockCyclic,
+    a: &mut [f64],
+    ia: i32,
+    ja: i32,
+    desca: &BlockCyclic,
 ) -> Result<()> {
     let n_i = n as c_int;
     let u = uplo_char(uplo);
     let mut info: c_int = 0;
     unsafe {
         sys::pdpotrf_(
-            &u, &n_i,
-            a.as_mut_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
+            &u,
+            &n_i,
+            a.as_mut_ptr(),
+            &ia,
+            &ja,
+            desca.as_raw().as_ptr(),
             &mut info,
         );
     }
@@ -329,8 +379,12 @@ pub fn pdpotrf(
 /// Distributed double-precision LU factorization with partial pivoting.
 #[allow(clippy::too_many_arguments)]
 pub fn pdgetrf(
-    m: usize, n: usize,
-    a: &mut [f64], ia: i32, ja: i32, desca: &BlockCyclic,
+    m: usize,
+    n: usize,
+    a: &mut [f64],
+    ia: i32,
+    ja: i32,
+    desca: &BlockCyclic,
     ipiv: &mut [i32],
 ) -> Result<()> {
     let m_i = m as c_int;
@@ -338,8 +392,12 @@ pub fn pdgetrf(
     let mut info: c_int = 0;
     unsafe {
         sys::pdgetrf_(
-            &m_i, &n_i,
-            a.as_mut_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
+            &m_i,
+            &n_i,
+            a.as_mut_ptr(),
+            &ia,
+            &ja,
+            desca.as_raw().as_ptr(),
             ipiv.as_mut_ptr(),
             &mut info,
         );
@@ -351,10 +409,17 @@ pub fn pdgetrf(
 #[allow(clippy::too_many_arguments)]
 pub fn pdgetrs(
     trans: Trans,
-    n: usize, nrhs: usize,
-    a: &[f64], ia: i32, ja: i32, desca: &BlockCyclic,
+    n: usize,
+    nrhs: usize,
+    a: &[f64],
+    ia: i32,
+    ja: i32,
+    desca: &BlockCyclic,
     ipiv: &[i32],
-    b: &mut [f64], ib: i32, jb: i32, descb: &BlockCyclic,
+    b: &mut [f64],
+    ib: i32,
+    jb: i32,
+    descb: &BlockCyclic,
 ) -> Result<()> {
     let t = trans_char(trans);
     let n_i = n as c_int;
@@ -363,10 +428,17 @@ pub fn pdgetrs(
     unsafe {
         sys::pdgetrs_(
             &t,
-            &n_i, &nrhs_i,
-            a.as_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
+            &n_i,
+            &nrhs_i,
+            a.as_ptr(),
+            &ia,
+            &ja,
+            desca.as_raw().as_ptr(),
             ipiv.as_ptr(),
-            b.as_mut_ptr(), &ib, &jb, descb.as_raw().as_ptr(),
+            b.as_mut_ptr(),
+            &ib,
+            &jb,
+            descb.as_raw().as_ptr(),
             &mut info,
         );
     }
@@ -377,9 +449,16 @@ pub fn pdgetrs(
 #[allow(clippy::too_many_arguments)]
 pub fn pdpotrs(
     uplo: Uplo,
-    n: usize, nrhs: usize,
-    a: &[f64], ia: i32, ja: i32, desca: &BlockCyclic,
-    b: &mut [f64], ib: i32, jb: i32, descb: &BlockCyclic,
+    n: usize,
+    nrhs: usize,
+    a: &[f64],
+    ia: i32,
+    ja: i32,
+    desca: &BlockCyclic,
+    b: &mut [f64],
+    ib: i32,
+    jb: i32,
+    descb: &BlockCyclic,
 ) -> Result<()> {
     let u = uplo_char(uplo);
     let n_i = n as c_int;
@@ -388,9 +467,16 @@ pub fn pdpotrs(
     unsafe {
         sys::pdpotrs_(
             &u,
-            &n_i, &nrhs_i,
-            a.as_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
-            b.as_mut_ptr(), &ib, &jb, descb.as_raw().as_ptr(),
+            &n_i,
+            &nrhs_i,
+            a.as_ptr(),
+            &ia,
+            &ja,
+            desca.as_raw().as_ptr(),
+            b.as_mut_ptr(),
+            &ib,
+            &jb,
+            descb.as_raw().as_ptr(),
             &mut info,
         );
     }
@@ -421,9 +507,15 @@ pub fn pdsyev(
     compute: EigCompute,
     uplo: Uplo,
     n: usize,
-    a: &mut [f64], ia: i32, ja: i32, desca: &BlockCyclic,
+    a: &mut [f64],
+    ia: i32,
+    ja: i32,
+    desca: &BlockCyclic,
     w: &mut [f64],
-    z: &mut [f64], iz: i32, jz: i32, descz: &BlockCyclic,
+    z: &mut [f64],
+    iz: i32,
+    jz: i32,
+    descz: &BlockCyclic,
     work: &mut [f64],
     lwork: i32,
 ) -> Result<()> {
@@ -433,11 +525,20 @@ pub fn pdsyev(
     let mut info: c_int = 0;
     unsafe {
         sys::pdsyev_(
-            &j, &u, &n_i,
-            a.as_mut_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
+            &j,
+            &u,
+            &n_i,
+            a.as_mut_ptr(),
+            &ia,
+            &ja,
+            desca.as_raw().as_ptr(),
             w.as_mut_ptr(),
-            z.as_mut_ptr(), &iz, &jz, descz.as_raw().as_ptr(),
-            work.as_mut_ptr(), &lwork,
+            z.as_mut_ptr(),
+            &iz,
+            &jz,
+            descz.as_raw().as_ptr(),
+            work.as_mut_ptr(),
+            &lwork,
             &mut info,
         );
     }
@@ -449,10 +550,19 @@ pub fn pdsyev(
 #[allow(clippy::too_many_arguments)]
 pub fn pdgels(
     trans: Trans,
-    m: usize, n: usize, nrhs: usize,
-    a: &mut [f64], ia: i32, ja: i32, desca: &BlockCyclic,
-    b: &mut [f64], ib: i32, jb: i32, descb: &BlockCyclic,
-    work: &mut [f64], lwork: i32,
+    m: usize,
+    n: usize,
+    nrhs: usize,
+    a: &mut [f64],
+    ia: i32,
+    ja: i32,
+    desca: &BlockCyclic,
+    b: &mut [f64],
+    ib: i32,
+    jb: i32,
+    descb: &BlockCyclic,
+    work: &mut [f64],
+    lwork: i32,
 ) -> Result<()> {
     let t = trans_char(trans);
     let m_i = m as c_int;
@@ -462,10 +572,19 @@ pub fn pdgels(
     unsafe {
         sys::pdgels_(
             &t,
-            &m_i, &n_i, &nrhs_i,
-            a.as_mut_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
-            b.as_mut_ptr(), &ib, &jb, descb.as_raw().as_ptr(),
-            work.as_mut_ptr(), &lwork,
+            &m_i,
+            &n_i,
+            &nrhs_i,
+            a.as_mut_ptr(),
+            &ia,
+            &ja,
+            desca.as_raw().as_ptr(),
+            b.as_mut_ptr(),
+            &ib,
+            &jb,
+            descb.as_raw().as_ptr(),
+            work.as_mut_ptr(),
+            &lwork,
             &mut info,
         );
     }
@@ -475,20 +594,30 @@ pub fn pdgels(
 /// Distributed QR factorization.
 #[allow(clippy::too_many_arguments)]
 pub fn pdgeqrf(
-    m: usize, n: usize,
-    a: &mut [f64], ia: i32, ja: i32, desca: &BlockCyclic,
+    m: usize,
+    n: usize,
+    a: &mut [f64],
+    ia: i32,
+    ja: i32,
+    desca: &BlockCyclic,
     tau: &mut [f64],
-    work: &mut [f64], lwork: i32,
+    work: &mut [f64],
+    lwork: i32,
 ) -> Result<()> {
     let m_i = m as c_int;
     let n_i = n as c_int;
     let mut info: c_int = 0;
     unsafe {
         sys::pdgeqrf_(
-            &m_i, &n_i,
-            a.as_mut_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
+            &m_i,
+            &n_i,
+            a.as_mut_ptr(),
+            &ia,
+            &ja,
+            desca.as_raw().as_ptr(),
             tau.as_mut_ptr(),
-            work.as_mut_ptr(), &lwork,
+            work.as_mut_ptr(),
+            &lwork,
             &mut info,
         );
     }
@@ -504,19 +633,32 @@ pub fn pdgeqrf(
 pub fn psgesv(
     n: usize,
     nrhs: usize,
-    a: &mut [f32], ia: i32, ja: i32, desca: &BlockCyclic,
+    a: &mut [f32],
+    ia: i32,
+    ja: i32,
+    desca: &BlockCyclic,
     ipiv: &mut [i32],
-    b: &mut [f32], ib: i32, jb: i32, descb: &BlockCyclic,
+    b: &mut [f32],
+    ib: i32,
+    jb: i32,
+    descb: &BlockCyclic,
 ) -> Result<()> {
     let n_i = n as c_int;
     let nrhs_i = nrhs as c_int;
     let mut info: c_int = 0;
     unsafe {
         sys::psgesv_(
-            &n_i, &nrhs_i,
-            a.as_mut_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
+            &n_i,
+            &nrhs_i,
+            a.as_mut_ptr(),
+            &ia,
+            &ja,
+            desca.as_raw().as_ptr(),
             ipiv.as_mut_ptr(),
-            b.as_mut_ptr(), &ib, &jb, descb.as_raw().as_ptr(),
+            b.as_mut_ptr(),
+            &ib,
+            &jb,
+            descb.as_raw().as_ptr(),
             &mut info,
         );
     }
@@ -526,13 +668,25 @@ pub fn psgesv(
 /// Single-precision distributed `C := α · op(A) · op(B) + β · C`. See [`pdgemm`].
 #[allow(clippy::too_many_arguments)]
 pub fn psgemm(
-    trans_a: Trans, trans_b: Trans,
-    m: usize, n: usize, k: usize,
+    trans_a: Trans,
+    trans_b: Trans,
+    m: usize,
+    n: usize,
+    k: usize,
     alpha: f32,
-    a: &[f32], ia: i32, ja: i32, desca: &BlockCyclic,
-    b: &[f32], ib: i32, jb: i32, descb: &BlockCyclic,
+    a: &[f32],
+    ia: i32,
+    ja: i32,
+    desca: &BlockCyclic,
+    b: &[f32],
+    ib: i32,
+    jb: i32,
+    descb: &BlockCyclic,
     beta: f32,
-    c: &mut [f32], ic: i32, jc: i32, descc: &BlockCyclic,
+    c: &mut [f32],
+    ic: i32,
+    jc: i32,
+    descc: &BlockCyclic,
 ) {
     let m_i = m as c_int;
     let n_i = n as c_int;
@@ -541,13 +695,25 @@ pub fn psgemm(
     let tb = trans_char(trans_b);
     unsafe {
         sys::psgemm_(
-            &ta, &tb,
-            &m_i, &n_i, &k_i,
+            &ta,
+            &tb,
+            &m_i,
+            &n_i,
+            &k_i,
             &alpha,
-            a.as_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
-            b.as_ptr(), &ib, &jb, descb.as_raw().as_ptr(),
+            a.as_ptr(),
+            &ia,
+            &ja,
+            desca.as_raw().as_ptr(),
+            b.as_ptr(),
+            &ib,
+            &jb,
+            descb.as_raw().as_ptr(),
             &beta,
-            c.as_mut_ptr(), &ic, &jc, descc.as_raw().as_ptr(),
+            c.as_mut_ptr(),
+            &ic,
+            &jc,
+            descc.as_raw().as_ptr(),
         );
     }
 }
@@ -556,15 +722,22 @@ pub fn psgemm(
 pub fn pspotrf(
     uplo: Uplo,
     n: usize,
-    a: &mut [f32], ia: i32, ja: i32, desca: &BlockCyclic,
+    a: &mut [f32],
+    ia: i32,
+    ja: i32,
+    desca: &BlockCyclic,
 ) -> Result<()> {
     let n_i = n as c_int;
     let u = uplo_char(uplo);
     let mut info: c_int = 0;
     unsafe {
         sys::pspotrf_(
-            &u, &n_i,
-            a.as_mut_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
+            &u,
+            &n_i,
+            a.as_mut_ptr(),
+            &ia,
+            &ja,
+            desca.as_raw().as_ptr(),
             &mut info,
         );
     }
@@ -573,8 +746,12 @@ pub fn pspotrf(
 
 /// Single-precision distributed LU factorisation. See [`pdgetrf`].
 pub fn psgetrf(
-    m: usize, n: usize,
-    a: &mut [f32], ia: i32, ja: i32, desca: &BlockCyclic,
+    m: usize,
+    n: usize,
+    a: &mut [f32],
+    ia: i32,
+    ja: i32,
+    desca: &BlockCyclic,
     ipiv: &mut [i32],
 ) -> Result<()> {
     let m_i = m as c_int;
@@ -582,8 +759,12 @@ pub fn psgetrf(
     let mut info: c_int = 0;
     unsafe {
         sys::psgetrf_(
-            &m_i, &n_i,
-            a.as_mut_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
+            &m_i,
+            &n_i,
+            a.as_mut_ptr(),
+            &ia,
+            &ja,
+            desca.as_raw().as_ptr(),
             ipiv.as_mut_ptr(),
             &mut info,
         );
@@ -596,10 +777,17 @@ pub fn psgetrf(
 #[allow(clippy::too_many_arguments)]
 pub fn psgetrs(
     trans: Trans,
-    n: usize, nrhs: usize,
-    a: &[f32], ia: i32, ja: i32, desca: &BlockCyclic,
+    n: usize,
+    nrhs: usize,
+    a: &[f32],
+    ia: i32,
+    ja: i32,
+    desca: &BlockCyclic,
     ipiv: &[i32],
-    b: &mut [f32], ib: i32, jb: i32, descb: &BlockCyclic,
+    b: &mut [f32],
+    ib: i32,
+    jb: i32,
+    descb: &BlockCyclic,
 ) -> Result<()> {
     let n_i = n as c_int;
     let nrhs_i = nrhs as c_int;
@@ -607,10 +795,18 @@ pub fn psgetrs(
     let mut info: c_int = 0;
     unsafe {
         sys::psgetrs_(
-            &t, &n_i, &nrhs_i,
-            a.as_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
+            &t,
+            &n_i,
+            &nrhs_i,
+            a.as_ptr(),
+            &ia,
+            &ja,
+            desca.as_raw().as_ptr(),
             ipiv.as_ptr(),
-            b.as_mut_ptr(), &ib, &jb, descb.as_raw().as_ptr(),
+            b.as_mut_ptr(),
+            &ib,
+            &jb,
+            descb.as_raw().as_ptr(),
             &mut info,
         );
     }
@@ -621,9 +817,16 @@ pub fn psgetrs(
 #[allow(clippy::too_many_arguments)]
 pub fn pspotrs(
     uplo: Uplo,
-    n: usize, nrhs: usize,
-    a: &[f32], ia: i32, ja: i32, desca: &BlockCyclic,
-    b: &mut [f32], ib: i32, jb: i32, descb: &BlockCyclic,
+    n: usize,
+    nrhs: usize,
+    a: &[f32],
+    ia: i32,
+    ja: i32,
+    desca: &BlockCyclic,
+    b: &mut [f32],
+    ib: i32,
+    jb: i32,
+    descb: &BlockCyclic,
 ) -> Result<()> {
     let n_i = n as c_int;
     let nrhs_i = nrhs as c_int;
@@ -631,9 +834,17 @@ pub fn pspotrs(
     let mut info: c_int = 0;
     unsafe {
         sys::pspotrs_(
-            &u, &n_i, &nrhs_i,
-            a.as_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
-            b.as_mut_ptr(), &ib, &jb, descb.as_raw().as_ptr(),
+            &u,
+            &n_i,
+            &nrhs_i,
+            a.as_ptr(),
+            &ia,
+            &ja,
+            desca.as_raw().as_ptr(),
+            b.as_mut_ptr(),
+            &ib,
+            &jb,
+            descb.as_raw().as_ptr(),
             &mut info,
         );
     }
@@ -646,10 +857,17 @@ pub fn pssyev(
     compute: EigCompute,
     uplo: Uplo,
     n: usize,
-    a: &mut [f32], ia: i32, ja: i32, desca: &BlockCyclic,
+    a: &mut [f32],
+    ia: i32,
+    ja: i32,
+    desca: &BlockCyclic,
     w: &mut [f32],
-    z: &mut [f32], iz: i32, jz: i32, descz: &BlockCyclic,
-    work: &mut [f32], lwork: i32,
+    z: &mut [f32],
+    iz: i32,
+    jz: i32,
+    descz: &BlockCyclic,
+    work: &mut [f32],
+    lwork: i32,
 ) -> Result<()> {
     let n_i = n as c_int;
     let jobz = match compute {
@@ -661,11 +879,20 @@ pub fn pssyev(
     let mut info: c_int = 0;
     unsafe {
         sys::pssyev_(
-            &jobz, &u, &n_i,
-            a.as_mut_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
+            &jobz,
+            &u,
+            &n_i,
+            a.as_mut_ptr(),
+            &ia,
+            &ja,
+            desca.as_raw().as_ptr(),
             w.as_mut_ptr(),
-            z.as_mut_ptr(), &iz, &jz, descz.as_raw().as_ptr(),
-            work.as_mut_ptr(), &lwork,
+            z.as_mut_ptr(),
+            &iz,
+            &jz,
+            descz.as_raw().as_ptr(),
+            work.as_mut_ptr(),
+            &lwork,
             &mut info,
         );
     }
@@ -676,10 +903,19 @@ pub fn pssyev(
 #[allow(clippy::too_many_arguments)]
 pub fn psgels(
     trans: Trans,
-    m: usize, n: usize, nrhs: usize,
-    a: &mut [f32], ia: i32, ja: i32, desca: &BlockCyclic,
-    b: &mut [f32], ib: i32, jb: i32, descb: &BlockCyclic,
-    work: &mut [f32], lwork: i32,
+    m: usize,
+    n: usize,
+    nrhs: usize,
+    a: &mut [f32],
+    ia: i32,
+    ja: i32,
+    desca: &BlockCyclic,
+    b: &mut [f32],
+    ib: i32,
+    jb: i32,
+    descb: &BlockCyclic,
+    work: &mut [f32],
+    lwork: i32,
 ) -> Result<()> {
     let m_i = m as c_int;
     let n_i = n as c_int;
@@ -689,10 +925,20 @@ pub fn psgels(
     let mut info: c_int = 0;
     unsafe {
         sys::psgels_(
-            &t, &m_i, &n_i, &nrhs_i,
-            a.as_mut_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
-            b.as_mut_ptr(), &ib, &jb, descb.as_raw().as_ptr(),
-            work.as_mut_ptr(), &lwork,
+            &t,
+            &m_i,
+            &n_i,
+            &nrhs_i,
+            a.as_mut_ptr(),
+            &ia,
+            &ja,
+            desca.as_raw().as_ptr(),
+            b.as_mut_ptr(),
+            &ib,
+            &jb,
+            descb.as_raw().as_ptr(),
+            work.as_mut_ptr(),
+            &lwork,
             &mut info,
         );
     }
@@ -702,10 +948,15 @@ pub fn psgels(
 /// Single-precision distributed QR. See [`pdgeqrf`].
 #[allow(clippy::too_many_arguments)]
 pub fn psgeqrf(
-    m: usize, n: usize,
-    a: &mut [f32], ia: i32, ja: i32, desca: &BlockCyclic,
+    m: usize,
+    n: usize,
+    a: &mut [f32],
+    ia: i32,
+    ja: i32,
+    desca: &BlockCyclic,
     tau: &mut [f32],
-    work: &mut [f32], lwork: i32,
+    work: &mut [f32],
+    lwork: i32,
 ) -> Result<()> {
     let m_i = m as c_int;
     let n_i = n as c_int;
@@ -713,10 +964,15 @@ pub fn psgeqrf(
     let mut info: c_int = 0;
     unsafe {
         sys::psgeqrf_(
-            &m_i, &n_i,
-            a.as_mut_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
+            &m_i,
+            &n_i,
+            a.as_mut_ptr(),
+            &ia,
+            &ja,
+            desca.as_raw().as_ptr(),
             tau.as_mut_ptr(),
-            work.as_mut_ptr(), &lwork,
+            work.as_mut_ptr(),
+            &lwork,
             &mut info,
         );
     }
@@ -734,19 +990,32 @@ pub fn psgeqrf(
 pub fn pcgesv(
     n: usize,
     nrhs: usize,
-    a: &mut [[f32; 2]], ia: i32, ja: i32, desca: &BlockCyclic,
+    a: &mut [[f32; 2]],
+    ia: i32,
+    ja: i32,
+    desca: &BlockCyclic,
     ipiv: &mut [i32],
-    b: &mut [[f32; 2]], ib: i32, jb: i32, descb: &BlockCyclic,
+    b: &mut [[f32; 2]],
+    ib: i32,
+    jb: i32,
+    descb: &BlockCyclic,
 ) -> Result<()> {
     let n_i = n as c_int;
     let nrhs_i = nrhs as c_int;
     let mut info: c_int = 0;
     unsafe {
         sys::pcgesv_(
-            &n_i, &nrhs_i,
-            a.as_mut_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
+            &n_i,
+            &nrhs_i,
+            a.as_mut_ptr(),
+            &ia,
+            &ja,
+            desca.as_raw().as_ptr(),
             ipiv.as_mut_ptr(),
-            b.as_mut_ptr(), &ib, &jb, descb.as_raw().as_ptr(),
+            b.as_mut_ptr(),
+            &ib,
+            &jb,
+            descb.as_raw().as_ptr(),
             &mut info,
         );
     }
@@ -760,19 +1029,32 @@ pub fn pcgesv(
 pub fn pzgesv(
     n: usize,
     nrhs: usize,
-    a: &mut [[f64; 2]], ia: i32, ja: i32, desca: &BlockCyclic,
+    a: &mut [[f64; 2]],
+    ia: i32,
+    ja: i32,
+    desca: &BlockCyclic,
     ipiv: &mut [i32],
-    b: &mut [[f64; 2]], ib: i32, jb: i32, descb: &BlockCyclic,
+    b: &mut [[f64; 2]],
+    ib: i32,
+    jb: i32,
+    descb: &BlockCyclic,
 ) -> Result<()> {
     let n_i = n as c_int;
     let nrhs_i = nrhs as c_int;
     let mut info: c_int = 0;
     unsafe {
         sys::pzgesv_(
-            &n_i, &nrhs_i,
-            a.as_mut_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
+            &n_i,
+            &nrhs_i,
+            a.as_mut_ptr(),
+            &ia,
+            &ja,
+            desca.as_raw().as_ptr(),
             ipiv.as_mut_ptr(),
-            b.as_mut_ptr(), &ib, &jb, descb.as_raw().as_ptr(),
+            b.as_mut_ptr(),
+            &ib,
+            &jb,
+            descb.as_raw().as_ptr(),
             &mut info,
         );
     }

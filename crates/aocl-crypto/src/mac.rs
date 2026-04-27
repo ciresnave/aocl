@@ -93,10 +93,14 @@ impl Mac {
         let mut info: sys::alc_mac_info_t = unsafe { std::mem::zeroed() };
         match kind {
             MacKind::Hmac(d) => {
-                info.hmac = sys::_alc_hmac_info { digest_mode: d.raw() };
+                info.hmac = sys::_alc_hmac_info {
+                    digest_mode: d.raw(),
+                };
             }
             MacKind::Cmac(k) => {
-                info.cmac = sys::_alc_cmac_info { ci_mode: cmac_mode(k) };
+                info.cmac = sys::_alc_cmac_info {
+                    ci_mode: cmac_mode(k),
+                };
             }
             MacKind::Poly1305 => {
                 // No info needed; the union is zeroed.
@@ -105,12 +109,7 @@ impl Mac {
 
         check(unsafe { sys::alcp_mac_request(&mut handle, kind.raw_type()) })?;
         check(unsafe {
-            sys::alcp_mac_init(
-                &mut handle,
-                key.as_ptr(),
-                key.len() as u64,
-                &mut info,
-            )
+            sys::alcp_mac_init(&mut handle, key.as_ptr(), key.len() as u64, &mut info)
         })?;
         Ok(Self {
             handle,
@@ -129,20 +128,14 @@ impl Mac {
         if data.is_empty() {
             return Ok(());
         }
-        check(unsafe {
-            sys::alcp_mac_update(&mut self.handle, data.as_ptr(), data.len() as u64)
-        })
+        check(unsafe { sys::alcp_mac_update(&mut self.handle, data.as_ptr(), data.len() as u64) })
     }
 
     /// Finalize and return the authentication tag.
     pub fn finalize(mut self) -> Result<Vec<u8>> {
         let mut tag = vec![0u8; self.output_len];
         check(unsafe {
-            sys::alcp_mac_finalize(
-                &mut self.handle,
-                tag.as_mut_ptr(),
-                tag.len() as u64,
-            )
+            sys::alcp_mac_finalize(&mut self.handle, tag.as_mut_ptr(), tag.len() as u64)
         })?;
         self.finished = true;
         Ok(tag)
@@ -178,7 +171,9 @@ mod tests {
 
     fn hex(b: &[u8]) -> String {
         let mut s = String::with_capacity(b.len() * 2);
-        for byte in b { s.push_str(&format!("{byte:02x}")); }
+        for byte in b {
+            s.push_str(&format!("{byte:02x}"));
+        }
         s
     }
 

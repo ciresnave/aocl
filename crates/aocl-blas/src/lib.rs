@@ -24,8 +24,8 @@
 
 use aocl_blas_sys as sys;
 pub use aocl_error::{Error, Result};
-pub use aocl_types::{Complex32, Complex64, Diag, Layout, Side, Trans, Uplo};
 use aocl_types::sealed::Sealed;
+pub use aocl_types::{Complex32, Complex64, Diag, Layout, Side, Trans, Uplo};
 
 // ===========================================================================
 //   Enum → CBLAS conversion helpers
@@ -408,8 +408,16 @@ fn infer_n(x_len: usize, inc_x: usize, y_len: usize, inc_y: usize) -> usize {
     if inc_x == 1 && inc_y == 1 {
         x_len.min(y_len)
     } else {
-        let nx = if inc_x == 0 { 0 } else { x_len.div_ceil(inc_x.max(1)) };
-        let ny = if inc_y == 0 { 0 } else { y_len.div_ceil(inc_y.max(1)) };
+        let nx = if inc_x == 0 {
+            0
+        } else {
+            x_len.div_ceil(inc_x.max(1))
+        };
+        let ny = if inc_y == 0 {
+            0
+        } else {
+            y_len.div_ceil(inc_y.max(1))
+        };
         nx.min(ny)
     }
 }
@@ -458,13 +466,19 @@ fn check_gemm_shapes(
     };
 
     if lda < a_min_ld.max(1) {
-        return Err(Error::InvalidArgument(format!("gemm: lda={lda} < {a_min_ld}")));
+        return Err(Error::InvalidArgument(format!(
+            "gemm: lda={lda} < {a_min_ld}"
+        )));
     }
     if ldb < b_min_ld.max(1) {
-        return Err(Error::InvalidArgument(format!("gemm: ldb={ldb} < {b_min_ld}")));
+        return Err(Error::InvalidArgument(format!(
+            "gemm: ldb={ldb} < {b_min_ld}"
+        )));
     }
     if ldc < c_min_ld.max(1) {
-        return Err(Error::InvalidArgument(format!("gemm: ldc={ldc} < {c_min_ld}")));
+        return Err(Error::InvalidArgument(format!(
+            "gemm: ldc={ldc} < {c_min_ld}"
+        )));
     }
     if a_len < a_min_len {
         return Err(Error::InvalidArgument(format!(
@@ -787,7 +801,14 @@ pub trait RealScalar: Scalar<Real = Self> {
 
     /// Apply a Givens rotation to two vectors:
     /// `[Xᵢ, Yᵢ] := [c·Xᵢ + s·Yᵢ, -s·Xᵢ + c·Yᵢ]`.
-    fn rot(x: &mut [Self], inc_x: usize, y: &mut [Self], inc_y: usize, c: Self, s: Self) -> Result<()>;
+    fn rot(
+        x: &mut [Self],
+        inc_x: usize,
+        y: &mut [Self],
+        inc_y: usize,
+        c: Self,
+        s: Self,
+    ) -> Result<()>;
 
     /// Mixed-precision dot for `f32` operands accumulating in `f64`. For
     /// `f64` `Self` this returns the same value as [`Scalar::dot`].
@@ -1163,7 +1184,12 @@ macro_rules! impl_real_scalar {
                 let n = if inc == 0 { 0 } else { x.len() / inc.max(1) };
                 check_strided_len("scal: x", x.len(), n, inc)?;
                 unsafe {
-                    sys::$scal(n as sys::f77_int, alpha, x.as_mut_ptr(), inc as sys::f77_int);
+                    sys::$scal(
+                        n as sys::f77_int,
+                        alpha,
+                        x.as_mut_ptr(),
+                        inc as sys::f77_int,
+                    );
                 }
                 Ok(())
             }
@@ -1177,8 +1203,13 @@ macro_rules! impl_real_scalar {
                 check_strided_len("copy: x", x.len(), n, inc_x)?;
                 check_strided_len("copy: y", y.len(), n, inc_y)?;
                 unsafe {
-                    sys::$copy(n as sys::f77_int, x.as_ptr(), inc_x as sys::f77_int,
-                               y.as_mut_ptr(), inc_y as sys::f77_int);
+                    sys::$copy(
+                        n as sys::f77_int,
+                        x.as_ptr(),
+                        inc_x as sys::f77_int,
+                        y.as_mut_ptr(),
+                        inc_y as sys::f77_int,
+                    );
                 }
                 Ok(())
             }
@@ -1188,19 +1219,36 @@ macro_rules! impl_real_scalar {
                 check_strided_len("swap: x", x.len(), n, inc_x)?;
                 check_strided_len("swap: y", y.len(), n, inc_y)?;
                 unsafe {
-                    sys::$swap(n as sys::f77_int, x.as_mut_ptr(), inc_x as sys::f77_int,
-                               y.as_mut_ptr(), inc_y as sys::f77_int);
+                    sys::$swap(
+                        n as sys::f77_int,
+                        x.as_mut_ptr(),
+                        inc_x as sys::f77_int,
+                        y.as_mut_ptr(),
+                        inc_y as sys::f77_int,
+                    );
                 }
                 Ok(())
             }
 
-            fn axpy(alpha: Self, x: &[Self], inc_x: usize, y: &mut [Self], inc_y: usize) -> Result<()> {
+            fn axpy(
+                alpha: Self,
+                x: &[Self],
+                inc_x: usize,
+                y: &mut [Self],
+                inc_y: usize,
+            ) -> Result<()> {
                 let n = infer_n(x.len(), inc_x, y.len(), inc_y);
                 check_strided_len("axpy: x", x.len(), n, inc_x)?;
                 check_strided_len("axpy: y", y.len(), n, inc_y)?;
                 unsafe {
-                    sys::$axpy(n as sys::f77_int, alpha, x.as_ptr(), inc_x as sys::f77_int,
-                               y.as_mut_ptr(), inc_y as sys::f77_int);
+                    sys::$axpy(
+                        n as sys::f77_int,
+                        alpha,
+                        x.as_ptr(),
+                        inc_x as sys::f77_int,
+                        y.as_mut_ptr(),
+                        inc_y as sys::f77_int,
+                    );
                 }
                 Ok(())
             }
@@ -1210,8 +1258,13 @@ macro_rules! impl_real_scalar {
                 check_strided_len("dot: x", x.len(), n, inc_x)?;
                 check_strided_len("dot: y", y.len(), n, inc_y)?;
                 let r = unsafe {
-                    sys::$dot(n as sys::f77_int, x.as_ptr(), inc_x as sys::f77_int,
-                              y.as_ptr(), inc_y as sys::f77_int)
+                    sys::$dot(
+                        n as sys::f77_int,
+                        x.as_ptr(),
+                        inc_x as sys::f77_int,
+                        y.as_ptr(),
+                        inc_y as sys::f77_int,
+                    )
                 };
                 Ok(r)
             }
@@ -1256,20 +1309,45 @@ macro_rules! impl_real_scalar {
 
             #[allow(clippy::too_many_arguments)]
             fn gemv(
-                layout: Layout, trans_a: Trans,
-                m: usize, n: usize,
-                alpha: Self, a: &[Self], lda: usize,
-                x: &[Self], inc_x: usize,
-                beta: Self, y: &mut [Self], inc_y: usize,
+                layout: Layout,
+                trans_a: Trans,
+                m: usize,
+                n: usize,
+                alpha: Self,
+                a: &[Self],
+                lda: usize,
+                x: &[Self],
+                inc_x: usize,
+                beta: Self,
+                y: &mut [Self],
+                inc_y: usize,
             ) -> Result<()> {
-                check_gemv(layout, trans_a, m, n, a.len(), lda, x.len(), inc_x, y.len(), inc_y)?;
+                check_gemv(
+                    layout,
+                    trans_a,
+                    m,
+                    n,
+                    a.len(),
+                    lda,
+                    x.len(),
+                    inc_x,
+                    y.len(),
+                    inc_y,
+                )?;
                 unsafe {
                     sys::$gemv(
-                        layout_raw(layout), trans_raw(trans_a),
-                        m as sys::f77_int, n as sys::f77_int,
-                        alpha, a.as_ptr(), lda as sys::f77_int,
-                        x.as_ptr(), inc_x as sys::f77_int,
-                        beta, y.as_mut_ptr(), inc_y as sys::f77_int,
+                        layout_raw(layout),
+                        trans_raw(trans_a),
+                        m as sys::f77_int,
+                        n as sys::f77_int,
+                        alpha,
+                        a.as_ptr(),
+                        lda as sys::f77_int,
+                        x.as_ptr(),
+                        inc_x as sys::f77_int,
+                        beta,
+                        y.as_mut_ptr(),
+                        inc_y as sys::f77_int,
                     );
                 }
                 Ok(())
@@ -1277,16 +1355,28 @@ macro_rules! impl_real_scalar {
 
             #[allow(clippy::too_many_arguments)]
             fn trmv(
-                layout: Layout, uplo: Uplo, trans_a: Trans, diag: Diag,
-                n: usize, a: &[Self], lda: usize,
-                x: &mut [Self], inc_x: usize,
+                layout: Layout,
+                uplo: Uplo,
+                trans_a: Trans,
+                diag: Diag,
+                n: usize,
+                a: &[Self],
+                lda: usize,
+                x: &mut [Self],
+                inc_x: usize,
             ) -> Result<()> {
                 check_n_square("trmv: A", layout, n, a.len(), lda, x.len(), inc_x)?;
                 unsafe {
                     sys::$trmv(
-                        layout_raw(layout), uplo_raw(uplo), trans_raw(trans_a), diag_raw(diag),
-                        n as sys::f77_int, a.as_ptr(), lda as sys::f77_int,
-                        x.as_mut_ptr(), inc_x as sys::f77_int,
+                        layout_raw(layout),
+                        uplo_raw(uplo),
+                        trans_raw(trans_a),
+                        diag_raw(diag),
+                        n as sys::f77_int,
+                        a.as_ptr(),
+                        lda as sys::f77_int,
+                        x.as_mut_ptr(),
+                        inc_x as sys::f77_int,
                     );
                 }
                 Ok(())
@@ -1294,16 +1384,28 @@ macro_rules! impl_real_scalar {
 
             #[allow(clippy::too_many_arguments)]
             fn trsv(
-                layout: Layout, uplo: Uplo, trans_a: Trans, diag: Diag,
-                n: usize, a: &[Self], lda: usize,
-                x: &mut [Self], inc_x: usize,
+                layout: Layout,
+                uplo: Uplo,
+                trans_a: Trans,
+                diag: Diag,
+                n: usize,
+                a: &[Self],
+                lda: usize,
+                x: &mut [Self],
+                inc_x: usize,
             ) -> Result<()> {
                 check_n_square("trsv: A", layout, n, a.len(), lda, x.len(), inc_x)?;
                 unsafe {
                     sys::$trsv(
-                        layout_raw(layout), uplo_raw(uplo), trans_raw(trans_a), diag_raw(diag),
-                        n as sys::f77_int, a.as_ptr(), lda as sys::f77_int,
-                        x.as_mut_ptr(), inc_x as sys::f77_int,
+                        layout_raw(layout),
+                        uplo_raw(uplo),
+                        trans_raw(trans_a),
+                        diag_raw(diag),
+                        n as sys::f77_int,
+                        a.as_ptr(),
+                        lda as sys::f77_int,
+                        x.as_mut_ptr(),
+                        inc_x as sys::f77_int,
                     );
                 }
                 Ok(())
@@ -1311,21 +1413,51 @@ macro_rules! impl_real_scalar {
 
             #[allow(clippy::too_many_arguments)]
             fn gemm(
-                layout: Layout, trans_a: Trans, trans_b: Trans,
-                m: usize, n: usize, k: usize,
-                alpha: Self, a: &[Self], lda: usize,
-                b: &[Self], ldb: usize,
-                beta: Self, c: &mut [Self], ldc: usize,
+                layout: Layout,
+                trans_a: Trans,
+                trans_b: Trans,
+                m: usize,
+                n: usize,
+                k: usize,
+                alpha: Self,
+                a: &[Self],
+                lda: usize,
+                b: &[Self],
+                ldb: usize,
+                beta: Self,
+                c: &mut [Self],
+                ldc: usize,
             ) -> Result<()> {
-                check_gemm_shapes(layout, trans_a, trans_b, m, n, k,
-                    a.len(), lda, b.len(), ldb, c.len(), ldc)?;
+                check_gemm_shapes(
+                    layout,
+                    trans_a,
+                    trans_b,
+                    m,
+                    n,
+                    k,
+                    a.len(),
+                    lda,
+                    b.len(),
+                    ldb,
+                    c.len(),
+                    ldc,
+                )?;
                 unsafe {
                     sys::$gemm(
-                        layout_raw(layout), trans_raw(trans_a), trans_raw(trans_b),
-                        m as sys::f77_int, n as sys::f77_int, k as sys::f77_int,
-                        alpha, a.as_ptr(), lda as sys::f77_int,
-                        b.as_ptr(), ldb as sys::f77_int,
-                        beta, c.as_mut_ptr(), ldc as sys::f77_int,
+                        layout_raw(layout),
+                        trans_raw(trans_a),
+                        trans_raw(trans_b),
+                        m as sys::f77_int,
+                        n as sys::f77_int,
+                        k as sys::f77_int,
+                        alpha,
+                        a.as_ptr(),
+                        lda as sys::f77_int,
+                        b.as_ptr(),
+                        ldb as sys::f77_int,
+                        beta,
+                        c.as_mut_ptr(),
+                        ldc as sys::f77_int,
                     );
                 }
                 Ok(())
@@ -1333,20 +1465,36 @@ macro_rules! impl_real_scalar {
 
             #[allow(clippy::too_many_arguments)]
             fn symm(
-                layout: Layout, side: Side, uplo: Uplo,
-                m: usize, n: usize,
-                alpha: Self, a: &[Self], lda: usize,
-                b: &[Self], ldb: usize,
-                beta: Self, c: &mut [Self], ldc: usize,
+                layout: Layout,
+                side: Side,
+                uplo: Uplo,
+                m: usize,
+                n: usize,
+                alpha: Self,
+                a: &[Self],
+                lda: usize,
+                b: &[Self],
+                ldb: usize,
+                beta: Self,
+                c: &mut [Self],
+                ldc: usize,
             ) -> Result<()> {
                 check_symm(layout, side, m, n, a.len(), lda, b.len(), ldb, c.len(), ldc)?;
                 unsafe {
                     sys::$symm(
-                        layout_raw(layout), side_raw(side), uplo_raw(uplo),
-                        m as sys::f77_int, n as sys::f77_int,
-                        alpha, a.as_ptr(), lda as sys::f77_int,
-                        b.as_ptr(), ldb as sys::f77_int,
-                        beta, c.as_mut_ptr(), ldc as sys::f77_int,
+                        layout_raw(layout),
+                        side_raw(side),
+                        uplo_raw(uplo),
+                        m as sys::f77_int,
+                        n as sys::f77_int,
+                        alpha,
+                        a.as_ptr(),
+                        lda as sys::f77_int,
+                        b.as_ptr(),
+                        ldb as sys::f77_int,
+                        beta,
+                        c.as_mut_ptr(),
+                        ldc as sys::f77_int,
                     );
                 }
                 Ok(())
@@ -1354,18 +1502,32 @@ macro_rules! impl_real_scalar {
 
             #[allow(clippy::too_many_arguments)]
             fn syrk(
-                layout: Layout, uplo: Uplo, trans: Trans,
-                n: usize, k: usize,
-                alpha: Self, a: &[Self], lda: usize,
-                beta: Self, c: &mut [Self], ldc: usize,
+                layout: Layout,
+                uplo: Uplo,
+                trans: Trans,
+                n: usize,
+                k: usize,
+                alpha: Self,
+                a: &[Self],
+                lda: usize,
+                beta: Self,
+                c: &mut [Self],
+                ldc: usize,
             ) -> Result<()> {
                 check_syrk(layout, trans, n, k, a.len(), lda, c.len(), ldc)?;
                 unsafe {
                     sys::$syrk(
-                        layout_raw(layout), uplo_raw(uplo), trans_raw(trans),
-                        n as sys::f77_int, k as sys::f77_int,
-                        alpha, a.as_ptr(), lda as sys::f77_int,
-                        beta, c.as_mut_ptr(), ldc as sys::f77_int,
+                        layout_raw(layout),
+                        uplo_raw(uplo),
+                        trans_raw(trans),
+                        n as sys::f77_int,
+                        k as sys::f77_int,
+                        alpha,
+                        a.as_ptr(),
+                        lda as sys::f77_int,
+                        beta,
+                        c.as_mut_ptr(),
+                        ldc as sys::f77_int,
                     );
                 }
                 Ok(())
@@ -1373,20 +1535,47 @@ macro_rules! impl_real_scalar {
 
             #[allow(clippy::too_many_arguments)]
             fn syr2k(
-                layout: Layout, uplo: Uplo, trans: Trans,
-                n: usize, k: usize,
-                alpha: Self, a: &[Self], lda: usize,
-                b: &[Self], ldb: usize,
-                beta: Self, c: &mut [Self], ldc: usize,
+                layout: Layout,
+                uplo: Uplo,
+                trans: Trans,
+                n: usize,
+                k: usize,
+                alpha: Self,
+                a: &[Self],
+                lda: usize,
+                b: &[Self],
+                ldb: usize,
+                beta: Self,
+                c: &mut [Self],
+                ldc: usize,
             ) -> Result<()> {
-                check_syr2k(layout, trans, n, k, a.len(), lda, b.len(), ldb, c.len(), ldc)?;
+                check_syr2k(
+                    layout,
+                    trans,
+                    n,
+                    k,
+                    a.len(),
+                    lda,
+                    b.len(),
+                    ldb,
+                    c.len(),
+                    ldc,
+                )?;
                 unsafe {
                     sys::$syr2k(
-                        layout_raw(layout), uplo_raw(uplo), trans_raw(trans),
-                        n as sys::f77_int, k as sys::f77_int,
-                        alpha, a.as_ptr(), lda as sys::f77_int,
-                        b.as_ptr(), ldb as sys::f77_int,
-                        beta, c.as_mut_ptr(), ldc as sys::f77_int,
+                        layout_raw(layout),
+                        uplo_raw(uplo),
+                        trans_raw(trans),
+                        n as sys::f77_int,
+                        k as sys::f77_int,
+                        alpha,
+                        a.as_ptr(),
+                        lda as sys::f77_int,
+                        b.as_ptr(),
+                        ldb as sys::f77_int,
+                        beta,
+                        c.as_mut_ptr(),
+                        ldc as sys::f77_int,
                     );
                 }
                 Ok(())
@@ -1394,20 +1583,34 @@ macro_rules! impl_real_scalar {
 
             #[allow(clippy::too_many_arguments)]
             fn trmm(
-                layout: Layout, side: Side, uplo: Uplo,
-                trans_a: Trans, diag: Diag,
-                m: usize, n: usize,
-                alpha: Self, a: &[Self], lda: usize,
-                b: &mut [Self], ldb: usize,
+                layout: Layout,
+                side: Side,
+                uplo: Uplo,
+                trans_a: Trans,
+                diag: Diag,
+                m: usize,
+                n: usize,
+                alpha: Self,
+                a: &[Self],
+                lda: usize,
+                b: &mut [Self],
+                ldb: usize,
             ) -> Result<()> {
                 check_trxxm("trmm", layout, side, m, n, a.len(), lda, b.len(), ldb)?;
                 unsafe {
                     sys::$trmm(
-                        layout_raw(layout), side_raw(side), uplo_raw(uplo),
-                        trans_raw(trans_a), diag_raw(diag),
-                        m as sys::f77_int, n as sys::f77_int,
-                        alpha, a.as_ptr(), lda as sys::f77_int,
-                        b.as_mut_ptr(), ldb as sys::f77_int,
+                        layout_raw(layout),
+                        side_raw(side),
+                        uplo_raw(uplo),
+                        trans_raw(trans_a),
+                        diag_raw(diag),
+                        m as sys::f77_int,
+                        n as sys::f77_int,
+                        alpha,
+                        a.as_ptr(),
+                        lda as sys::f77_int,
+                        b.as_mut_ptr(),
+                        ldb as sys::f77_int,
                     );
                 }
                 Ok(())
@@ -1415,20 +1618,34 @@ macro_rules! impl_real_scalar {
 
             #[allow(clippy::too_many_arguments)]
             fn trsm(
-                layout: Layout, side: Side, uplo: Uplo,
-                trans_a: Trans, diag: Diag,
-                m: usize, n: usize,
-                alpha: Self, a: &[Self], lda: usize,
-                b: &mut [Self], ldb: usize,
+                layout: Layout,
+                side: Side,
+                uplo: Uplo,
+                trans_a: Trans,
+                diag: Diag,
+                m: usize,
+                n: usize,
+                alpha: Self,
+                a: &[Self],
+                lda: usize,
+                b: &mut [Self],
+                ldb: usize,
             ) -> Result<()> {
                 check_trxxm("trsm", layout, side, m, n, a.len(), lda, b.len(), ldb)?;
                 unsafe {
                     sys::$trsm(
-                        layout_raw(layout), side_raw(side), uplo_raw(uplo),
-                        trans_raw(trans_a), diag_raw(diag),
-                        m as sys::f77_int, n as sys::f77_int,
-                        alpha, a.as_ptr(), lda as sys::f77_int,
-                        b.as_mut_ptr(), ldb as sys::f77_int,
+                        layout_raw(layout),
+                        side_raw(side),
+                        uplo_raw(uplo),
+                        trans_raw(trans_a),
+                        diag_raw(diag),
+                        m as sys::f77_int,
+                        n as sys::f77_int,
+                        alpha,
+                        a.as_ptr(),
+                        lda as sys::f77_int,
+                        b.as_mut_ptr(),
+                        ldb as sys::f77_int,
                     );
                 }
                 Ok(())
@@ -1436,21 +1653,50 @@ macro_rules! impl_real_scalar {
 
             #[allow(clippy::too_many_arguments)]
             fn gbmv(
-                layout: Layout, trans_a: Trans,
-                m: usize, n: usize, kl: usize, ku: usize,
-                alpha: Self, a: &[Self], lda: usize,
-                x: &[Self], inc_x: usize,
-                beta: Self, y: &mut [Self], inc_y: usize,
+                layout: Layout,
+                trans_a: Trans,
+                m: usize,
+                n: usize,
+                kl: usize,
+                ku: usize,
+                alpha: Self,
+                a: &[Self],
+                lda: usize,
+                x: &[Self],
+                inc_x: usize,
+                beta: Self,
+                y: &mut [Self],
+                inc_y: usize,
             ) -> Result<()> {
-                check_gbmv(trans_a, m, n, kl, ku, a.len(), lda, x.len(), inc_x, y.len(), inc_y)?;
+                check_gbmv(
+                    trans_a,
+                    m,
+                    n,
+                    kl,
+                    ku,
+                    a.len(),
+                    lda,
+                    x.len(),
+                    inc_x,
+                    y.len(),
+                    inc_y,
+                )?;
                 unsafe {
                     sys::$gbmv(
-                        layout_raw(layout), trans_raw(trans_a),
-                        m as sys::f77_int, n as sys::f77_int,
-                        kl as sys::f77_int, ku as sys::f77_int,
-                        alpha, a.as_ptr(), lda as sys::f77_int,
-                        x.as_ptr(), inc_x as sys::f77_int,
-                        beta, y.as_mut_ptr(), inc_y as sys::f77_int,
+                        layout_raw(layout),
+                        trans_raw(trans_a),
+                        m as sys::f77_int,
+                        n as sys::f77_int,
+                        kl as sys::f77_int,
+                        ku as sys::f77_int,
+                        alpha,
+                        a.as_ptr(),
+                        lda as sys::f77_int,
+                        x.as_ptr(),
+                        inc_x as sys::f77_int,
+                        beta,
+                        y.as_mut_ptr(),
+                        inc_y as sys::f77_int,
                     );
                 }
                 Ok(())
@@ -1458,17 +1704,30 @@ macro_rules! impl_real_scalar {
 
             #[allow(clippy::too_many_arguments)]
             fn tbmv(
-                layout: Layout, uplo: Uplo, trans_a: Trans, diag: Diag,
-                n: usize, k: usize, a: &[Self], lda: usize,
-                x: &mut [Self], inc_x: usize,
+                layout: Layout,
+                uplo: Uplo,
+                trans_a: Trans,
+                diag: Diag,
+                n: usize,
+                k: usize,
+                a: &[Self],
+                lda: usize,
+                x: &mut [Self],
+                inc_x: usize,
             ) -> Result<()> {
                 check_band_n_square("tbmv: A", n, k, a.len(), lda, x.len(), inc_x)?;
                 unsafe {
                     sys::$tbmv(
-                        layout_raw(layout), uplo_raw(uplo), trans_raw(trans_a), diag_raw(diag),
-                        n as sys::f77_int, k as sys::f77_int,
-                        a.as_ptr(), lda as sys::f77_int,
-                        x.as_mut_ptr(), inc_x as sys::f77_int,
+                        layout_raw(layout),
+                        uplo_raw(uplo),
+                        trans_raw(trans_a),
+                        diag_raw(diag),
+                        n as sys::f77_int,
+                        k as sys::f77_int,
+                        a.as_ptr(),
+                        lda as sys::f77_int,
+                        x.as_mut_ptr(),
+                        inc_x as sys::f77_int,
                     );
                 }
                 Ok(())
@@ -1476,17 +1735,30 @@ macro_rules! impl_real_scalar {
 
             #[allow(clippy::too_many_arguments)]
             fn tbsv(
-                layout: Layout, uplo: Uplo, trans_a: Trans, diag: Diag,
-                n: usize, k: usize, a: &[Self], lda: usize,
-                x: &mut [Self], inc_x: usize,
+                layout: Layout,
+                uplo: Uplo,
+                trans_a: Trans,
+                diag: Diag,
+                n: usize,
+                k: usize,
+                a: &[Self],
+                lda: usize,
+                x: &mut [Self],
+                inc_x: usize,
             ) -> Result<()> {
                 check_band_n_square("tbsv: A", n, k, a.len(), lda, x.len(), inc_x)?;
                 unsafe {
                     sys::$tbsv(
-                        layout_raw(layout), uplo_raw(uplo), trans_raw(trans_a), diag_raw(diag),
-                        n as sys::f77_int, k as sys::f77_int,
-                        a.as_ptr(), lda as sys::f77_int,
-                        x.as_mut_ptr(), inc_x as sys::f77_int,
+                        layout_raw(layout),
+                        uplo_raw(uplo),
+                        trans_raw(trans_a),
+                        diag_raw(diag),
+                        n as sys::f77_int,
+                        k as sys::f77_int,
+                        a.as_ptr(),
+                        lda as sys::f77_int,
+                        x.as_mut_ptr(),
+                        inc_x as sys::f77_int,
                     );
                 }
                 Ok(())
@@ -1494,15 +1766,26 @@ macro_rules! impl_real_scalar {
 
             #[allow(clippy::too_many_arguments)]
             fn tpmv(
-                layout: Layout, uplo: Uplo, trans_a: Trans, diag: Diag,
-                n: usize, ap: &[Self], x: &mut [Self], inc_x: usize,
+                layout: Layout,
+                uplo: Uplo,
+                trans_a: Trans,
+                diag: Diag,
+                n: usize,
+                ap: &[Self],
+                x: &mut [Self],
+                inc_x: usize,
             ) -> Result<()> {
                 check_packed_n_square("tpmv: Ap", n, ap.len(), x.len(), inc_x)?;
                 unsafe {
                     sys::$tpmv(
-                        layout_raw(layout), uplo_raw(uplo), trans_raw(trans_a), diag_raw(diag),
-                        n as sys::f77_int, ap.as_ptr(),
-                        x.as_mut_ptr(), inc_x as sys::f77_int,
+                        layout_raw(layout),
+                        uplo_raw(uplo),
+                        trans_raw(trans_a),
+                        diag_raw(diag),
+                        n as sys::f77_int,
+                        ap.as_ptr(),
+                        x.as_mut_ptr(),
+                        inc_x as sys::f77_int,
                     );
                 }
                 Ok(())
@@ -1510,15 +1793,26 @@ macro_rules! impl_real_scalar {
 
             #[allow(clippy::too_many_arguments)]
             fn tpsv(
-                layout: Layout, uplo: Uplo, trans_a: Trans, diag: Diag,
-                n: usize, ap: &[Self], x: &mut [Self], inc_x: usize,
+                layout: Layout,
+                uplo: Uplo,
+                trans_a: Trans,
+                diag: Diag,
+                n: usize,
+                ap: &[Self],
+                x: &mut [Self],
+                inc_x: usize,
             ) -> Result<()> {
                 check_packed_n_square("tpsv: Ap", n, ap.len(), x.len(), inc_x)?;
                 unsafe {
                     sys::$tpsv(
-                        layout_raw(layout), uplo_raw(uplo), trans_raw(trans_a), diag_raw(diag),
-                        n as sys::f77_int, ap.as_ptr(),
-                        x.as_mut_ptr(), inc_x as sys::f77_int,
+                        layout_raw(layout),
+                        uplo_raw(uplo),
+                        trans_raw(trans_a),
+                        diag_raw(diag),
+                        n as sys::f77_int,
+                        ap.as_ptr(),
+                        x.as_mut_ptr(),
+                        inc_x as sys::f77_int,
                     );
                 }
                 Ok(())
@@ -1527,18 +1821,32 @@ macro_rules! impl_real_scalar {
 
         impl RealScalar for $t {
             fn rotg(a: &mut Self, b: &mut Self, c: &mut Self, s: &mut Self) {
-                unsafe { sys::$rotg(a, b, c, s); }
+                unsafe {
+                    sys::$rotg(a, b, c, s);
+                }
             }
 
-            fn rot(x: &mut [Self], inc_x: usize, y: &mut [Self], inc_y: usize, c: Self, s: Self) -> Result<()> {
+            fn rot(
+                x: &mut [Self],
+                inc_x: usize,
+                y: &mut [Self],
+                inc_y: usize,
+                c: Self,
+                s: Self,
+            ) -> Result<()> {
                 let n = infer_n(x.len(), inc_x, y.len(), inc_y);
                 check_strided_len("rot: x", x.len(), n, inc_x)?;
                 check_strided_len("rot: y", y.len(), n, inc_y)?;
                 unsafe {
-                    sys::$rot(n as sys::f77_int,
-                              x.as_mut_ptr(), inc_x as sys::f77_int,
-                              y.as_mut_ptr(), inc_y as sys::f77_int,
-                              c, s);
+                    sys::$rot(
+                        n as sys::f77_int,
+                        x.as_mut_ptr(),
+                        inc_x as sys::f77_int,
+                        y.as_mut_ptr(),
+                        inc_y as sys::f77_int,
+                        c,
+                        s,
+                    );
                 }
                 Ok(())
             }
@@ -1547,26 +1855,54 @@ macro_rules! impl_real_scalar {
                 let n = infer_n(x.len(), inc_x, y.len(), inc_y);
                 check_strided_len("dsdot: x", x.len(), n, inc_x)?;
                 check_strided_len("dsdot: y", y.len(), n, inc_y)?;
-                let r: f64 = ($dsdot_fn)(n as sys::f77_int,
-                                         x.as_ptr(), inc_x as sys::f77_int,
-                                         y.as_ptr(), inc_y as sys::f77_int);
+                let r: f64 = ($dsdot_fn)(
+                    n as sys::f77_int,
+                    x.as_ptr(),
+                    inc_x as sys::f77_int,
+                    y.as_ptr(),
+                    inc_y as sys::f77_int,
+                );
                 Ok(r)
             }
 
             #[allow(clippy::too_many_arguments)]
             fn symv(
-                layout: Layout, uplo: Uplo, n: usize,
-                alpha: Self, a: &[Self], lda: usize,
-                x: &[Self], inc_x: usize,
-                beta: Self, y: &mut [Self], inc_y: usize,
+                layout: Layout,
+                uplo: Uplo,
+                n: usize,
+                alpha: Self,
+                a: &[Self],
+                lda: usize,
+                x: &[Self],
+                inc_x: usize,
+                beta: Self,
+                y: &mut [Self],
+                inc_y: usize,
             ) -> Result<()> {
-                check_n_square_xy("symv: A", layout, n, a.len(), lda, x.len(), inc_x, y.len(), inc_y)?;
+                check_n_square_xy(
+                    "symv: A",
+                    layout,
+                    n,
+                    a.len(),
+                    lda,
+                    x.len(),
+                    inc_x,
+                    y.len(),
+                    inc_y,
+                )?;
                 unsafe {
                     sys::$symv(
-                        layout_raw(layout), uplo_raw(uplo),
-                        n as sys::f77_int, alpha, a.as_ptr(), lda as sys::f77_int,
-                        x.as_ptr(), inc_x as sys::f77_int,
-                        beta, y.as_mut_ptr(), inc_y as sys::f77_int,
+                        layout_raw(layout),
+                        uplo_raw(uplo),
+                        n as sys::f77_int,
+                        alpha,
+                        a.as_ptr(),
+                        lda as sys::f77_int,
+                        x.as_ptr(),
+                        inc_x as sys::f77_int,
+                        beta,
+                        y.as_mut_ptr(),
+                        inc_y as sys::f77_int,
                     );
                 }
                 Ok(())
@@ -1574,16 +1910,26 @@ macro_rules! impl_real_scalar {
 
             #[allow(clippy::too_many_arguments)]
             fn syr(
-                layout: Layout, uplo: Uplo, n: usize,
-                alpha: Self, x: &[Self], inc_x: usize,
-                a: &mut [Self], lda: usize,
+                layout: Layout,
+                uplo: Uplo,
+                n: usize,
+                alpha: Self,
+                x: &[Self],
+                inc_x: usize,
+                a: &mut [Self],
+                lda: usize,
             ) -> Result<()> {
                 check_n_square("syr: A", layout, n, a.len(), lda, x.len(), inc_x)?;
                 unsafe {
                     sys::$syr(
-                        layout_raw(layout), uplo_raw(uplo),
-                        n as sys::f77_int, alpha, x.as_ptr(), inc_x as sys::f77_int,
-                        a.as_mut_ptr(), lda as sys::f77_int,
+                        layout_raw(layout),
+                        uplo_raw(uplo),
+                        n as sys::f77_int,
+                        alpha,
+                        x.as_ptr(),
+                        inc_x as sys::f77_int,
+                        a.as_mut_ptr(),
+                        lda as sys::f77_int,
                     );
                 }
                 Ok(())
@@ -1591,19 +1937,40 @@ macro_rules! impl_real_scalar {
 
             #[allow(clippy::too_many_arguments)]
             fn syr2(
-                layout: Layout, uplo: Uplo, n: usize,
-                alpha: Self, x: &[Self], inc_x: usize,
-                y: &[Self], inc_y: usize,
-                a: &mut [Self], lda: usize,
+                layout: Layout,
+                uplo: Uplo,
+                n: usize,
+                alpha: Self,
+                x: &[Self],
+                inc_x: usize,
+                y: &[Self],
+                inc_y: usize,
+                a: &mut [Self],
+                lda: usize,
             ) -> Result<()> {
-                check_n_square_xy("syr2: A", layout, n, a.len(), lda, x.len(), inc_x, y.len(), inc_y)?;
+                check_n_square_xy(
+                    "syr2: A",
+                    layout,
+                    n,
+                    a.len(),
+                    lda,
+                    x.len(),
+                    inc_x,
+                    y.len(),
+                    inc_y,
+                )?;
                 unsafe {
                     sys::$syr2(
-                        layout_raw(layout), uplo_raw(uplo),
-                        n as sys::f77_int, alpha,
-                        x.as_ptr(), inc_x as sys::f77_int,
-                        y.as_ptr(), inc_y as sys::f77_int,
-                        a.as_mut_ptr(), lda as sys::f77_int,
+                        layout_raw(layout),
+                        uplo_raw(uplo),
+                        n as sys::f77_int,
+                        alpha,
+                        x.as_ptr(),
+                        inc_x as sys::f77_int,
+                        y.as_ptr(),
+                        inc_y as sys::f77_int,
+                        a.as_mut_ptr(),
+                        lda as sys::f77_int,
                     );
                 }
                 Ok(())
@@ -1611,20 +1978,30 @@ macro_rules! impl_real_scalar {
 
             #[allow(clippy::too_many_arguments)]
             fn ger(
-                layout: Layout, m: usize, n: usize,
-                alpha: Self, x: &[Self], inc_x: usize,
-                y: &[Self], inc_y: usize,
-                a: &mut [Self], lda: usize,
+                layout: Layout,
+                m: usize,
+                n: usize,
+                alpha: Self,
+                x: &[Self],
+                inc_x: usize,
+                y: &[Self],
+                inc_y: usize,
+                a: &mut [Self],
+                lda: usize,
             ) -> Result<()> {
                 check_ger(layout, m, n, a.len(), lda, x.len(), inc_x, y.len(), inc_y)?;
                 unsafe {
                     sys::$ger(
                         layout_raw(layout),
-                        m as sys::f77_int, n as sys::f77_int,
+                        m as sys::f77_int,
+                        n as sys::f77_int,
                         alpha,
-                        x.as_ptr(), inc_x as sys::f77_int,
-                        y.as_ptr(), inc_y as sys::f77_int,
-                        a.as_mut_ptr(), lda as sys::f77_int,
+                        x.as_ptr(),
+                        inc_x as sys::f77_int,
+                        y.as_ptr(),
+                        inc_y as sys::f77_int,
+                        a.as_mut_ptr(),
+                        lda as sys::f77_int,
                     );
                 }
                 Ok(())
@@ -1632,19 +2009,44 @@ macro_rules! impl_real_scalar {
 
             #[allow(clippy::too_many_arguments)]
             fn sbmv(
-                layout: Layout, uplo: Uplo, n: usize, k: usize,
-                alpha: Self, a: &[Self], lda: usize,
-                x: &[Self], inc_x: usize,
-                beta: Self, y: &mut [Self], inc_y: usize,
+                layout: Layout,
+                uplo: Uplo,
+                n: usize,
+                k: usize,
+                alpha: Self,
+                a: &[Self],
+                lda: usize,
+                x: &[Self],
+                inc_x: usize,
+                beta: Self,
+                y: &mut [Self],
+                inc_y: usize,
             ) -> Result<()> {
-                check_band_n_square_xy("sbmv: A", n, k, a.len(), lda, x.len(), inc_x, y.len(), inc_y)?;
+                check_band_n_square_xy(
+                    "sbmv: A",
+                    n,
+                    k,
+                    a.len(),
+                    lda,
+                    x.len(),
+                    inc_x,
+                    y.len(),
+                    inc_y,
+                )?;
                 unsafe {
                     sys::$sbmv(
-                        layout_raw(layout), uplo_raw(uplo),
-                        n as sys::f77_int, k as sys::f77_int,
-                        alpha, a.as_ptr(), lda as sys::f77_int,
-                        x.as_ptr(), inc_x as sys::f77_int,
-                        beta, y.as_mut_ptr(), inc_y as sys::f77_int,
+                        layout_raw(layout),
+                        uplo_raw(uplo),
+                        n as sys::f77_int,
+                        k as sys::f77_int,
+                        alpha,
+                        a.as_ptr(),
+                        lda as sys::f77_int,
+                        x.as_ptr(),
+                        inc_x as sys::f77_int,
+                        beta,
+                        y.as_mut_ptr(),
+                        inc_y as sys::f77_int,
                     );
                 }
                 Ok(())
@@ -1652,18 +2054,30 @@ macro_rules! impl_real_scalar {
 
             #[allow(clippy::too_many_arguments)]
             fn spmv(
-                layout: Layout, uplo: Uplo, n: usize,
-                alpha: Self, ap: &[Self],
-                x: &[Self], inc_x: usize,
-                beta: Self, y: &mut [Self], inc_y: usize,
+                layout: Layout,
+                uplo: Uplo,
+                n: usize,
+                alpha: Self,
+                ap: &[Self],
+                x: &[Self],
+                inc_x: usize,
+                beta: Self,
+                y: &mut [Self],
+                inc_y: usize,
             ) -> Result<()> {
                 check_packed_n_square_xy("spmv: Ap", n, ap.len(), x.len(), inc_x, y.len(), inc_y)?;
                 unsafe {
                     sys::$spmv(
-                        layout_raw(layout), uplo_raw(uplo),
-                        n as sys::f77_int, alpha, ap.as_ptr(),
-                        x.as_ptr(), inc_x as sys::f77_int,
-                        beta, y.as_mut_ptr(), inc_y as sys::f77_int,
+                        layout_raw(layout),
+                        uplo_raw(uplo),
+                        n as sys::f77_int,
+                        alpha,
+                        ap.as_ptr(),
+                        x.as_ptr(),
+                        inc_x as sys::f77_int,
+                        beta,
+                        y.as_mut_ptr(),
+                        inc_y as sys::f77_int,
                     );
                 }
                 Ok(())
@@ -1671,16 +2085,23 @@ macro_rules! impl_real_scalar {
 
             #[allow(clippy::too_many_arguments)]
             fn spr(
-                layout: Layout, uplo: Uplo, n: usize,
-                alpha: Self, x: &[Self], inc_x: usize,
+                layout: Layout,
+                uplo: Uplo,
+                n: usize,
+                alpha: Self,
+                x: &[Self],
+                inc_x: usize,
                 ap: &mut [Self],
             ) -> Result<()> {
                 check_packed_n_square("spr: Ap", n, ap.len(), x.len(), inc_x)?;
                 unsafe {
                     sys::$spr(
-                        layout_raw(layout), uplo_raw(uplo),
-                        n as sys::f77_int, alpha,
-                        x.as_ptr(), inc_x as sys::f77_int,
+                        layout_raw(layout),
+                        uplo_raw(uplo),
+                        n as sys::f77_int,
+                        alpha,
+                        x.as_ptr(),
+                        inc_x as sys::f77_int,
                         ap.as_mut_ptr(),
                     );
                 }
@@ -1689,18 +2110,27 @@ macro_rules! impl_real_scalar {
 
             #[allow(clippy::too_many_arguments)]
             fn spr2(
-                layout: Layout, uplo: Uplo, n: usize,
-                alpha: Self, x: &[Self], inc_x: usize,
-                y: &[Self], inc_y: usize,
+                layout: Layout,
+                uplo: Uplo,
+                n: usize,
+                alpha: Self,
+                x: &[Self],
+                inc_x: usize,
+                y: &[Self],
+                inc_y: usize,
                 ap: &mut [Self],
             ) -> Result<()> {
                 check_packed_n_square_xy("spr2: Ap", n, ap.len(), x.len(), inc_x, y.len(), inc_y)?;
                 unsafe {
                     sys::$spr2(
-                        layout_raw(layout), uplo_raw(uplo),
-                        n as sys::f77_int, alpha,
-                        x.as_ptr(), inc_x as sys::f77_int,
-                        y.as_ptr(), inc_y as sys::f77_int,
+                        layout_raw(layout),
+                        uplo_raw(uplo),
+                        n as sys::f77_int,
+                        alpha,
+                        x.as_ptr(),
+                        inc_x as sys::f77_int,
+                        y.as_ptr(),
+                        inc_y as sys::f77_int,
                         ap.as_mut_ptr(),
                     );
                 }
@@ -1712,36 +2142,78 @@ macro_rules! impl_real_scalar {
 
 impl_real_scalar!(
     f32,
-    scal = cblas_sscal, copy = cblas_scopy, swap = cblas_sswap, axpy = cblas_saxpy,
-    dot = cblas_sdot, nrm2 = cblas_snrm2, asum = cblas_sasum,
-    iamax = cblas_isamax, iamin = cblas_isamin, gemm = cblas_sgemm,
-    rotg = cblas_srotg, rot = cblas_srot,
+    scal = cblas_sscal,
+    copy = cblas_scopy,
+    swap = cblas_sswap,
+    axpy = cblas_saxpy,
+    dot = cblas_sdot,
+    nrm2 = cblas_snrm2,
+    asum = cblas_sasum,
+    iamax = cblas_isamax,
+    iamin = cblas_isamin,
+    gemm = cblas_sgemm,
+    rotg = cblas_srotg,
+    rot = cblas_srot,
     dsdot_fn = (|n, x, ix, y, iy| unsafe { sys::cblas_dsdot(n, x, ix, y, iy) }),
-    gemv = cblas_sgemv, trmv = cblas_strmv, trsv = cblas_strsv,
-    symv = cblas_ssymv, syr = cblas_ssyr, syr2 = cblas_ssyr2, ger = cblas_sger,
-    symm = cblas_ssymm, syrk = cblas_ssyrk, syr2k = cblas_ssyr2k,
-    trmm = cblas_strmm, trsm = cblas_strsm,
-    gbmv = cblas_sgbmv, tbmv = cblas_stbmv, tbsv = cblas_stbsv,
-    tpmv = cblas_stpmv, tpsv = cblas_stpsv,
-    sbmv = cblas_ssbmv, spmv = cblas_sspmv,
-    spr = cblas_sspr, spr2 = cblas_sspr2
+    gemv = cblas_sgemv,
+    trmv = cblas_strmv,
+    trsv = cblas_strsv,
+    symv = cblas_ssymv,
+    syr = cblas_ssyr,
+    syr2 = cblas_ssyr2,
+    ger = cblas_sger,
+    symm = cblas_ssymm,
+    syrk = cblas_ssyrk,
+    syr2k = cblas_ssyr2k,
+    trmm = cblas_strmm,
+    trsm = cblas_strsm,
+    gbmv = cblas_sgbmv,
+    tbmv = cblas_stbmv,
+    tbsv = cblas_stbsv,
+    tpmv = cblas_stpmv,
+    tpsv = cblas_stpsv,
+    sbmv = cblas_ssbmv,
+    spmv = cblas_sspmv,
+    spr = cblas_sspr,
+    spr2 = cblas_sspr2
 );
 impl_real_scalar!(
     f64,
-    scal = cblas_dscal, copy = cblas_dcopy, swap = cblas_dswap, axpy = cblas_daxpy,
-    dot = cblas_ddot, nrm2 = cblas_dnrm2, asum = cblas_dasum,
-    iamax = cblas_idamax, iamin = cblas_idamin, gemm = cblas_dgemm,
-    rotg = cblas_drotg, rot = cblas_drot,
+    scal = cblas_dscal,
+    copy = cblas_dcopy,
+    swap = cblas_dswap,
+    axpy = cblas_daxpy,
+    dot = cblas_ddot,
+    nrm2 = cblas_dnrm2,
+    asum = cblas_dasum,
+    iamax = cblas_idamax,
+    iamin = cblas_idamin,
+    gemm = cblas_dgemm,
+    rotg = cblas_drotg,
+    rot = cblas_drot,
     // For f64 dsdot semantically equals dot on f64 inputs; we forward to ddot.
     dsdot_fn = (|n, x, ix, y, iy| unsafe { sys::cblas_ddot(n, x, ix, y, iy) }),
-    gemv = cblas_dgemv, trmv = cblas_dtrmv, trsv = cblas_dtrsv,
-    symv = cblas_dsymv, syr = cblas_dsyr, syr2 = cblas_dsyr2, ger = cblas_dger,
-    symm = cblas_dsymm, syrk = cblas_dsyrk, syr2k = cblas_dsyr2k,
-    trmm = cblas_dtrmm, trsm = cblas_dtrsm,
-    gbmv = cblas_dgbmv, tbmv = cblas_dtbmv, tbsv = cblas_dtbsv,
-    tpmv = cblas_dtpmv, tpsv = cblas_dtpsv,
-    sbmv = cblas_dsbmv, spmv = cblas_dspmv,
-    spr = cblas_dspr, spr2 = cblas_dspr2
+    gemv = cblas_dgemv,
+    trmv = cblas_dtrmv,
+    trsv = cblas_dtrsv,
+    symv = cblas_dsymv,
+    syr = cblas_dsyr,
+    syr2 = cblas_dsyr2,
+    ger = cblas_dger,
+    symm = cblas_dsymm,
+    syrk = cblas_dsyrk,
+    syr2k = cblas_dsyr2k,
+    trmm = cblas_dtrmm,
+    trsm = cblas_dtrsm,
+    gbmv = cblas_dgbmv,
+    tbmv = cblas_dtbmv,
+    tbsv = cblas_dtbsv,
+    tpmv = cblas_dtpmv,
+    tpsv = cblas_dtpsv,
+    sbmv = cblas_dsbmv,
+    spmv = cblas_dspmv,
+    spr = cblas_dspr,
+    spr2 = cblas_dspr2
 );
 
 // ===========================================================================
@@ -2499,42 +2971,86 @@ macro_rules! impl_complex_scalar {
 }
 
 impl_complex_scalar!(
-    Complex32, f32,
-    scal = cblas_cscal, scal_real = cblas_csscal,
-    copy = cblas_ccopy, swap = cblas_cswap, axpy = cblas_caxpy,
-    dotu = cblas_cdotu_sub, dotc = cblas_cdotc_sub,
-    nrm2 = cblas_scnrm2, asum = cblas_scasum,
-    iamax = cblas_icamax, iamin = cblas_icamin,
+    Complex32,
+    f32,
+    scal = cblas_cscal,
+    scal_real = cblas_csscal,
+    copy = cblas_ccopy,
+    swap = cblas_cswap,
+    axpy = cblas_caxpy,
+    dotu = cblas_cdotu_sub,
+    dotc = cblas_cdotc_sub,
+    nrm2 = cblas_scnrm2,
+    asum = cblas_scasum,
+    iamax = cblas_icamax,
+    iamin = cblas_icamin,
     gemm = cblas_cgemm,
-    gemv = cblas_cgemv, trmv = cblas_ctrmv, trsv = cblas_ctrsv,
-    hemv = cblas_chemv, her = cblas_cher, her2 = cblas_cher2,
-    geru = cblas_cgeru, gerc = cblas_cgerc,
-    symm = cblas_csymm, syrk = cblas_csyrk, syr2k = cblas_csyr2k,
-    trmm = cblas_ctrmm, trsm = cblas_ctrsm,
-    hemm = cblas_chemm, herk = cblas_cherk, her2k = cblas_cher2k,
-    gbmv = cblas_cgbmv, tbmv = cblas_ctbmv, tbsv = cblas_ctbsv,
-    tpmv = cblas_ctpmv, tpsv = cblas_ctpsv,
-    hbmv = cblas_chbmv, hpmv = cblas_chpmv,
-    hpr = cblas_chpr, hpr2 = cblas_chpr2
+    gemv = cblas_cgemv,
+    trmv = cblas_ctrmv,
+    trsv = cblas_ctrsv,
+    hemv = cblas_chemv,
+    her = cblas_cher,
+    her2 = cblas_cher2,
+    geru = cblas_cgeru,
+    gerc = cblas_cgerc,
+    symm = cblas_csymm,
+    syrk = cblas_csyrk,
+    syr2k = cblas_csyr2k,
+    trmm = cblas_ctrmm,
+    trsm = cblas_ctrsm,
+    hemm = cblas_chemm,
+    herk = cblas_cherk,
+    her2k = cblas_cher2k,
+    gbmv = cblas_cgbmv,
+    tbmv = cblas_ctbmv,
+    tbsv = cblas_ctbsv,
+    tpmv = cblas_ctpmv,
+    tpsv = cblas_ctpsv,
+    hbmv = cblas_chbmv,
+    hpmv = cblas_chpmv,
+    hpr = cblas_chpr,
+    hpr2 = cblas_chpr2
 );
 impl_complex_scalar!(
-    Complex64, f64,
-    scal = cblas_zscal, scal_real = cblas_zdscal,
-    copy = cblas_zcopy, swap = cblas_zswap, axpy = cblas_zaxpy,
-    dotu = cblas_zdotu_sub, dotc = cblas_zdotc_sub,
-    nrm2 = cblas_dznrm2, asum = cblas_dzasum,
-    iamax = cblas_izamax, iamin = cblas_izamin,
+    Complex64,
+    f64,
+    scal = cblas_zscal,
+    scal_real = cblas_zdscal,
+    copy = cblas_zcopy,
+    swap = cblas_zswap,
+    axpy = cblas_zaxpy,
+    dotu = cblas_zdotu_sub,
+    dotc = cblas_zdotc_sub,
+    nrm2 = cblas_dznrm2,
+    asum = cblas_dzasum,
+    iamax = cblas_izamax,
+    iamin = cblas_izamin,
     gemm = cblas_zgemm,
-    gemv = cblas_zgemv, trmv = cblas_ztrmv, trsv = cblas_ztrsv,
-    hemv = cblas_zhemv, her = cblas_zher, her2 = cblas_zher2,
-    geru = cblas_zgeru, gerc = cblas_zgerc,
-    symm = cblas_zsymm, syrk = cblas_zsyrk, syr2k = cblas_zsyr2k,
-    trmm = cblas_ztrmm, trsm = cblas_ztrsm,
-    hemm = cblas_zhemm, herk = cblas_zherk, her2k = cblas_zher2k,
-    gbmv = cblas_zgbmv, tbmv = cblas_ztbmv, tbsv = cblas_ztbsv,
-    tpmv = cblas_ztpmv, tpsv = cblas_ztpsv,
-    hbmv = cblas_zhbmv, hpmv = cblas_zhpmv,
-    hpr = cblas_zhpr, hpr2 = cblas_zhpr2
+    gemv = cblas_zgemv,
+    trmv = cblas_ztrmv,
+    trsv = cblas_ztrsv,
+    hemv = cblas_zhemv,
+    her = cblas_zher,
+    her2 = cblas_zher2,
+    geru = cblas_zgeru,
+    gerc = cblas_zgerc,
+    symm = cblas_zsymm,
+    syrk = cblas_zsyrk,
+    syr2k = cblas_zsyr2k,
+    trmm = cblas_ztrmm,
+    trsm = cblas_ztrsm,
+    hemm = cblas_zhemm,
+    herk = cblas_zherk,
+    her2k = cblas_zher2k,
+    gbmv = cblas_zgbmv,
+    tbmv = cblas_ztbmv,
+    tbsv = cblas_ztbsv,
+    tpmv = cblas_ztpmv,
+    tpsv = cblas_ztpsv,
+    hbmv = cblas_zhbmv,
+    hpmv = cblas_zhpmv,
+    hpr = cblas_zhpr,
+    hpr2 = cblas_zhpr2
 );
 
 // ===========================================================================
@@ -2693,7 +3209,20 @@ pub fn gemv<T: Scalar>(
     beta: T,
     y: &mut [T],
 ) -> Result<()> {
-    T::gemv(Layout::RowMajor, trans_a, m, n, alpha, a, n, x, 1, beta, y, 1)
+    T::gemv(
+        Layout::RowMajor,
+        trans_a,
+        m,
+        n,
+        alpha,
+        a,
+        n,
+        x,
+        1,
+        beta,
+        y,
+        1,
+    )
 }
 
 /// `X := op(A) · X` for triangular row-major `A` (`n × n`).
@@ -2735,13 +3264,7 @@ pub fn symv<T: RealScalar>(
 }
 
 /// Symmetric rank-1 update `A := α · X · Xᵀ + A`.
-pub fn syr<T: RealScalar>(
-    uplo: Uplo,
-    n: usize,
-    alpha: T,
-    x: &[T],
-    a: &mut [T],
-) -> Result<()> {
+pub fn syr<T: RealScalar>(uplo: Uplo, n: usize, alpha: T, x: &[T], a: &mut [T]) -> Result<()> {
     T::syr(Layout::RowMajor, uplo, n, alpha, x, 1, a, n)
 }
 
@@ -2849,7 +3372,21 @@ pub fn symm<T: Scalar>(
     c: &mut [T],
 ) -> Result<()> {
     let a_n = side_to_n(side, m, n);
-    T::symm(Layout::RowMajor, side, uplo, m, n, alpha, a, a_n, b, n, beta, c, n)
+    T::symm(
+        Layout::RowMajor,
+        side,
+        uplo,
+        m,
+        n,
+        alpha,
+        a,
+        a_n,
+        b,
+        n,
+        beta,
+        c,
+        n,
+    )
 }
 
 /// Symmetric rank-k update `C := α · op(A) · op(A)ᵀ + β · C`,
@@ -2869,7 +3406,19 @@ pub fn syrk<T: Scalar>(
         Trans::No => k,
         _ => n,
     };
-    T::syrk(Layout::RowMajor, uplo, trans, n, k, alpha, a, lda, beta, c, n)
+    T::syrk(
+        Layout::RowMajor,
+        uplo,
+        trans,
+        n,
+        k,
+        alpha,
+        a,
+        lda,
+        beta,
+        c,
+        n,
+    )
 }
 
 /// Symmetric rank-2k update.
@@ -2890,7 +3439,21 @@ pub fn syr2k<T: Scalar>(
         _ => n,
     };
     let ldb = lda;
-    T::syr2k(Layout::RowMajor, uplo, trans, n, k, alpha, a, lda, b, ldb, beta, c, n)
+    T::syr2k(
+        Layout::RowMajor,
+        uplo,
+        trans,
+        n,
+        k,
+        alpha,
+        a,
+        lda,
+        b,
+        ldb,
+        beta,
+        c,
+        n,
+    )
 }
 
 /// Triangular matrix-matrix multiply `B := α · op(A) · B` (Side::Left)
@@ -2908,7 +3471,20 @@ pub fn trmm<T: Scalar>(
     b: &mut [T],
 ) -> Result<()> {
     let a_n = side_to_n(side, m, n);
-    T::trmm(Layout::RowMajor, side, uplo, trans_a, diag, m, n, alpha, a, a_n, b, n)
+    T::trmm(
+        Layout::RowMajor,
+        side,
+        uplo,
+        trans_a,
+        diag,
+        m,
+        n,
+        alpha,
+        a,
+        a_n,
+        b,
+        n,
+    )
 }
 
 /// Triangular solve with multiple right-hand sides.
@@ -2925,7 +3501,20 @@ pub fn trsm<T: Scalar>(
     b: &mut [T],
 ) -> Result<()> {
     let a_n = side_to_n(side, m, n);
-    T::trsm(Layout::RowMajor, side, uplo, trans_a, diag, m, n, alpha, a, a_n, b, n)
+    T::trsm(
+        Layout::RowMajor,
+        side,
+        uplo,
+        trans_a,
+        diag,
+        m,
+        n,
+        alpha,
+        a,
+        a_n,
+        b,
+        n,
+    )
 }
 
 /// Hermitian matrix-matrix multiply (complex precisions).
@@ -2942,7 +3531,21 @@ pub fn hemm<T: ComplexScalar>(
     c: &mut [T],
 ) -> Result<()> {
     let a_n = side_to_n(side, m, n);
-    T::hemm(Layout::RowMajor, side, uplo, m, n, alpha, a, a_n, b, n, beta, c, n)
+    T::hemm(
+        Layout::RowMajor,
+        side,
+        uplo,
+        m,
+        n,
+        alpha,
+        a,
+        a_n,
+        b,
+        n,
+        beta,
+        c,
+        n,
+    )
 }
 
 /// Hermitian rank-k update `C := α · op(A) · op(A)ᴴ + β · C` with
@@ -2962,7 +3565,19 @@ pub fn herk<T: ComplexScalar>(
         Trans::No => k,
         _ => n,
     };
-    T::herk(Layout::RowMajor, uplo, trans, n, k, alpha, a, lda, beta, c, n)
+    T::herk(
+        Layout::RowMajor,
+        uplo,
+        trans,
+        n,
+        k,
+        alpha,
+        a,
+        lda,
+        beta,
+        c,
+        n,
+    )
 }
 
 /// Hermitian rank-2k update.
@@ -2983,7 +3598,21 @@ pub fn her2k<T: ComplexScalar>(
         _ => n,
     };
     let ldb = lda;
-    T::her2k(Layout::RowMajor, uplo, trans, n, k, alpha, a, lda, b, ldb, beta, c, n)
+    T::her2k(
+        Layout::RowMajor,
+        uplo,
+        trans,
+        n,
+        k,
+        alpha,
+        a,
+        lda,
+        b,
+        ldb,
+        beta,
+        c,
+        n,
+    )
 }
 
 // ===========================================================================
@@ -3007,7 +3636,9 @@ pub fn gbmv<T: Scalar>(
     beta: T,
     y: &mut [T],
 ) -> Result<()> {
-    T::gbmv(layout, trans_a, m, n, kl, ku, alpha, a, lda, x, 1, beta, y, 1)
+    T::gbmv(
+        layout, trans_a, m, n, kl, ku, alpha, a, lda, x, 1, beta, y, 1,
+    )
 }
 
 /// Triangular banded mat-vec `X := op(A) · X`.
@@ -3079,7 +3710,20 @@ pub fn sbmv<T: RealScalar>(
     beta: T,
     y: &mut [T],
 ) -> Result<()> {
-    T::sbmv(Layout::RowMajor, uplo, n, k, alpha, a, lda, x, 1, beta, y, 1)
+    T::sbmv(
+        Layout::RowMajor,
+        uplo,
+        n,
+        k,
+        alpha,
+        a,
+        lda,
+        x,
+        1,
+        beta,
+        y,
+        1,
+    )
 }
 
 /// Symmetric packed mat-vec.
@@ -3097,13 +3741,7 @@ pub fn spmv<T: RealScalar>(
 }
 
 /// Symmetric packed rank-1 update `Ap := α · X · Xᵀ + Ap`.
-pub fn spr<T: RealScalar>(
-    uplo: Uplo,
-    n: usize,
-    alpha: T,
-    x: &[T],
-    ap: &mut [T],
-) -> Result<()> {
+pub fn spr<T: RealScalar>(uplo: Uplo, n: usize, alpha: T, x: &[T], ap: &mut [T]) -> Result<()> {
     T::spr(Layout::RowMajor, uplo, n, alpha, x, 1, ap)
 }
 
@@ -3132,7 +3770,20 @@ pub fn hbmv<T: ComplexScalar>(
     beta: T,
     y: &mut [T],
 ) -> Result<()> {
-    T::hbmv(Layout::RowMajor, uplo, n, k, alpha, a, lda, x, 1, beta, y, 1)
+    T::hbmv(
+        Layout::RowMajor,
+        uplo,
+        n,
+        k,
+        alpha,
+        a,
+        lda,
+        x,
+        1,
+        beta,
+        y,
+        1,
+    )
 }
 
 /// Hermitian packed mat-vec.
@@ -3213,16 +3864,23 @@ pub trait BlasExt: Scalar {
 
 impl BlasExt for f32 {
     fn axpby(
-        alpha: Self, x: &[Self], inc_x: usize, beta: Self, y: &mut [Self], inc_y: usize,
+        alpha: Self,
+        x: &[Self],
+        inc_x: usize,
+        beta: Self,
+        y: &mut [Self],
+        inc_y: usize,
     ) -> Result<()> {
         let n = infer_n(x.len(), inc_x, y.len(), inc_y);
         unsafe {
             sys::cblas_saxpby(
                 n as sys::f77_int,
                 alpha,
-                x.as_ptr(), inc_x as sys::f77_int,
+                x.as_ptr(),
+                inc_x as sys::f77_int,
                 beta,
-                y.as_mut_ptr(), inc_y as sys::f77_int,
+                y.as_mut_ptr(),
+                inc_y as sys::f77_int,
             );
         }
         Ok(())
@@ -3230,20 +3888,37 @@ impl BlasExt for f32 {
 
     #[allow(clippy::too_many_arguments)]
     fn gemmt(
-        layout: Layout, uplo: Uplo, trans_a: Trans, trans_b: Trans,
-        n: usize, k: usize, alpha: Self, a: &[Self], lda: usize,
-        b: &[Self], ldb: usize, beta: Self, c: &mut [Self], ldc: usize,
+        layout: Layout,
+        uplo: Uplo,
+        trans_a: Trans,
+        trans_b: Trans,
+        n: usize,
+        k: usize,
+        alpha: Self,
+        a: &[Self],
+        lda: usize,
+        b: &[Self],
+        ldb: usize,
+        beta: Self,
+        c: &mut [Self],
+        ldc: usize,
     ) -> Result<()> {
         unsafe {
             sys::cblas_sgemmt(
-                layout_raw(layout), uplo_raw(uplo),
-                trans_raw(trans_a), trans_raw(trans_b),
-                n as sys::f77_int, k as sys::f77_int,
+                layout_raw(layout),
+                uplo_raw(uplo),
+                trans_raw(trans_a),
+                trans_raw(trans_b),
+                n as sys::f77_int,
+                k as sys::f77_int,
                 alpha,
-                a.as_ptr(), lda as sys::f77_int,
-                b.as_ptr(), ldb as sys::f77_int,
+                a.as_ptr(),
+                lda as sys::f77_int,
+                b.as_ptr(),
+                ldb as sys::f77_int,
                 beta,
-                c.as_mut_ptr(), ldc as sys::f77_int,
+                c.as_mut_ptr(),
+                ldc as sys::f77_int,
             );
         }
         Ok(())
@@ -3252,16 +3927,23 @@ impl BlasExt for f32 {
 
 impl BlasExt for f64 {
     fn axpby(
-        alpha: Self, x: &[Self], inc_x: usize, beta: Self, y: &mut [Self], inc_y: usize,
+        alpha: Self,
+        x: &[Self],
+        inc_x: usize,
+        beta: Self,
+        y: &mut [Self],
+        inc_y: usize,
     ) -> Result<()> {
         let n = infer_n(x.len(), inc_x, y.len(), inc_y);
         unsafe {
             sys::cblas_daxpby(
                 n as sys::f77_int,
                 alpha,
-                x.as_ptr(), inc_x as sys::f77_int,
+                x.as_ptr(),
+                inc_x as sys::f77_int,
                 beta,
-                y.as_mut_ptr(), inc_y as sys::f77_int,
+                y.as_mut_ptr(),
+                inc_y as sys::f77_int,
             );
         }
         Ok(())
@@ -3269,20 +3951,37 @@ impl BlasExt for f64 {
 
     #[allow(clippy::too_many_arguments)]
     fn gemmt(
-        layout: Layout, uplo: Uplo, trans_a: Trans, trans_b: Trans,
-        n: usize, k: usize, alpha: Self, a: &[Self], lda: usize,
-        b: &[Self], ldb: usize, beta: Self, c: &mut [Self], ldc: usize,
+        layout: Layout,
+        uplo: Uplo,
+        trans_a: Trans,
+        trans_b: Trans,
+        n: usize,
+        k: usize,
+        alpha: Self,
+        a: &[Self],
+        lda: usize,
+        b: &[Self],
+        ldb: usize,
+        beta: Self,
+        c: &mut [Self],
+        ldc: usize,
     ) -> Result<()> {
         unsafe {
             sys::cblas_dgemmt(
-                layout_raw(layout), uplo_raw(uplo),
-                trans_raw(trans_a), trans_raw(trans_b),
-                n as sys::f77_int, k as sys::f77_int,
+                layout_raw(layout),
+                uplo_raw(uplo),
+                trans_raw(trans_a),
+                trans_raw(trans_b),
+                n as sys::f77_int,
+                k as sys::f77_int,
                 alpha,
-                a.as_ptr(), lda as sys::f77_int,
-                b.as_ptr(), ldb as sys::f77_int,
+                a.as_ptr(),
+                lda as sys::f77_int,
+                b.as_ptr(),
+                ldb as sys::f77_int,
                 beta,
-                c.as_mut_ptr(), ldc as sys::f77_int,
+                c.as_mut_ptr(),
+                ldc as sys::f77_int,
             );
         }
         Ok(())
@@ -3291,16 +3990,23 @@ impl BlasExt for f64 {
 
 impl BlasExt for Complex32 {
     fn axpby(
-        alpha: Self, x: &[Self], inc_x: usize, beta: Self, y: &mut [Self], inc_y: usize,
+        alpha: Self,
+        x: &[Self],
+        inc_x: usize,
+        beta: Self,
+        y: &mut [Self],
+        inc_y: usize,
     ) -> Result<()> {
         let n = infer_n(x.len(), inc_x, y.len(), inc_y);
         unsafe {
             sys::cblas_caxpby(
                 n as sys::f77_int,
                 &alpha as *const _ as *const std::os::raw::c_void,
-                x.as_ptr() as *const std::os::raw::c_void, inc_x as sys::f77_int,
+                x.as_ptr() as *const std::os::raw::c_void,
+                inc_x as sys::f77_int,
                 &beta as *const _ as *const std::os::raw::c_void,
-                y.as_mut_ptr() as *mut std::os::raw::c_void, inc_y as sys::f77_int,
+                y.as_mut_ptr() as *mut std::os::raw::c_void,
+                inc_y as sys::f77_int,
             );
         }
         Ok(())
@@ -3308,20 +4014,37 @@ impl BlasExt for Complex32 {
 
     #[allow(clippy::too_many_arguments)]
     fn gemmt(
-        layout: Layout, uplo: Uplo, trans_a: Trans, trans_b: Trans,
-        n: usize, k: usize, alpha: Self, a: &[Self], lda: usize,
-        b: &[Self], ldb: usize, beta: Self, c: &mut [Self], ldc: usize,
+        layout: Layout,
+        uplo: Uplo,
+        trans_a: Trans,
+        trans_b: Trans,
+        n: usize,
+        k: usize,
+        alpha: Self,
+        a: &[Self],
+        lda: usize,
+        b: &[Self],
+        ldb: usize,
+        beta: Self,
+        c: &mut [Self],
+        ldc: usize,
     ) -> Result<()> {
         unsafe {
             sys::cblas_cgemmt(
-                layout_raw(layout), uplo_raw(uplo),
-                trans_raw(trans_a), trans_raw(trans_b),
-                n as sys::f77_int, k as sys::f77_int,
+                layout_raw(layout),
+                uplo_raw(uplo),
+                trans_raw(trans_a),
+                trans_raw(trans_b),
+                n as sys::f77_int,
+                k as sys::f77_int,
                 &alpha as *const _ as *const std::os::raw::c_void,
-                a.as_ptr() as *const std::os::raw::c_void, lda as sys::f77_int,
-                b.as_ptr() as *const std::os::raw::c_void, ldb as sys::f77_int,
+                a.as_ptr() as *const std::os::raw::c_void,
+                lda as sys::f77_int,
+                b.as_ptr() as *const std::os::raw::c_void,
+                ldb as sys::f77_int,
                 &beta as *const _ as *const std::os::raw::c_void,
-                c.as_mut_ptr() as *mut std::os::raw::c_void, ldc as sys::f77_int,
+                c.as_mut_ptr() as *mut std::os::raw::c_void,
+                ldc as sys::f77_int,
             );
         }
         Ok(())
@@ -3330,16 +4053,23 @@ impl BlasExt for Complex32 {
 
 impl BlasExt for Complex64 {
     fn axpby(
-        alpha: Self, x: &[Self], inc_x: usize, beta: Self, y: &mut [Self], inc_y: usize,
+        alpha: Self,
+        x: &[Self],
+        inc_x: usize,
+        beta: Self,
+        y: &mut [Self],
+        inc_y: usize,
     ) -> Result<()> {
         let n = infer_n(x.len(), inc_x, y.len(), inc_y);
         unsafe {
             sys::cblas_zaxpby(
                 n as sys::f77_int,
                 &alpha as *const _ as *const std::os::raw::c_void,
-                x.as_ptr() as *const std::os::raw::c_void, inc_x as sys::f77_int,
+                x.as_ptr() as *const std::os::raw::c_void,
+                inc_x as sys::f77_int,
                 &beta as *const _ as *const std::os::raw::c_void,
-                y.as_mut_ptr() as *mut std::os::raw::c_void, inc_y as sys::f77_int,
+                y.as_mut_ptr() as *mut std::os::raw::c_void,
+                inc_y as sys::f77_int,
             );
         }
         Ok(())
@@ -3347,20 +4077,37 @@ impl BlasExt for Complex64 {
 
     #[allow(clippy::too_many_arguments)]
     fn gemmt(
-        layout: Layout, uplo: Uplo, trans_a: Trans, trans_b: Trans,
-        n: usize, k: usize, alpha: Self, a: &[Self], lda: usize,
-        b: &[Self], ldb: usize, beta: Self, c: &mut [Self], ldc: usize,
+        layout: Layout,
+        uplo: Uplo,
+        trans_a: Trans,
+        trans_b: Trans,
+        n: usize,
+        k: usize,
+        alpha: Self,
+        a: &[Self],
+        lda: usize,
+        b: &[Self],
+        ldb: usize,
+        beta: Self,
+        c: &mut [Self],
+        ldc: usize,
     ) -> Result<()> {
         unsafe {
             sys::cblas_zgemmt(
-                layout_raw(layout), uplo_raw(uplo),
-                trans_raw(trans_a), trans_raw(trans_b),
-                n as sys::f77_int, k as sys::f77_int,
+                layout_raw(layout),
+                uplo_raw(uplo),
+                trans_raw(trans_a),
+                trans_raw(trans_b),
+                n as sys::f77_int,
+                k as sys::f77_int,
                 &alpha as *const _ as *const std::os::raw::c_void,
-                a.as_ptr() as *const std::os::raw::c_void, lda as sys::f77_int,
-                b.as_ptr() as *const std::os::raw::c_void, ldb as sys::f77_int,
+                a.as_ptr() as *const std::os::raw::c_void,
+                lda as sys::f77_int,
+                b.as_ptr() as *const std::os::raw::c_void,
+                ldb as sys::f77_int,
                 &beta as *const _ as *const std::os::raw::c_void,
-                c.as_mut_ptr() as *mut std::os::raw::c_void, ldc as sys::f77_int,
+                c.as_mut_ptr() as *mut std::os::raw::c_void,
+                ldc as sys::f77_int,
             );
         }
         Ok(())
@@ -3390,7 +4137,22 @@ pub fn gemmt<T: BlasExt>(
     c: &mut [T],
     ldc: usize,
 ) -> Result<()> {
-    T::gemmt(Layout::RowMajor, uplo, trans_a, trans_b, n, k, alpha, a, lda, b, ldb, beta, c, ldc)
+    T::gemmt(
+        Layout::RowMajor,
+        uplo,
+        trans_a,
+        trans_b,
+        n,
+        k,
+        alpha,
+        a,
+        lda,
+        b,
+        ldb,
+        beta,
+        c,
+        ldc,
+    )
 }
 
 // ----- Real-only extras: rotm / rotmg / sdsdot -----------------------------
@@ -3400,14 +4162,18 @@ pub fn gemmt<T: BlasExt>(
 /// `d2`, `b1` are updated in place.
 pub fn srotmg(d1: &mut f32, d2: &mut f32, b1: &mut f32, b2: f32) -> [f32; 5] {
     let mut p = [0.0_f32; 5];
-    unsafe { sys::cblas_srotmg(d1, d2, b1, b2, p.as_mut_ptr()); }
+    unsafe {
+        sys::cblas_srotmg(d1, d2, b1, b2, p.as_mut_ptr());
+    }
     p
 }
 
 /// `f64` modified Givens-rotation generator. See [`srotmg`].
 pub fn drotmg(d1: &mut f64, d2: &mut f64, b1: &mut f64, b2: f64) -> [f64; 5] {
     let mut p = [0.0_f64; 5];
-    unsafe { sys::cblas_drotmg(d1, d2, b1, b2, p.as_mut_ptr()); }
+    unsafe {
+        sys::cblas_drotmg(d1, d2, b1, b2, p.as_mut_ptr());
+    }
     p
 }
 
@@ -3417,7 +4183,10 @@ pub fn srotm(x: &mut [f32], y: &mut [f32], p: &[f32; 5]) -> Result<()> {
     unsafe {
         sys::cblas_srotm(
             n as sys::f77_int,
-            x.as_mut_ptr(), 1, y.as_mut_ptr(), 1,
+            x.as_mut_ptr(),
+            1,
+            y.as_mut_ptr(),
+            1,
             p.as_ptr(),
         );
     }
@@ -3430,7 +4199,10 @@ pub fn drotm(x: &mut [f64], y: &mut [f64], p: &[f64; 5]) -> Result<()> {
     unsafe {
         sys::cblas_drotm(
             n as sys::f77_int,
-            x.as_mut_ptr(), 1, y.as_mut_ptr(), 1,
+            x.as_mut_ptr(),
+            1,
+            y.as_mut_ptr(),
+            1,
             p.as_ptr(),
         );
     }
@@ -3442,14 +4214,7 @@ pub fn drotm(x: &mut [f64], y: &mut [f64], p: &[f64; 5]) -> Result<()> {
 /// rounding back to single precision.
 pub fn sdsdot(alpha: f32, x: &[f32], y: &[f32]) -> f32 {
     let n = x.len().min(y.len());
-    unsafe {
-        sys::cblas_sdsdot(
-            n as sys::f77_int,
-            alpha,
-            x.as_ptr(), 1,
-            y.as_ptr(), 1,
-        )
-    }
+    unsafe { sys::cblas_sdsdot(n as sys::f77_int, alpha, x.as_ptr(), 1, y.as_ptr(), 1) }
 }
 
 // ----- Complex-only Givens-rotation extras ---------------------------------
@@ -3491,9 +4256,12 @@ pub fn csrot(x: &mut [Complex32], y: &mut [Complex32], c: f32, s: f32) -> Result
     unsafe {
         sys::cblas_csrot(
             n as sys::f77_int,
-            x.as_mut_ptr() as *mut std::os::raw::c_void, 1,
-            y.as_mut_ptr() as *mut std::os::raw::c_void, 1,
-            c, s,
+            x.as_mut_ptr() as *mut std::os::raw::c_void,
+            1,
+            y.as_mut_ptr() as *mut std::os::raw::c_void,
+            1,
+            c,
+            s,
         );
     }
     Ok(())
@@ -3505,9 +4273,12 @@ pub fn zdrot(x: &mut [Complex64], y: &mut [Complex64], c: f64, s: f64) -> Result
     unsafe {
         sys::cblas_zdrot(
             n as sys::f77_int,
-            x.as_mut_ptr() as *mut std::os::raw::c_void, 1,
-            y.as_mut_ptr() as *mut std::os::raw::c_void, 1,
-            c, s,
+            x.as_mut_ptr() as *mut std::os::raw::c_void,
+            1,
+            y.as_mut_ptr() as *mut std::os::raw::c_void,
+            1,
+            c,
+            s,
         );
     }
     Ok(())
@@ -3551,13 +4322,19 @@ pub unsafe fn sgemm_batch(
 ) {
     sys::cblas_sgemm_batch(
         layout_raw(layout),
-        trans_a.as_mut_ptr(), trans_b.as_mut_ptr(),
-        m.as_mut_ptr(), n.as_mut_ptr(), k.as_mut_ptr(),
+        trans_a.as_mut_ptr(),
+        trans_b.as_mut_ptr(),
+        m.as_mut_ptr(),
+        n.as_mut_ptr(),
+        k.as_mut_ptr(),
         alpha.as_ptr(),
-        a_array.as_mut_ptr(), lda.as_mut_ptr(),
-        b_array.as_mut_ptr(), ldb.as_mut_ptr(),
+        a_array.as_mut_ptr(),
+        lda.as_mut_ptr(),
+        b_array.as_mut_ptr(),
+        ldb.as_mut_ptr(),
         beta.as_ptr(),
-        c_array.as_mut_ptr(), ldc.as_mut_ptr(),
+        c_array.as_mut_ptr(),
+        ldc.as_mut_ptr(),
         group_count as sys::f77_int,
         group_size.as_mut_ptr(),
     );
@@ -3588,13 +4365,19 @@ pub unsafe fn dgemm_batch(
 ) {
     sys::cblas_dgemm_batch(
         layout_raw(layout),
-        trans_a.as_mut_ptr(), trans_b.as_mut_ptr(),
-        m.as_mut_ptr(), n.as_mut_ptr(), k.as_mut_ptr(),
+        trans_a.as_mut_ptr(),
+        trans_b.as_mut_ptr(),
+        m.as_mut_ptr(),
+        n.as_mut_ptr(),
+        k.as_mut_ptr(),
         alpha.as_ptr(),
-        a_array.as_mut_ptr(), lda.as_mut_ptr(),
-        b_array.as_mut_ptr(), ldb.as_mut_ptr(),
+        a_array.as_mut_ptr(),
+        lda.as_mut_ptr(),
+        b_array.as_mut_ptr(),
+        ldb.as_mut_ptr(),
         beta.as_ptr(),
-        c_array.as_mut_ptr(), ldc.as_mut_ptr(),
+        c_array.as_mut_ptr(),
+        ldc.as_mut_ptr(),
         group_count as sys::f77_int,
         group_size.as_mut_ptr(),
     );
@@ -3626,11 +4409,19 @@ pub unsafe fn cgemm_batch(
 ) {
     sys::cblas_cgemm_batch(
         layout_raw(layout),
-        trans_a.as_mut_ptr(), trans_b.as_mut_ptr(),
-        m.as_mut_ptr(), n.as_mut_ptr(), k.as_mut_ptr(),
-        alpha, a_array, lda.as_mut_ptr(),
-        b_array, ldb.as_mut_ptr(),
-        beta, c_array, ldc.as_mut_ptr(),
+        trans_a.as_mut_ptr(),
+        trans_b.as_mut_ptr(),
+        m.as_mut_ptr(),
+        n.as_mut_ptr(),
+        k.as_mut_ptr(),
+        alpha,
+        a_array,
+        lda.as_mut_ptr(),
+        b_array,
+        ldb.as_mut_ptr(),
+        beta,
+        c_array,
+        ldc.as_mut_ptr(),
         group_count as sys::f77_int,
         group_size.as_mut_ptr(),
     );
@@ -3661,11 +4452,19 @@ pub unsafe fn zgemm_batch(
 ) {
     sys::cblas_zgemm_batch(
         layout_raw(layout),
-        trans_a.as_mut_ptr(), trans_b.as_mut_ptr(),
-        m.as_mut_ptr(), n.as_mut_ptr(), k.as_mut_ptr(),
-        alpha, a_array, lda.as_mut_ptr(),
-        b_array, ldb.as_mut_ptr(),
-        beta, c_array, ldc.as_mut_ptr(),
+        trans_a.as_mut_ptr(),
+        trans_b.as_mut_ptr(),
+        m.as_mut_ptr(),
+        n.as_mut_ptr(),
+        k.as_mut_ptr(),
+        alpha,
+        a_array,
+        lda.as_mut_ptr(),
+        b_array,
+        ldb.as_mut_ptr(),
+        beta,
+        c_array,
+        ldc.as_mut_ptr(),
         group_count as sys::f77_int,
         group_size.as_mut_ptr(),
     );
@@ -3691,7 +4490,12 @@ impl PackId {
 /// `f32` GEMM operand. Pair with [`sgemm_pack`] / [`sgemm_compute`].
 pub fn sgemm_pack_get_size(id: PackId, m: usize, n: usize, k: usize) -> usize {
     let r = unsafe {
-        sys::cblas_sgemm_pack_get_size(id.raw(), m as sys::f77_int, n as sys::f77_int, k as sys::f77_int)
+        sys::cblas_sgemm_pack_get_size(
+            id.raw(),
+            m as sys::f77_int,
+            n as sys::f77_int,
+            k as sys::f77_int,
+        )
     };
     r as usize
 }
@@ -3699,7 +4503,12 @@ pub fn sgemm_pack_get_size(id: PackId, m: usize, n: usize, k: usize) -> usize {
 /// `f64` packed-GEMM size query. See [`sgemm_pack_get_size`].
 pub fn dgemm_pack_get_size(id: PackId, m: usize, n: usize, k: usize) -> usize {
     let r = unsafe {
-        sys::cblas_dgemm_pack_get_size(id.raw(), m as sys::f77_int, n as sys::f77_int, k as sys::f77_int)
+        sys::cblas_dgemm_pack_get_size(
+            id.raw(),
+            m as sys::f77_int,
+            n as sys::f77_int,
+            k as sys::f77_int,
+        )
     };
     r as usize
 }
@@ -3722,10 +4531,15 @@ pub fn sgemm_pack(
 ) {
     unsafe {
         sys::cblas_sgemm_pack(
-            layout_raw(layout), id.raw(), trans_raw(trans),
-            m as sys::f77_int, n as sys::f77_int, k as sys::f77_int,
+            layout_raw(layout),
+            id.raw(),
+            trans_raw(trans),
+            m as sys::f77_int,
+            n as sys::f77_int,
+            k as sys::f77_int,
             alpha,
-            src.as_ptr(), ld as sys::f77_int,
+            src.as_ptr(),
+            ld as sys::f77_int,
             dest.as_mut_ptr(),
         );
     }
@@ -3747,10 +4561,15 @@ pub fn dgemm_pack(
 ) {
     unsafe {
         sys::cblas_dgemm_pack(
-            layout_raw(layout), id.raw(), trans_raw(trans),
-            m as sys::f77_int, n as sys::f77_int, k as sys::f77_int,
+            layout_raw(layout),
+            id.raw(),
+            trans_raw(trans),
+            m as sys::f77_int,
+            n as sys::f77_int,
+            k as sys::f77_int,
             alpha,
-            src.as_ptr(), ld as sys::f77_int,
+            src.as_ptr(),
+            ld as sys::f77_int,
             dest.as_mut_ptr(),
         );
     }
@@ -3778,12 +4597,19 @@ pub fn sgemm_compute(
 ) {
     unsafe {
         sys::cblas_sgemm_compute(
-            layout_raw(layout), trans_a, trans_b,
-            m as sys::f77_int, n as sys::f77_int, k as sys::f77_int,
-            a.as_ptr(), lda as sys::f77_int,
-            b.as_ptr(), ldb as sys::f77_int,
+            layout_raw(layout),
+            trans_a,
+            trans_b,
+            m as sys::f77_int,
+            n as sys::f77_int,
+            k as sys::f77_int,
+            a.as_ptr(),
+            lda as sys::f77_int,
+            b.as_ptr(),
+            ldb as sys::f77_int,
             beta,
-            c.as_mut_ptr(), ldc as sys::f77_int,
+            c.as_mut_ptr(),
+            ldc as sys::f77_int,
         );
     }
 }
@@ -3811,13 +4637,19 @@ pub fn cgemm3m(
     unsafe {
         sys::cblas_cgemm3m(
             layout_raw(layout),
-            trans_raw(trans_a), trans_raw(trans_b),
-            m as sys::f77_int, n as sys::f77_int, k as sys::f77_int,
+            trans_raw(trans_a),
+            trans_raw(trans_b),
+            m as sys::f77_int,
+            n as sys::f77_int,
+            k as sys::f77_int,
             &alpha as *const _ as *const std::os::raw::c_void,
-            a.as_ptr() as *const std::os::raw::c_void, lda as sys::f77_int,
-            b.as_ptr() as *const std::os::raw::c_void, ldb as sys::f77_int,
+            a.as_ptr() as *const std::os::raw::c_void,
+            lda as sys::f77_int,
+            b.as_ptr() as *const std::os::raw::c_void,
+            ldb as sys::f77_int,
             &beta as *const _ as *const std::os::raw::c_void,
-            c.as_mut_ptr() as *mut std::os::raw::c_void, ldc as sys::f77_int,
+            c.as_mut_ptr() as *mut std::os::raw::c_void,
+            ldc as sys::f77_int,
         );
     }
 }
@@ -3843,13 +4675,19 @@ pub fn zgemm3m(
     unsafe {
         sys::cblas_zgemm3m(
             layout_raw(layout),
-            trans_raw(trans_a), trans_raw(trans_b),
-            m as sys::f77_int, n as sys::f77_int, k as sys::f77_int,
+            trans_raw(trans_a),
+            trans_raw(trans_b),
+            m as sys::f77_int,
+            n as sys::f77_int,
+            k as sys::f77_int,
             &alpha as *const _ as *const std::os::raw::c_void,
-            a.as_ptr() as *const std::os::raw::c_void, lda as sys::f77_int,
-            b.as_ptr() as *const std::os::raw::c_void, ldb as sys::f77_int,
+            a.as_ptr() as *const std::os::raw::c_void,
+            lda as sys::f77_int,
+            b.as_ptr() as *const std::os::raw::c_void,
+            ldb as sys::f77_int,
             &beta as *const _ as *const std::os::raw::c_void,
-            c.as_mut_ptr() as *mut std::os::raw::c_void, ldc as sys::f77_int,
+            c.as_mut_ptr() as *mut std::os::raw::c_void,
+            ldc as sys::f77_int,
         );
     }
 }
@@ -3884,12 +4722,19 @@ pub fn dgemm_compute(
 ) {
     unsafe {
         sys::cblas_dgemm_compute(
-            layout_raw(layout), trans_a, trans_b,
-            m as sys::f77_int, n as sys::f77_int, k as sys::f77_int,
-            a.as_ptr(), lda as sys::f77_int,
-            b.as_ptr(), ldb as sys::f77_int,
+            layout_raw(layout),
+            trans_a,
+            trans_b,
+            m as sys::f77_int,
+            n as sys::f77_int,
+            k as sys::f77_int,
+            a.as_ptr(),
+            lda as sys::f77_int,
+            b.as_ptr(),
+            ldb as sys::f77_int,
             beta,
-            c.as_mut_ptr(), ldc as sys::f77_int,
+            c.as_mut_ptr(),
+            ldc as sys::f77_int,
         );
     }
 }
@@ -4042,10 +4887,7 @@ mod tests {
 
     #[test]
     fn asum_complex_re_plus_im() {
-        let x = [
-            Complex64::new(1.0, -2.0),
-            Complex64::new(-3.0, 4.0),
-        ];
+        let x = [Complex64::new(1.0, -2.0), Complex64::new(-3.0, 4.0)];
         let s: f64 = asum(&x).unwrap();
         approx(s, 1.0 + 2.0 + 3.0 + 4.0, 1e-12);
     }
@@ -4174,11 +5016,7 @@ mod tests {
         // diagonals implicit). x = [1, 2, 3] → U·x = [1+4+9, 2+12, 3] = [14, 14, 3]
         // BLAS uses the upper triangle including diagonal; with Diag::Unit
         // it ignores the actual diagonal entries.
-        let a = [
-            0.0_f64, 2.0, 3.0,
-            0.0,     0.0, 4.0,
-            0.0,     0.0, 0.0,
-        ];
+        let a = [0.0_f64, 2.0, 3.0, 0.0, 0.0, 4.0, 0.0, 0.0, 0.0];
         let mut x = [1.0_f64, 2.0, 3.0];
         trmv(Uplo::Upper, Trans::No, Diag::Unit, 3, &a, &mut x).unwrap();
         assert_eq!(x, [14.0, 14.0, 3.0]);
@@ -4188,11 +5026,7 @@ mod tests {
     fn trsv_then_trmv_round_trip() {
         // For non-unit upper triangular U, trsv solves Ux=b, trmv computes U·y.
         // Solve U·z = b then verify U·z ≈ b.
-        let u = [
-            2.0_f64, 1.0, 1.0,
-            0.0,     3.0, 2.0,
-            0.0,     0.0, 4.0,
-        ];
+        let u = [2.0_f64, 1.0, 1.0, 0.0, 3.0, 2.0, 0.0, 0.0, 4.0];
         let b = [11.0_f64, 13.0, 8.0];
         let mut z = b;
         trsv(Uplo::Upper, Trans::No, Diag::NonUnit, 3, &u, &mut z).unwrap();
@@ -4329,7 +5163,7 @@ mod tests {
         let a = [1.0_f64, 2.0, 3.0, 4.0];
         let mut c = [0.0_f64; 4];
         syrk(Uplo::Upper, Trans::No, 2, 2, 1.0, &a, 0.0, &mut c).unwrap();
-        assert_eq!(c[0], 5.0);  // (0,0)
+        assert_eq!(c[0], 5.0); // (0,0)
         assert_eq!(c[1], 11.0); // (0,1)
         assert_eq!(c[3], 25.0); // (1,1)
     }
@@ -4351,7 +5185,18 @@ mod tests {
         // trmm Side::Left: B := L·B = [[3],[2*3+4]] = [[3],[10]]
         let l = [0.0_f64, 0.0, 2.0, 0.0]; // diag implicit
         let mut b = [3.0_f64, 4.0];
-        trmm(Side::Left, Uplo::Lower, Trans::No, Diag::Unit, 2, 1, 1.0, &l, &mut b).unwrap();
+        trmm(
+            Side::Left,
+            Uplo::Lower,
+            Trans::No,
+            Diag::Unit,
+            2,
+            1,
+            1.0,
+            &l,
+            &mut b,
+        )
+        .unwrap();
         assert_eq!(b, [3.0, 10.0]);
     }
 
@@ -4360,7 +5205,18 @@ mod tests {
         // L · X = B, L = [[1, 0],[2, 1]], B = [[3],[10]] → X = [[3],[4]]
         let l = [0.0_f64, 0.0, 2.0, 0.0];
         let mut b = [3.0_f64, 10.0];
-        trsm(Side::Left, Uplo::Lower, Trans::No, Diag::Unit, 2, 1, 1.0, &l, &mut b).unwrap();
+        trsm(
+            Side::Left,
+            Uplo::Lower,
+            Trans::No,
+            Diag::Unit,
+            2,
+            1,
+            1.0,
+            &l,
+            &mut b,
+        )
+        .unwrap();
         assert_eq!(b, [3.0, 4.0]);
     }
 
@@ -4369,12 +5225,30 @@ mod tests {
         // A = [[2, 0],[0, 2]] Hermitian (real entries), B = I_2 = [[1,0],[0,1]]
         // C = α·A·B = 2·I_2.
         let a = [
-            Complex64::new(2.0, 0.0), Complex64::ZERO,
-            Complex64::ZERO, Complex64::new(2.0, 0.0),
+            Complex64::new(2.0, 0.0),
+            Complex64::ZERO,
+            Complex64::ZERO,
+            Complex64::new(2.0, 0.0),
         ];
-        let b = [Complex64::ONE, Complex64::ZERO, Complex64::ZERO, Complex64::ONE];
+        let b = [
+            Complex64::ONE,
+            Complex64::ZERO,
+            Complex64::ZERO,
+            Complex64::ONE,
+        ];
         let mut c = [Complex64::ZERO; 4];
-        hemm(Side::Left, Uplo::Upper, 2, 2, Complex64::ONE, &a, &b, Complex64::ZERO, &mut c).unwrap();
+        hemm(
+            Side::Left,
+            Uplo::Upper,
+            2,
+            2,
+            Complex64::ONE,
+            &a,
+            &b,
+            Complex64::ZERO,
+            &mut c,
+        )
+        .unwrap();
         assert_eq!(c[0], Complex64::new(2.0, 0.0));
         assert_eq!(c[3], Complex64::new(2.0, 0.0));
     }
@@ -4406,7 +5280,18 @@ mod tests {
         let a = [Complex64::ONE];
         let b = [Complex64::ONE];
         let mut c = [Complex64::ZERO; 1];
-        her2k(Uplo::Upper, Trans::No, 1, 1, Complex64::ONE, &a, &b, 0.0, &mut c).unwrap();
+        her2k(
+            Uplo::Upper,
+            Trans::No,
+            1,
+            1,
+            Complex64::ONE,
+            &a,
+            &b,
+            0.0,
+            &mut c,
+        )
+        .unwrap();
         assert!((c[0].re - 2.0).abs() < 1e-12);
     }
 
@@ -4419,7 +5304,21 @@ mod tests {
         let a = [2.0_f64, 4.0, 6.0];
         let x = [1.0_f64, 2.0, 3.0];
         let mut y = [0.0_f64; 3];
-        gbmv(Layout::ColMajor, Trans::No, 3, 3, 0, 0, 1.0, &a, 1, &x, 0.0, &mut y).unwrap();
+        gbmv(
+            Layout::ColMajor,
+            Trans::No,
+            3,
+            3,
+            0,
+            0,
+            1.0,
+            &a,
+            1,
+            &x,
+            0.0,
+            &mut y,
+        )
+        .unwrap();
         assert_eq!(y, [2.0, 8.0, 18.0]);
     }
 
@@ -4473,14 +5372,32 @@ mod tests {
         let a = [1.0_f64, 2.0, 3.0, 4.0];
         let b = [1.0_f64, 0.0, 0.0, 1.0];
         let mut c = [-7.0_f64; 4]; // sentinel
-        gemmt(Uplo::Upper, Trans::No, Trans::No, 2, 2,
-              1.0, &a, 2, &b, 2, 0.0, &mut c, 2).unwrap();
+        gemmt(
+            Uplo::Upper,
+            Trans::No,
+            Trans::No,
+            2,
+            2,
+            1.0,
+            &a,
+            2,
+            &b,
+            2,
+            0.0,
+            &mut c,
+            2,
+        )
+        .unwrap();
         // Upper triangle of A: positions 0 (=A[0,0]) and 1 (=A[0,1]) and
         // 3 (=A[1,1]). Lower (pos 2) untouched.
         assert!((c[0] - 1.0).abs() < 1e-12);
         assert!((c[1] - 2.0).abs() < 1e-12);
         assert!((c[3] - 4.0).abs() < 1e-12);
-        assert!((c[2] - (-7.0)).abs() < 1e-12, "lower triangle changed: {}", c[2]);
+        assert!(
+            (c[2] - (-7.0)).abs() < 1e-12,
+            "lower triangle changed: {}",
+            c[2]
+        );
     }
 
     #[test]

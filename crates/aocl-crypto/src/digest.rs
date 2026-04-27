@@ -115,11 +115,7 @@ impl Digest {
     pub fn finalize(mut self) -> Result<Vec<u8>> {
         let mut out = vec![0u8; self.output_len];
         let res = unsafe {
-            sys::alcp_digest_finalize(
-                &mut self.handle,
-                out.as_mut_ptr(),
-                out.len() as u64,
-            )
+            sys::alcp_digest_finalize(&mut self.handle, out.as_mut_ptr(), out.len() as u64)
         };
         check_error(res)?;
         self.finished = true;

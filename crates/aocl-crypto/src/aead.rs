@@ -104,7 +104,10 @@ impl Aead {
                 iv.len() as u64,
             )
         })?;
-        Ok(Self { handle, _context: context })
+        Ok(Self {
+            handle,
+            _context: context,
+        })
     }
 
     /// CCM-only: declare the plaintext length and tag length up front
@@ -114,9 +117,7 @@ impl Aead {
         check(unsafe {
             sys::alcp_cipher_aead_set_ccm_plaintext_length(&mut self.handle, plaintext_len)
         })?;
-        check(unsafe {
-            sys::alcp_cipher_aead_set_tag_length(&mut self.handle, tag_len as u64)
-        })?;
+        check(unsafe { sys::alcp_cipher_aead_set_tag_length(&mut self.handle, tag_len as u64) })?;
         Ok(())
     }
 
@@ -135,7 +136,8 @@ impl Aead {
         if plaintext.len() != ciphertext.len() {
             return Err(Error::InvalidArgument(format!(
                 "encrypt: plaintext.len()={}, ciphertext.len()={}",
-                plaintext.len(), ciphertext.len()
+                plaintext.len(),
+                ciphertext.len()
             )));
         }
         check(unsafe {
@@ -155,7 +157,8 @@ impl Aead {
         if ciphertext.len() != plaintext.len() {
             return Err(Error::InvalidArgument(format!(
                 "decrypt: ciphertext.len()={}, plaintext.len()={}",
-                ciphertext.len(), plaintext.len()
+                ciphertext.len(),
+                plaintext.len()
             )));
         }
         check(unsafe {
@@ -251,7 +254,8 @@ mod tests {
         let mut recovered = vec![0u8; plaintext.len()];
         {
             let mut dec = Aead::new(Mode::AesGcm, &key, &iv).unwrap();
-            dec.verify_and_decrypt(&ciphertext, &mut recovered, &tag).unwrap();
+            dec.verify_and_decrypt(&ciphertext, &mut recovered, &tag)
+                .unwrap();
         }
         assert_eq!(recovered, plaintext);
     }
@@ -276,7 +280,8 @@ mod tests {
         {
             let mut dec = Aead::new(Mode::AesGcm, &key, &iv).unwrap();
             dec.set_aad(&aad).unwrap();
-            dec.verify_and_decrypt(&ciphertext, &mut recovered, &tag).unwrap();
+            dec.verify_and_decrypt(&ciphertext, &mut recovered, &tag)
+                .unwrap();
         }
         assert_eq!(recovered, plaintext);
     }
@@ -301,7 +306,9 @@ mod tests {
         let mut recovered = vec![0u8; plaintext.len()];
         let mut dec = Aead::new(Mode::AesGcm, &key, &iv).unwrap();
         dec.set_aad(b"tampered AAD").unwrap();
-        let err = dec.verify_and_decrypt(&ciphertext, &mut recovered, &tag).unwrap_err();
+        let err = dec
+            .verify_and_decrypt(&ciphertext, &mut recovered, &tag)
+            .unwrap_err();
         match err {
             Error::Status { code: -1, .. } => {}
             other => panic!("expected tag-mismatch error, got {other:?}"),
@@ -328,7 +335,9 @@ mod tests {
 
         let mut recovered = vec![0u8; plaintext.len()];
         let mut dec = Aead::new(Mode::AesGcm, &key, &iv).unwrap();
-        let err = dec.verify_and_decrypt(&ciphertext, &mut recovered, &tag).unwrap_err();
+        let err = dec
+            .verify_and_decrypt(&ciphertext, &mut recovered, &tag)
+            .unwrap_err();
         assert!(matches!(err, Error::Status { .. }));
     }
 
