@@ -3788,6 +3788,83 @@ pub fn sgemm_compute(
     }
 }
 
+/// `Complex32` Strassen-like GEMM (`3M` algorithm) — equivalent to
+/// [`gemm`] but using only three real matmuls per complex matmul.
+/// Tends to be faster on large complex problems.
+#[allow(clippy::too_many_arguments)]
+pub fn cgemm3m(
+    layout: Layout,
+    trans_a: Trans,
+    trans_b: Trans,
+    m: usize,
+    n: usize,
+    k: usize,
+    alpha: Complex32,
+    a: &[Complex32],
+    lda: usize,
+    b: &[Complex32],
+    ldb: usize,
+    beta: Complex32,
+    c: &mut [Complex32],
+    ldc: usize,
+) {
+    unsafe {
+        sys::cblas_cgemm3m(
+            layout_raw(layout),
+            trans_raw(trans_a), trans_raw(trans_b),
+            m as sys::f77_int, n as sys::f77_int, k as sys::f77_int,
+            &alpha as *const _ as *const std::os::raw::c_void,
+            a.as_ptr() as *const std::os::raw::c_void, lda as sys::f77_int,
+            b.as_ptr() as *const std::os::raw::c_void, ldb as sys::f77_int,
+            &beta as *const _ as *const std::os::raw::c_void,
+            c.as_mut_ptr() as *mut std::os::raw::c_void, ldc as sys::f77_int,
+        );
+    }
+}
+
+/// `Complex64` Strassen-like GEMM. See [`cgemm3m`].
+#[allow(clippy::too_many_arguments)]
+pub fn zgemm3m(
+    layout: Layout,
+    trans_a: Trans,
+    trans_b: Trans,
+    m: usize,
+    n: usize,
+    k: usize,
+    alpha: Complex64,
+    a: &[Complex64],
+    lda: usize,
+    b: &[Complex64],
+    ldb: usize,
+    beta: Complex64,
+    c: &mut [Complex64],
+    ldc: usize,
+) {
+    unsafe {
+        sys::cblas_zgemm3m(
+            layout_raw(layout),
+            trans_raw(trans_a), trans_raw(trans_b),
+            m as sys::f77_int, n as sys::f77_int, k as sys::f77_int,
+            &alpha as *const _ as *const std::os::raw::c_void,
+            a.as_ptr() as *const std::os::raw::c_void, lda as sys::f77_int,
+            b.as_ptr() as *const std::os::raw::c_void, ldb as sys::f77_int,
+            &beta as *const _ as *const std::os::raw::c_void,
+            c.as_mut_ptr() as *mut std::os::raw::c_void, ldc as sys::f77_int,
+        );
+    }
+}
+
+/// "Complex absolute value" `|Re(z)| + |Im(z)|` for a `Complex32` —
+/// the BLAS L1 sense of magnitude (NOT `√(Re² + Im²)`).
+pub fn scabs1(z: Complex32) -> f32 {
+    unsafe { sys::cblas_scabs1(&z as *const _ as *const std::os::raw::c_void) }
+}
+
+/// `Complex64` BLAS-style absolute value. See [`scabs1`].
+pub fn dcabs1(z: Complex64) -> f64 {
+    unsafe { sys::cblas_dcabs1(&z as *const _ as *const std::os::raw::c_void) }
+}
+
 /// `f64` packed-GEMM compute. See [`sgemm_compute`].
 #[allow(clippy::too_many_arguments)]
 pub fn dgemm_compute(

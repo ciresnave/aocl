@@ -1959,6 +1959,938 @@ pub fn clange(norm: Norm, m: usize, n: usize, a: &[Complex32], lda: usize) -> f3
 }
 
 // =========================================================================
+//   Advanced eigen / SVD: divide-and-conquer, relative-robust, partial,
+//   generalized, Schur, Bunch-Kaufman, condition numbers, Householder
+// =========================================================================
+
+/// Range selector for the partial-eigenvalue / partial-SVD routines.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Range {
+    /// All eigenvalues / singular values.
+    All,
+    /// Half-open value range `[vl, vu)`.
+    Values,
+    /// Index range `[il, iu]` (1-based).
+    Indices,
+}
+
+impl Range {
+    fn raw(self) -> c_char {
+        match self {
+            Range::All => b'A' as c_char,
+            Range::Values => b'V' as c_char,
+            Range::Indices => b'I' as c_char,
+        }
+    }
+}
+
+/// Macro to compactly define an LAPACKE wrapper that returns
+/// `Result<()>` from `info`.
+macro_rules! lapack_call {
+    ($name:expr, $fn:ident, $($arg:expr),* $(,)?) => {{
+        let info = unsafe { sys::$fn($($arg,)*) };
+        map_info($name, info)
+    }};
+}
+
+// ----- syevd: divide-and-conquer symmetric eigen -----
+/// Divide-and-conquer symmetric eigendecomposition. (`f64`)
+pub fn dsyevd(jobz_v: bool, uplo: Uplo, n: usize, a: &mut [f64], lda: usize, w: &mut [f64]) -> Result<()> {
+    let jobz = if jobz_v { b'V' } else { b'N' } as c_char;
+    lapack_call!("lapack", LAPACKE_dsyevd, ROW_MAJOR, jobz, uplo_char(uplo), n as i32, a.as_mut_ptr(), lda as i32, w.as_mut_ptr())
+}
+/// `f32` divide-and-conquer eigen. See [`dsyevd`].
+pub fn ssyevd(jobz_v: bool, uplo: Uplo, n: usize, a: &mut [f32], lda: usize, w: &mut [f32]) -> Result<()> {
+    let jobz = if jobz_v { b'V' } else { b'N' } as c_char;
+    lapack_call!("lapack", LAPACKE_ssyevd, ROW_MAJOR, jobz, uplo_char(uplo), n as i32, a.as_mut_ptr(), lda as i32, w.as_mut_ptr())
+}
+/// `Complex64` divide-and-conquer Hermitian eigen. See [`dsyevd`].
+pub fn zheevd(jobz_v: bool, uplo: Uplo, n: usize, a: &mut [Complex64], lda: usize, w: &mut [f64]) -> Result<()> {
+    let jobz = if jobz_v { b'V' } else { b'N' } as c_char;
+    lapack_call!("lapack", LAPACKE_zheevd, ROW_MAJOR, jobz, uplo_char(uplo), n as i32, a.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, lda as i32, w.as_mut_ptr())
+}
+/// `Complex32` divide-and-conquer Hermitian eigen. See [`dsyevd`].
+pub fn cheevd(jobz_v: bool, uplo: Uplo, n: usize, a: &mut [Complex32], lda: usize, w: &mut [f32]) -> Result<()> {
+    let jobz = if jobz_v { b'V' } else { b'N' } as c_char;
+    lapack_call!("lapack", LAPACKE_cheevd, ROW_MAJOR, jobz, uplo_char(uplo), n as i32, a.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, lda as i32, w.as_mut_ptr())
+}
+
+// ----- syevr/heevr: relative-robust eigen with optional range -----
+
+/// Relative-robust symmetric eigendecomposition with optional range
+/// selection. Returns the count of eigenvalues actually computed (in
+/// the selected range). (`f64`)
+#[allow(clippy::too_many_arguments)]
+pub fn dsyevr(
+    jobz_v: bool, range: Range, uplo: Uplo, n: usize,
+    a: &mut [f64], lda: usize,
+    vl: f64, vu: f64, il: i32, iu: i32, abstol: f64,
+    w: &mut [f64], z: &mut [f64], ldz: usize, isuppz: &mut [i32],
+) -> Result<usize> {
+    let jobz = if jobz_v { b'V' } else { b'N' } as c_char;
+    let mut m: i32 = 0;
+    let info = unsafe {
+        sys::LAPACKE_dsyevr(
+            ROW_MAJOR, jobz, range.raw(), uplo_char(uplo), n as i32,
+            a.as_mut_ptr(), lda as i32,
+            vl, vu, il, iu, abstol,
+            &mut m,
+            w.as_mut_ptr(), z.as_mut_ptr(), ldz as i32, isuppz.as_mut_ptr(),
+        )
+    };
+    map_info("lapack", info)?;
+    Ok(m as usize)
+}
+
+/// `f32` relative-robust eigen. See [`dsyevr`].
+#[allow(clippy::too_many_arguments)]
+pub fn ssyevr(
+    jobz_v: bool, range: Range, uplo: Uplo, n: usize,
+    a: &mut [f32], lda: usize,
+    vl: f32, vu: f32, il: i32, iu: i32, abstol: f32,
+    w: &mut [f32], z: &mut [f32], ldz: usize, isuppz: &mut [i32],
+) -> Result<usize> {
+    let jobz = if jobz_v { b'V' } else { b'N' } as c_char;
+    let mut m: i32 = 0;
+    let info = unsafe {
+        sys::LAPACKE_ssyevr(
+            ROW_MAJOR, jobz, range.raw(), uplo_char(uplo), n as i32,
+            a.as_mut_ptr(), lda as i32,
+            vl, vu, il, iu, abstol,
+            &mut m,
+            w.as_mut_ptr(), z.as_mut_ptr(), ldz as i32, isuppz.as_mut_ptr(),
+        )
+    };
+    map_info("lapack", info)?;
+    Ok(m as usize)
+}
+
+/// `Complex64` relative-robust Hermitian eigen. See [`dsyevr`].
+#[allow(clippy::too_many_arguments)]
+pub fn zheevr(
+    jobz_v: bool, range: Range, uplo: Uplo, n: usize,
+    a: &mut [Complex64], lda: usize,
+    vl: f64, vu: f64, il: i32, iu: i32, abstol: f64,
+    w: &mut [f64], z: &mut [Complex64], ldz: usize, isuppz: &mut [i32],
+) -> Result<usize> {
+    let jobz = if jobz_v { b'V' } else { b'N' } as c_char;
+    let mut m: i32 = 0;
+    let info = unsafe {
+        sys::LAPACKE_zheevr(
+            ROW_MAJOR, jobz, range.raw(), uplo_char(uplo), n as i32,
+            a.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, lda as i32,
+            vl, vu, il, iu, abstol,
+            &mut m,
+            w.as_mut_ptr(),
+            z.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, ldz as i32,
+            isuppz.as_mut_ptr(),
+        )
+    };
+    map_info("lapack", info)?;
+    Ok(m as usize)
+}
+
+/// `Complex32` relative-robust Hermitian eigen. See [`dsyevr`].
+#[allow(clippy::too_many_arguments)]
+pub fn cheevr(
+    jobz_v: bool, range: Range, uplo: Uplo, n: usize,
+    a: &mut [Complex32], lda: usize,
+    vl: f32, vu: f32, il: i32, iu: i32, abstol: f32,
+    w: &mut [f32], z: &mut [Complex32], ldz: usize, isuppz: &mut [i32],
+) -> Result<usize> {
+    let jobz = if jobz_v { b'V' } else { b'N' } as c_char;
+    let mut m: i32 = 0;
+    let info = unsafe {
+        sys::LAPACKE_cheevr(
+            ROW_MAJOR, jobz, range.raw(), uplo_char(uplo), n as i32,
+            a.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, lda as i32,
+            vl, vu, il, iu, abstol,
+            &mut m,
+            w.as_mut_ptr(),
+            z.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, ldz as i32,
+            isuppz.as_mut_ptr(),
+        )
+    };
+    map_info("lapack", info)?;
+    Ok(m as usize)
+}
+
+// ----- gesvdx: partial SVD with index/value range -----
+
+/// Partial SVD by value or index range. (`f64`) Returns the number of
+/// singular values actually computed.
+#[allow(clippy::too_many_arguments)]
+pub fn dgesvdx(
+    jobu_v: bool, jobvt_v: bool, range: Range,
+    m: usize, n: usize,
+    a: &mut [f64], lda: usize,
+    vl: f64, vu: f64, il: i32, iu: i32,
+    s: &mut [f64],
+    u: &mut [f64], ldu: usize,
+    vt: &mut [f64], ldvt: usize,
+    superb: &mut [i32],
+) -> Result<usize> {
+    let jobu = if jobu_v { b'V' } else { b'N' } as c_char;
+    let jobvt = if jobvt_v { b'V' } else { b'N' } as c_char;
+    let mut ns: i32 = 0;
+    let info = unsafe {
+        sys::LAPACKE_dgesvdx(
+            ROW_MAJOR, jobu, jobvt, range.raw(),
+            m as i32, n as i32,
+            a.as_mut_ptr(), lda as i32,
+            vl, vu, il, iu,
+            &mut ns,
+            s.as_mut_ptr(),
+            u.as_mut_ptr(), ldu as i32,
+            vt.as_mut_ptr(), ldvt as i32,
+            superb.as_mut_ptr(),
+        )
+    };
+    map_info("lapack", info)?;
+    Ok(ns as usize)
+}
+
+/// `f32` partial SVD. See [`dgesvdx`].
+#[allow(clippy::too_many_arguments)]
+pub fn sgesvdx(
+    jobu_v: bool, jobvt_v: bool, range: Range,
+    m: usize, n: usize,
+    a: &mut [f32], lda: usize,
+    vl: f32, vu: f32, il: i32, iu: i32,
+    s: &mut [f32],
+    u: &mut [f32], ldu: usize,
+    vt: &mut [f32], ldvt: usize,
+    superb: &mut [i32],
+) -> Result<usize> {
+    let jobu = if jobu_v { b'V' } else { b'N' } as c_char;
+    let jobvt = if jobvt_v { b'V' } else { b'N' } as c_char;
+    let mut ns: i32 = 0;
+    let info = unsafe {
+        sys::LAPACKE_sgesvdx(
+            ROW_MAJOR, jobu, jobvt, range.raw(),
+            m as i32, n as i32,
+            a.as_mut_ptr(), lda as i32,
+            vl, vu, il, iu,
+            &mut ns,
+            s.as_mut_ptr(),
+            u.as_mut_ptr(), ldu as i32,
+            vt.as_mut_ptr(), ldvt as i32,
+            superb.as_mut_ptr(),
+        )
+    };
+    map_info("lapack", info)?;
+    Ok(ns as usize)
+}
+
+/// `Complex64` partial SVD. See [`dgesvdx`].
+#[allow(clippy::too_many_arguments)]
+pub fn zgesvdx(
+    jobu_v: bool, jobvt_v: bool, range: Range,
+    m: usize, n: usize,
+    a: &mut [Complex64], lda: usize,
+    vl: f64, vu: f64, il: i32, iu: i32,
+    s: &mut [f64],
+    u: &mut [Complex64], ldu: usize,
+    vt: &mut [Complex64], ldvt: usize,
+    superb: &mut [i32],
+) -> Result<usize> {
+    let jobu = if jobu_v { b'V' } else { b'N' } as c_char;
+    let jobvt = if jobvt_v { b'V' } else { b'N' } as c_char;
+    let mut ns: i32 = 0;
+    let info = unsafe {
+        sys::LAPACKE_zgesvdx(
+            ROW_MAJOR, jobu, jobvt, range.raw(),
+            m as i32, n as i32,
+            a.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, lda as i32,
+            vl, vu, il, iu,
+            &mut ns,
+            s.as_mut_ptr(),
+            u.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, ldu as i32,
+            vt.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, ldvt as i32,
+            superb.as_mut_ptr(),
+        )
+    };
+    map_info("lapack", info)?;
+    Ok(ns as usize)
+}
+
+/// `Complex32` partial SVD. See [`dgesvdx`].
+#[allow(clippy::too_many_arguments)]
+pub fn cgesvdx(
+    jobu_v: bool, jobvt_v: bool, range: Range,
+    m: usize, n: usize,
+    a: &mut [Complex32], lda: usize,
+    vl: f32, vu: f32, il: i32, iu: i32,
+    s: &mut [f32],
+    u: &mut [Complex32], ldu: usize,
+    vt: &mut [Complex32], ldvt: usize,
+    superb: &mut [i32],
+) -> Result<usize> {
+    let jobu = if jobu_v { b'V' } else { b'N' } as c_char;
+    let jobvt = if jobvt_v { b'V' } else { b'N' } as c_char;
+    let mut ns: i32 = 0;
+    let info = unsafe {
+        sys::LAPACKE_cgesvdx(
+            ROW_MAJOR, jobu, jobvt, range.raw(),
+            m as i32, n as i32,
+            a.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, lda as i32,
+            vl, vu, il, iu,
+            &mut ns,
+            s.as_mut_ptr(),
+            u.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, ldu as i32,
+            vt.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, ldvt as i32,
+            superb.as_mut_ptr(),
+        )
+    };
+    map_info("lapack", info)?;
+    Ok(ns as usize)
+}
+
+// ----- ggev: generalised non-symmetric eigenproblem -----
+
+/// Generalised eigenproblem `A·x = λ·B·x`. Real version returns
+/// eigenvalues as `(alphar + alphai·j) / beta`. (`f64`)
+#[allow(clippy::too_many_arguments)]
+pub fn dggev(
+    compute_vl: bool, compute_vr: bool,
+    n: usize,
+    a: &mut [f64], lda: usize,
+    b: &mut [f64], ldb: usize,
+    alphar: &mut [f64], alphai: &mut [f64], beta: &mut [f64],
+    vl: &mut [f64], ldvl: usize,
+    vr: &mut [f64], ldvr: usize,
+) -> Result<()> {
+    let jobvl = if compute_vl { b'V' } else { b'N' } as c_char;
+    let jobvr = if compute_vr { b'V' } else { b'N' } as c_char;
+    lapack_call!("lapack", LAPACKE_dggev,
+        ROW_MAJOR, jobvl, jobvr, n as i32,
+        a.as_mut_ptr(), lda as i32, b.as_mut_ptr(), ldb as i32,
+        alphar.as_mut_ptr(), alphai.as_mut_ptr(), beta.as_mut_ptr(),
+        vl.as_mut_ptr(), ldvl as i32, vr.as_mut_ptr(), ldvr as i32)
+}
+
+/// `f32` generalised eig. See [`dggev`].
+#[allow(clippy::too_many_arguments)]
+pub fn sggev(
+    compute_vl: bool, compute_vr: bool,
+    n: usize,
+    a: &mut [f32], lda: usize,
+    b: &mut [f32], ldb: usize,
+    alphar: &mut [f32], alphai: &mut [f32], beta: &mut [f32],
+    vl: &mut [f32], ldvl: usize,
+    vr: &mut [f32], ldvr: usize,
+) -> Result<()> {
+    let jobvl = if compute_vl { b'V' } else { b'N' } as c_char;
+    let jobvr = if compute_vr { b'V' } else { b'N' } as c_char;
+    lapack_call!("lapack", LAPACKE_sggev,
+        ROW_MAJOR, jobvl, jobvr, n as i32,
+        a.as_mut_ptr(), lda as i32, b.as_mut_ptr(), ldb as i32,
+        alphar.as_mut_ptr(), alphai.as_mut_ptr(), beta.as_mut_ptr(),
+        vl.as_mut_ptr(), ldvl as i32, vr.as_mut_ptr(), ldvr as i32)
+}
+
+/// `Complex64` generalised eig. Returns single complex `alpha` (no
+/// split). See [`dggev`].
+#[allow(clippy::too_many_arguments)]
+pub fn zggev(
+    compute_vl: bool, compute_vr: bool,
+    n: usize,
+    a: &mut [Complex64], lda: usize,
+    b: &mut [Complex64], ldb: usize,
+    alpha: &mut [Complex64], beta: &mut [Complex64],
+    vl: &mut [Complex64], ldvl: usize,
+    vr: &mut [Complex64], ldvr: usize,
+) -> Result<()> {
+    let jobvl = if compute_vl { b'V' } else { b'N' } as c_char;
+    let jobvr = if compute_vr { b'V' } else { b'N' } as c_char;
+    lapack_call!("lapack", LAPACKE_zggev,
+        ROW_MAJOR, jobvl, jobvr, n as i32,
+        a.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, lda as i32,
+        b.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, ldb as i32,
+        alpha.as_mut_ptr() as *mut sys::__BindgenComplex<f64>,
+        beta.as_mut_ptr() as *mut sys::__BindgenComplex<f64>,
+        vl.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, ldvl as i32,
+        vr.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, ldvr as i32)
+}
+
+/// `Complex32` generalised eig. See [`zggev`].
+#[allow(clippy::too_many_arguments)]
+pub fn cggev(
+    compute_vl: bool, compute_vr: bool,
+    n: usize,
+    a: &mut [Complex32], lda: usize,
+    b: &mut [Complex32], ldb: usize,
+    alpha: &mut [Complex32], beta: &mut [Complex32],
+    vl: &mut [Complex32], ldvl: usize,
+    vr: &mut [Complex32], ldvr: usize,
+) -> Result<()> {
+    let jobvl = if compute_vl { b'V' } else { b'N' } as c_char;
+    let jobvr = if compute_vr { b'V' } else { b'N' } as c_char;
+    lapack_call!("lapack", LAPACKE_cggev,
+        ROW_MAJOR, jobvl, jobvr, n as i32,
+        a.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, lda as i32,
+        b.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, ldb as i32,
+        alpha.as_mut_ptr() as *mut sys::__BindgenComplex<f32>,
+        beta.as_mut_ptr() as *mut sys::__BindgenComplex<f32>,
+        vl.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, ldvl as i32,
+        vr.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, ldvr as i32)
+}
+
+// ----- gees: Schur decomposition (no eigenvalue selection callback) -----
+
+/// Schur decomposition `A = Z · T · Zᵀ`. The eigenvalue-selection
+/// callback (`select`) is passed `None` here; use the sys crate
+/// directly if you need to filter eigenvalues. Returns `sdim`, the
+/// number of eigenvalues that satisfied the (absent) selection. (`f64`)
+#[allow(clippy::too_many_arguments)]
+pub fn dgees(
+    compute_vs: bool,
+    n: usize,
+    a: &mut [f64], lda: usize,
+    wr: &mut [f64], wi: &mut [f64],
+    vs: &mut [f64], ldvs: usize,
+) -> Result<usize> {
+    let jobvs = if compute_vs { b'V' } else { b'N' } as c_char;
+    let mut sdim: i32 = 0;
+    let info = unsafe {
+        sys::LAPACKE_dgees(
+            ROW_MAJOR, jobvs, b'N' as c_char, None,
+            n as i32, a.as_mut_ptr(), lda as i32,
+            &mut sdim, wr.as_mut_ptr(), wi.as_mut_ptr(),
+            vs.as_mut_ptr(), ldvs as i32,
+        )
+    };
+    map_info("lapack", info)?;
+    Ok(sdim as usize)
+}
+
+/// `f32` Schur decomposition. See [`dgees`].
+#[allow(clippy::too_many_arguments)]
+pub fn sgees(
+    compute_vs: bool,
+    n: usize,
+    a: &mut [f32], lda: usize,
+    wr: &mut [f32], wi: &mut [f32],
+    vs: &mut [f32], ldvs: usize,
+) -> Result<usize> {
+    let jobvs = if compute_vs { b'V' } else { b'N' } as c_char;
+    let mut sdim: i32 = 0;
+    let info = unsafe {
+        sys::LAPACKE_sgees(
+            ROW_MAJOR, jobvs, b'N' as c_char, None,
+            n as i32, a.as_mut_ptr(), lda as i32,
+            &mut sdim, wr.as_mut_ptr(), wi.as_mut_ptr(),
+            vs.as_mut_ptr(), ldvs as i32,
+        )
+    };
+    map_info("lapack", info)?;
+    Ok(sdim as usize)
+}
+
+// ----- sytrf / sytrs / sytri: Bunch-Kaufman family for symmetric -----
+
+/// Bunch-Kaufman factorisation `A = L·D·Lᵀ` for symmetric indefinite. (`f64`)
+pub fn dsytrf(uplo: Uplo, n: usize, a: &mut [f64], lda: usize, ipiv: &mut [i32]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_dsytrf, ROW_MAJOR, uplo_char(uplo), n as i32, a.as_mut_ptr(), lda as i32, ipiv.as_mut_ptr())
+}
+/// `f32` Bunch-Kaufman factorisation. See [`dsytrf`].
+pub fn ssytrf(uplo: Uplo, n: usize, a: &mut [f32], lda: usize, ipiv: &mut [i32]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_ssytrf, ROW_MAJOR, uplo_char(uplo), n as i32, a.as_mut_ptr(), lda as i32, ipiv.as_mut_ptr())
+}
+/// `Complex64` symmetric Bunch-Kaufman factorisation. See [`dsytrf`].
+pub fn zsytrf(uplo: Uplo, n: usize, a: &mut [Complex64], lda: usize, ipiv: &mut [i32]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_zsytrf, ROW_MAJOR, uplo_char(uplo), n as i32, a.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, lda as i32, ipiv.as_mut_ptr())
+}
+/// `Complex32` symmetric Bunch-Kaufman factorisation. See [`dsytrf`].
+pub fn csytrf(uplo: Uplo, n: usize, a: &mut [Complex32], lda: usize, ipiv: &mut [i32]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_csytrf, ROW_MAJOR, uplo_char(uplo), n as i32, a.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, lda as i32, ipiv.as_mut_ptr())
+}
+
+/// Solve after [`dsytrf`].
+#[allow(clippy::too_many_arguments)]
+pub fn dsytrs(uplo: Uplo, n: usize, nrhs: usize, a: &[f64], lda: usize, ipiv: &[i32], b: &mut [f64], ldb: usize) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_dsytrs, ROW_MAJOR, uplo_char(uplo), n as i32, nrhs as i32, a.as_ptr(), lda as i32, ipiv.as_ptr(), b.as_mut_ptr(), ldb as i32)
+}
+/// `f32` solve after [`ssytrf`].
+#[allow(clippy::too_many_arguments)]
+pub fn ssytrs(uplo: Uplo, n: usize, nrhs: usize, a: &[f32], lda: usize, ipiv: &[i32], b: &mut [f32], ldb: usize) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_ssytrs, ROW_MAJOR, uplo_char(uplo), n as i32, nrhs as i32, a.as_ptr(), lda as i32, ipiv.as_ptr(), b.as_mut_ptr(), ldb as i32)
+}
+/// `Complex64` solve after [`zsytrf`].
+#[allow(clippy::too_many_arguments)]
+pub fn zsytrs(uplo: Uplo, n: usize, nrhs: usize, a: &[Complex64], lda: usize, ipiv: &[i32], b: &mut [Complex64], ldb: usize) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_zsytrs, ROW_MAJOR, uplo_char(uplo), n as i32, nrhs as i32, a.as_ptr() as *const sys::__BindgenComplex<f64>, lda as i32, ipiv.as_ptr(), b.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, ldb as i32)
+}
+/// `Complex32` solve after [`csytrf`].
+#[allow(clippy::too_many_arguments)]
+pub fn csytrs(uplo: Uplo, n: usize, nrhs: usize, a: &[Complex32], lda: usize, ipiv: &[i32], b: &mut [Complex32], ldb: usize) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_csytrs, ROW_MAJOR, uplo_char(uplo), n as i32, nrhs as i32, a.as_ptr() as *const sys::__BindgenComplex<f32>, lda as i32, ipiv.as_ptr(), b.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, ldb as i32)
+}
+
+/// Inverse from [`dsytrf`].
+pub fn dsytri(uplo: Uplo, n: usize, a: &mut [f64], lda: usize, ipiv: &[i32]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_dsytri, ROW_MAJOR, uplo_char(uplo), n as i32, a.as_mut_ptr(), lda as i32, ipiv.as_ptr())
+}
+/// `f32` inverse from [`ssytrf`].
+pub fn ssytri(uplo: Uplo, n: usize, a: &mut [f32], lda: usize, ipiv: &[i32]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_ssytri, ROW_MAJOR, uplo_char(uplo), n as i32, a.as_mut_ptr(), lda as i32, ipiv.as_ptr())
+}
+/// `Complex64` inverse from [`zsytrf`].
+pub fn zsytri(uplo: Uplo, n: usize, a: &mut [Complex64], lda: usize, ipiv: &[i32]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_zsytri, ROW_MAJOR, uplo_char(uplo), n as i32, a.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, lda as i32, ipiv.as_ptr())
+}
+/// `Complex32` inverse from [`csytrf`].
+pub fn csytri(uplo: Uplo, n: usize, a: &mut [Complex32], lda: usize, ipiv: &[i32]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_csytri, ROW_MAJOR, uplo_char(uplo), n as i32, a.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, lda as i32, ipiv.as_ptr())
+}
+
+// ----- hetrf / hetrs / hetri: Hermitian Bunch-Kaufman (complex only) -----
+
+/// Hermitian Bunch-Kaufman factorisation. (`Complex64`)
+pub fn zhetrf(uplo: Uplo, n: usize, a: &mut [Complex64], lda: usize, ipiv: &mut [i32]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_zhetrf, ROW_MAJOR, uplo_char(uplo), n as i32, a.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, lda as i32, ipiv.as_mut_ptr())
+}
+/// `Complex32` Hermitian Bunch-Kaufman. See [`zhetrf`].
+pub fn chetrf(uplo: Uplo, n: usize, a: &mut [Complex32], lda: usize, ipiv: &mut [i32]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_chetrf, ROW_MAJOR, uplo_char(uplo), n as i32, a.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, lda as i32, ipiv.as_mut_ptr())
+}
+/// `Complex64` solve after [`zhetrf`].
+#[allow(clippy::too_many_arguments)]
+pub fn zhetrs(uplo: Uplo, n: usize, nrhs: usize, a: &[Complex64], lda: usize, ipiv: &[i32], b: &mut [Complex64], ldb: usize) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_zhetrs, ROW_MAJOR, uplo_char(uplo), n as i32, nrhs as i32, a.as_ptr() as *const sys::__BindgenComplex<f64>, lda as i32, ipiv.as_ptr(), b.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, ldb as i32)
+}
+/// `Complex32` solve after [`chetrf`].
+#[allow(clippy::too_many_arguments)]
+pub fn chetrs(uplo: Uplo, n: usize, nrhs: usize, a: &[Complex32], lda: usize, ipiv: &[i32], b: &mut [Complex32], ldb: usize) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_chetrs, ROW_MAJOR, uplo_char(uplo), n as i32, nrhs as i32, a.as_ptr() as *const sys::__BindgenComplex<f32>, lda as i32, ipiv.as_ptr(), b.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, ldb as i32)
+}
+/// `Complex64` inverse from [`zhetrf`].
+pub fn zhetri(uplo: Uplo, n: usize, a: &mut [Complex64], lda: usize, ipiv: &[i32]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_zhetri, ROW_MAJOR, uplo_char(uplo), n as i32, a.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, lda as i32, ipiv.as_ptr())
+}
+/// `Complex32` inverse from [`chetrf`].
+pub fn chetri(uplo: Uplo, n: usize, a: &mut [Complex32], lda: usize, ipiv: &[i32]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_chetri, ROW_MAJOR, uplo_char(uplo), n as i32, a.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, lda as i32, ipiv.as_ptr())
+}
+
+// ----- gelss: SVD-based least-squares -----
+
+/// SVD-based least-squares solve. Returns the rank found. (`f64`)
+#[allow(clippy::too_many_arguments)]
+pub fn dgelss(
+    m: usize, n: usize, nrhs: usize,
+    a: &mut [f64], lda: usize,
+    b: &mut [f64], ldb: usize,
+    s: &mut [f64], rcond: f64,
+) -> Result<usize> {
+    let mut rank: i32 = 0;
+    let info = unsafe {
+        sys::LAPACKE_dgelss(
+            ROW_MAJOR, m as i32, n as i32, nrhs as i32,
+            a.as_mut_ptr(), lda as i32,
+            b.as_mut_ptr(), ldb as i32,
+            s.as_mut_ptr(), rcond, &mut rank,
+        )
+    };
+    map_info("lapack", info)?;
+    Ok(rank as usize)
+}
+/// `f32` SVD-LSQ. See [`dgelss`].
+#[allow(clippy::too_many_arguments)]
+pub fn sgelss(
+    m: usize, n: usize, nrhs: usize,
+    a: &mut [f32], lda: usize,
+    b: &mut [f32], ldb: usize,
+    s: &mut [f32], rcond: f32,
+) -> Result<usize> {
+    let mut rank: i32 = 0;
+    let info = unsafe {
+        sys::LAPACKE_sgelss(
+            ROW_MAJOR, m as i32, n as i32, nrhs as i32,
+            a.as_mut_ptr(), lda as i32,
+            b.as_mut_ptr(), ldb as i32,
+            s.as_mut_ptr(), rcond, &mut rank,
+        )
+    };
+    map_info("lapack", info)?;
+    Ok(rank as usize)
+}
+/// `Complex64` SVD-LSQ. See [`dgelss`].
+#[allow(clippy::too_many_arguments)]
+pub fn zgelss(
+    m: usize, n: usize, nrhs: usize,
+    a: &mut [Complex64], lda: usize,
+    b: &mut [Complex64], ldb: usize,
+    s: &mut [f64], rcond: f64,
+) -> Result<usize> {
+    let mut rank: i32 = 0;
+    let info = unsafe {
+        sys::LAPACKE_zgelss(
+            ROW_MAJOR, m as i32, n as i32, nrhs as i32,
+            a.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, lda as i32,
+            b.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, ldb as i32,
+            s.as_mut_ptr(), rcond, &mut rank,
+        )
+    };
+    map_info("lapack", info)?;
+    Ok(rank as usize)
+}
+/// `Complex32` SVD-LSQ. See [`dgelss`].
+#[allow(clippy::too_many_arguments)]
+pub fn cgelss(
+    m: usize, n: usize, nrhs: usize,
+    a: &mut [Complex32], lda: usize,
+    b: &mut [Complex32], ldb: usize,
+    s: &mut [f32], rcond: f32,
+) -> Result<usize> {
+    let mut rank: i32 = 0;
+    let info = unsafe {
+        sys::LAPACKE_cgelss(
+            ROW_MAJOR, m as i32, n as i32, nrhs as i32,
+            a.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, lda as i32,
+            b.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, ldb as i32,
+            s.as_mut_ptr(), rcond, &mut rank,
+        )
+    };
+    map_info("lapack", info)?;
+    Ok(rank as usize)
+}
+
+// ----- ormqr / unmqr: apply Q from QR factorisation -----
+
+/// Apply `Q` from [`geqrf`] to `C`: `C := op(Q) · C` or `C · op(Q)`.
+/// `side = b'L'` for left, `b'R'` for right. `trans = b'N'` or `b'T'`. (`f64`)
+#[allow(clippy::too_many_arguments)]
+pub fn dormqr(
+    side_l: bool, trans: Trans,
+    m: usize, n: usize, k: usize,
+    a: &[f64], lda: usize,
+    tau: &[f64],
+    c: &mut [f64], ldc: usize,
+) -> Result<()> {
+    let side = if side_l { b'L' } else { b'R' } as c_char;
+    lapack_call!("lapack", LAPACKE_dormqr,
+        ROW_MAJOR, side, trans_char(trans), m as i32, n as i32, k as i32,
+        a.as_ptr(), lda as i32, tau.as_ptr(),
+        c.as_mut_ptr(), ldc as i32)
+}
+/// `f32` apply Q from QR. See [`dormqr`].
+#[allow(clippy::too_many_arguments)]
+pub fn sormqr(
+    side_l: bool, trans: Trans,
+    m: usize, n: usize, k: usize,
+    a: &[f32], lda: usize,
+    tau: &[f32],
+    c: &mut [f32], ldc: usize,
+) -> Result<()> {
+    let side = if side_l { b'L' } else { b'R' } as c_char;
+    lapack_call!("lapack", LAPACKE_sormqr,
+        ROW_MAJOR, side, trans_char(trans), m as i32, n as i32, k as i32,
+        a.as_ptr(), lda as i32, tau.as_ptr(),
+        c.as_mut_ptr(), ldc as i32)
+}
+/// `Complex64` apply Q from QR. `trans = b'N'` or `b'C'` (conj-transpose).
+#[allow(clippy::too_many_arguments)]
+pub fn zunmqr(
+    side_l: bool, trans: Trans,
+    m: usize, n: usize, k: usize,
+    a: &[Complex64], lda: usize,
+    tau: &[Complex64],
+    c: &mut [Complex64], ldc: usize,
+) -> Result<()> {
+    let side = if side_l { b'L' } else { b'R' } as c_char;
+    lapack_call!("lapack", LAPACKE_zunmqr,
+        ROW_MAJOR, side, trans_char(trans), m as i32, n as i32, k as i32,
+        a.as_ptr() as *const sys::__BindgenComplex<f64>, lda as i32,
+        tau.as_ptr() as *const sys::__BindgenComplex<f64>,
+        c.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, ldc as i32)
+}
+/// `Complex32` apply Q from QR. See [`zunmqr`].
+#[allow(clippy::too_many_arguments)]
+pub fn cunmqr(
+    side_l: bool, trans: Trans,
+    m: usize, n: usize, k: usize,
+    a: &[Complex32], lda: usize,
+    tau: &[Complex32],
+    c: &mut [Complex32], ldc: usize,
+) -> Result<()> {
+    let side = if side_l { b'L' } else { b'R' } as c_char;
+    lapack_call!("lapack", LAPACKE_cunmqr,
+        ROW_MAJOR, side, trans_char(trans), m as i32, n as i32, k as i32,
+        a.as_ptr() as *const sys::__BindgenComplex<f32>, lda as i32,
+        tau.as_ptr() as *const sys::__BindgenComplex<f32>,
+        c.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, ldc as i32)
+}
+
+// ----- orglq / unglq + ormlq / unmlq: form/apply Q from LQ -----
+
+/// Form `Q` from [`gelqf`]. See [`dorgqr`] for analogous QR. (`f64`)
+pub fn dorglq(m: usize, n: usize, k: usize, a: &mut [f64], lda: usize, tau: &[f64]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_dorglq, ROW_MAJOR, m as i32, n as i32, k as i32, a.as_mut_ptr(), lda as i32, tau.as_ptr())
+}
+/// `f32` form Q from LQ. See [`dorglq`].
+pub fn sorglq(m: usize, n: usize, k: usize, a: &mut [f32], lda: usize, tau: &[f32]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_sorglq, ROW_MAJOR, m as i32, n as i32, k as i32, a.as_mut_ptr(), lda as i32, tau.as_ptr())
+}
+/// `Complex64` form Q from LQ. See [`dorglq`].
+pub fn zunglq(m: usize, n: usize, k: usize, a: &mut [Complex64], lda: usize, tau: &[Complex64]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_zunglq, ROW_MAJOR, m as i32, n as i32, k as i32, a.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, lda as i32, tau.as_ptr() as *const sys::__BindgenComplex<f64>)
+}
+/// `Complex32` form Q from LQ. See [`dorglq`].
+pub fn cunglq(m: usize, n: usize, k: usize, a: &mut [Complex32], lda: usize, tau: &[Complex32]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_cunglq, ROW_MAJOR, m as i32, n as i32, k as i32, a.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, lda as i32, tau.as_ptr() as *const sys::__BindgenComplex<f32>)
+}
+
+/// Apply Q from LQ. (`f64`)
+#[allow(clippy::too_many_arguments)]
+pub fn dormlq(side_l: bool, trans: Trans, m: usize, n: usize, k: usize, a: &[f64], lda: usize, tau: &[f64], c: &mut [f64], ldc: usize) -> Result<()> {
+    let side = if side_l { b'L' } else { b'R' } as c_char;
+    lapack_call!("lapack", LAPACKE_dormlq, ROW_MAJOR, side, trans_char(trans), m as i32, n as i32, k as i32, a.as_ptr(), lda as i32, tau.as_ptr(), c.as_mut_ptr(), ldc as i32)
+}
+/// `f32` apply Q from LQ. See [`dormlq`].
+#[allow(clippy::too_many_arguments)]
+pub fn sormlq(side_l: bool, trans: Trans, m: usize, n: usize, k: usize, a: &[f32], lda: usize, tau: &[f32], c: &mut [f32], ldc: usize) -> Result<()> {
+    let side = if side_l { b'L' } else { b'R' } as c_char;
+    lapack_call!("lapack", LAPACKE_sormlq, ROW_MAJOR, side, trans_char(trans), m as i32, n as i32, k as i32, a.as_ptr(), lda as i32, tau.as_ptr(), c.as_mut_ptr(), ldc as i32)
+}
+/// `Complex64` apply Q from LQ. See [`dormlq`].
+#[allow(clippy::too_many_arguments)]
+pub fn zunmlq(side_l: bool, trans: Trans, m: usize, n: usize, k: usize, a: &[Complex64], lda: usize, tau: &[Complex64], c: &mut [Complex64], ldc: usize) -> Result<()> {
+    let side = if side_l { b'L' } else { b'R' } as c_char;
+    lapack_call!("lapack", LAPACKE_zunmlq, ROW_MAJOR, side, trans_char(trans), m as i32, n as i32, k as i32,
+        a.as_ptr() as *const sys::__BindgenComplex<f64>, lda as i32,
+        tau.as_ptr() as *const sys::__BindgenComplex<f64>,
+        c.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, ldc as i32)
+}
+/// `Complex32` apply Q from LQ. See [`dormlq`].
+#[allow(clippy::too_many_arguments)]
+pub fn cunmlq(side_l: bool, trans: Trans, m: usize, n: usize, k: usize, a: &[Complex32], lda: usize, tau: &[Complex32], c: &mut [Complex32], ldc: usize) -> Result<()> {
+    let side = if side_l { b'L' } else { b'R' } as c_char;
+    lapack_call!("lapack", LAPACKE_cunmlq, ROW_MAJOR, side, trans_char(trans), m as i32, n as i32, k as i32,
+        a.as_ptr() as *const sys::__BindgenComplex<f32>, lda as i32,
+        tau.as_ptr() as *const sys::__BindgenComplex<f32>,
+        c.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, ldc as i32)
+}
+
+// ----- gehrd / gebrd: Hessenberg / bidiagonal reduction -----
+
+/// Reduce general matrix to upper Hessenberg form. (`f64`)
+pub fn dgehrd(n: usize, ilo: i32, ihi: i32, a: &mut [f64], lda: usize, tau: &mut [f64]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_dgehrd, ROW_MAJOR, n as i32, ilo, ihi, a.as_mut_ptr(), lda as i32, tau.as_mut_ptr())
+}
+/// `f32` Hessenberg reduction. See [`dgehrd`].
+pub fn sgehrd(n: usize, ilo: i32, ihi: i32, a: &mut [f32], lda: usize, tau: &mut [f32]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_sgehrd, ROW_MAJOR, n as i32, ilo, ihi, a.as_mut_ptr(), lda as i32, tau.as_mut_ptr())
+}
+/// `Complex64` Hessenberg reduction. See [`dgehrd`].
+pub fn zgehrd(n: usize, ilo: i32, ihi: i32, a: &mut [Complex64], lda: usize, tau: &mut [Complex64]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_zgehrd, ROW_MAJOR, n as i32, ilo, ihi, a.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, lda as i32, tau.as_mut_ptr() as *mut sys::__BindgenComplex<f64>)
+}
+/// `Complex32` Hessenberg reduction. See [`dgehrd`].
+pub fn cgehrd(n: usize, ilo: i32, ihi: i32, a: &mut [Complex32], lda: usize, tau: &mut [Complex32]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_cgehrd, ROW_MAJOR, n as i32, ilo, ihi, a.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, lda as i32, tau.as_mut_ptr() as *mut sys::__BindgenComplex<f32>)
+}
+
+/// Reduce general matrix to bidiagonal form (preprocess for SVD). (`f64`)
+#[allow(clippy::too_many_arguments)]
+pub fn dgebrd(m: usize, n: usize, a: &mut [f64], lda: usize, d: &mut [f64], e: &mut [f64], tauq: &mut [f64], taup: &mut [f64]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_dgebrd, ROW_MAJOR, m as i32, n as i32, a.as_mut_ptr(), lda as i32, d.as_mut_ptr(), e.as_mut_ptr(), tauq.as_mut_ptr(), taup.as_mut_ptr())
+}
+/// `f32` bidiag reduction. See [`dgebrd`].
+#[allow(clippy::too_many_arguments)]
+pub fn sgebrd(m: usize, n: usize, a: &mut [f32], lda: usize, d: &mut [f32], e: &mut [f32], tauq: &mut [f32], taup: &mut [f32]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_sgebrd, ROW_MAJOR, m as i32, n as i32, a.as_mut_ptr(), lda as i32, d.as_mut_ptr(), e.as_mut_ptr(), tauq.as_mut_ptr(), taup.as_mut_ptr())
+}
+/// `Complex64` bidiag reduction. `d` and `e` are real.
+#[allow(clippy::too_many_arguments)]
+pub fn zgebrd(m: usize, n: usize, a: &mut [Complex64], lda: usize, d: &mut [f64], e: &mut [f64], tauq: &mut [Complex64], taup: &mut [Complex64]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_zgebrd, ROW_MAJOR, m as i32, n as i32,
+        a.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, lda as i32,
+        d.as_mut_ptr(), e.as_mut_ptr(),
+        tauq.as_mut_ptr() as *mut sys::__BindgenComplex<f64>,
+        taup.as_mut_ptr() as *mut sys::__BindgenComplex<f64>)
+}
+/// `Complex32` bidiag reduction. See [`zgebrd`].
+#[allow(clippy::too_many_arguments)]
+pub fn cgebrd(m: usize, n: usize, a: &mut [Complex32], lda: usize, d: &mut [f32], e: &mut [f32], tauq: &mut [Complex32], taup: &mut [Complex32]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_cgebrd, ROW_MAJOR, m as i32, n as i32,
+        a.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, lda as i32,
+        d.as_mut_ptr(), e.as_mut_ptr(),
+        tauq.as_mut_ptr() as *mut sys::__BindgenComplex<f32>,
+        taup.as_mut_ptr() as *mut sys::__BindgenComplex<f32>)
+}
+
+// ----- orgtr/ungtr: form Q from Hessenberg/tridiag reduction -----
+
+/// Form `Q` from a tridiagonal reduction. (`f64`)
+pub fn dorgtr(uplo: Uplo, n: usize, a: &mut [f64], lda: usize, tau: &[f64]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_dorgtr, ROW_MAJOR, uplo_char(uplo), n as i32, a.as_mut_ptr(), lda as i32, tau.as_ptr())
+}
+/// `f32` form Q from tridiag reduction.
+pub fn sorgtr(uplo: Uplo, n: usize, a: &mut [f32], lda: usize, tau: &[f32]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_sorgtr, ROW_MAJOR, uplo_char(uplo), n as i32, a.as_mut_ptr(), lda as i32, tau.as_ptr())
+}
+/// `Complex64` form Q from Hermitian tridiag reduction.
+pub fn zungtr(uplo: Uplo, n: usize, a: &mut [Complex64], lda: usize, tau: &[Complex64]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_zungtr, ROW_MAJOR, uplo_char(uplo), n as i32, a.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, lda as i32, tau.as_ptr() as *const sys::__BindgenComplex<f64>)
+}
+/// `Complex32` form Q from Hermitian tridiag reduction.
+pub fn cungtr(uplo: Uplo, n: usize, a: &mut [Complex32], lda: usize, tau: &[Complex32]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_cungtr, ROW_MAJOR, uplo_char(uplo), n as i32, a.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, lda as i32, tau.as_ptr() as *const sys::__BindgenComplex<f32>)
+}
+
+// ----- orgbr/ungbr: form Q (or P) from bidiag reduction -----
+
+/// Which factor of a bidiag reduction to form: Q (left) or P (right).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BidiagVect { Q, P }
+impl BidiagVect {
+    fn raw(self) -> c_char {
+        match self { BidiagVect::Q => b'Q' as c_char, BidiagVect::P => b'P' as c_char }
+    }
+}
+
+/// Form `Q` (or `P`) from [`dgebrd`]. (`f64`)
+pub fn dorgbr(vect: BidiagVect, m: usize, n: usize, k: usize, a: &mut [f64], lda: usize, tau: &[f64]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_dorgbr, ROW_MAJOR, vect.raw(), m as i32, n as i32, k as i32, a.as_mut_ptr(), lda as i32, tau.as_ptr())
+}
+/// `f32` form Q/P from bidiag reduction.
+pub fn sorgbr(vect: BidiagVect, m: usize, n: usize, k: usize, a: &mut [f32], lda: usize, tau: &[f32]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_sorgbr, ROW_MAJOR, vect.raw(), m as i32, n as i32, k as i32, a.as_mut_ptr(), lda as i32, tau.as_ptr())
+}
+/// `Complex64` form Q/P from bidiag reduction.
+pub fn zungbr(vect: BidiagVect, m: usize, n: usize, k: usize, a: &mut [Complex64], lda: usize, tau: &[Complex64]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_zungbr, ROW_MAJOR, vect.raw(), m as i32, n as i32, k as i32, a.as_mut_ptr() as *mut sys::__BindgenComplex<f64>, lda as i32, tau.as_ptr() as *const sys::__BindgenComplex<f64>)
+}
+/// `Complex32` form Q/P from bidiag reduction.
+pub fn cungbr(vect: BidiagVect, m: usize, n: usize, k: usize, a: &mut [Complex32], lda: usize, tau: &[Complex32]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_cungbr, ROW_MAJOR, vect.raw(), m as i32, n as i32, k as i32, a.as_mut_ptr() as *mut sys::__BindgenComplex<f32>, lda as i32, tau.as_ptr() as *const sys::__BindgenComplex<f32>)
+}
+
+// ----- gecon/pocon: condition-number estimators -----
+
+/// Reciprocal condition number of a general matrix (after [`getrf`]).
+/// `anorm` is the input matrix's `Norm::One` or `Norm::Inf` value
+/// (compute via [`dlange`]). (`f64`)
+pub fn dgecon(norm: Norm, n: usize, a: &[f64], lda: usize, anorm: f64) -> Result<f64> {
+    let mut rcond: f64 = 0.0;
+    let info = unsafe { sys::LAPACKE_dgecon(ROW_MAJOR, norm.raw(), n as i32, a.as_ptr(), lda as i32, anorm, &mut rcond) };
+    map_info("lapack", info)?;
+    Ok(rcond)
+}
+/// `f32` general condition number. See [`dgecon`].
+pub fn sgecon(norm: Norm, n: usize, a: &[f32], lda: usize, anorm: f32) -> Result<f32> {
+    let mut rcond: f32 = 0.0;
+    let info = unsafe { sys::LAPACKE_sgecon(ROW_MAJOR, norm.raw(), n as i32, a.as_ptr(), lda as i32, anorm, &mut rcond) };
+    map_info("lapack", info)?;
+    Ok(rcond)
+}
+/// `Complex64` general condition number. See [`dgecon`].
+pub fn zgecon(norm: Norm, n: usize, a: &[Complex64], lda: usize, anorm: f64) -> Result<f64> {
+    let mut rcond: f64 = 0.0;
+    let info = unsafe { sys::LAPACKE_zgecon(ROW_MAJOR, norm.raw(), n as i32, a.as_ptr() as *const sys::__BindgenComplex<f64>, lda as i32, anorm, &mut rcond) };
+    map_info("lapack", info)?;
+    Ok(rcond)
+}
+/// `Complex32` general condition number. See [`dgecon`].
+pub fn cgecon(norm: Norm, n: usize, a: &[Complex32], lda: usize, anorm: f32) -> Result<f32> {
+    let mut rcond: f32 = 0.0;
+    let info = unsafe { sys::LAPACKE_cgecon(ROW_MAJOR, norm.raw(), n as i32, a.as_ptr() as *const sys::__BindgenComplex<f32>, lda as i32, anorm, &mut rcond) };
+    map_info("lapack", info)?;
+    Ok(rcond)
+}
+
+/// Reciprocal condition number of a SPD matrix (after [`potrf`]). (`f64`)
+pub fn dpocon(uplo: Uplo, n: usize, a: &[f64], lda: usize, anorm: f64) -> Result<f64> {
+    let mut rcond: f64 = 0.0;
+    let info = unsafe { sys::LAPACKE_dpocon(ROW_MAJOR, uplo_char(uplo), n as i32, a.as_ptr(), lda as i32, anorm, &mut rcond) };
+    map_info("lapack", info)?;
+    Ok(rcond)
+}
+/// `f32` SPD condition number. See [`dpocon`].
+pub fn spocon(uplo: Uplo, n: usize, a: &[f32], lda: usize, anorm: f32) -> Result<f32> {
+    let mut rcond: f32 = 0.0;
+    let info = unsafe { sys::LAPACKE_spocon(ROW_MAJOR, uplo_char(uplo), n as i32, a.as_ptr(), lda as i32, anorm, &mut rcond) };
+    map_info("lapack", info)?;
+    Ok(rcond)
+}
+/// `Complex64` SPD/Hermitian condition number. See [`dpocon`].
+pub fn zpocon(uplo: Uplo, n: usize, a: &[Complex64], lda: usize, anorm: f64) -> Result<f64> {
+    let mut rcond: f64 = 0.0;
+    let info = unsafe { sys::LAPACKE_zpocon(ROW_MAJOR, uplo_char(uplo), n as i32, a.as_ptr() as *const sys::__BindgenComplex<f64>, lda as i32, anorm, &mut rcond) };
+    map_info("lapack", info)?;
+    Ok(rcond)
+}
+/// `Complex32` SPD/Hermitian condition number. See [`dpocon`].
+pub fn cpocon(uplo: Uplo, n: usize, a: &[Complex32], lda: usize, anorm: f32) -> Result<f32> {
+    let mut rcond: f32 = 0.0;
+    let info = unsafe { sys::LAPACKE_cpocon(ROW_MAJOR, uplo_char(uplo), n as i32, a.as_ptr() as *const sys::__BindgenComplex<f32>, lda as i32, anorm, &mut rcond) };
+    map_info("lapack", info)?;
+    Ok(rcond)
+}
+
+// ----- larfg: generate elementary Householder reflector -----
+
+/// Generate an elementary Householder reflector `H = I − τ·v·vᵀ` such
+/// that `H · (α, x)ᵀ = (β, 0…0)ᵀ`. On exit `*alpha = β` and `tau` is
+/// returned. (`f64`)
+pub fn dlarfg(n: usize, alpha: &mut f64, x: &mut [f64], incx: i32) -> Result<f64> {
+    let mut tau: f64 = 0.0;
+    let info = unsafe { sys::LAPACKE_dlarfg(n as i32, alpha, x.as_mut_ptr(), incx, &mut tau) };
+    map_info("lapack", info)?;
+    Ok(tau)
+}
+/// `f32` Householder generator. See [`dlarfg`].
+pub fn slarfg(n: usize, alpha: &mut f32, x: &mut [f32], incx: i32) -> Result<f32> {
+    let mut tau: f32 = 0.0;
+    let info = unsafe { sys::LAPACKE_slarfg(n as i32, alpha, x.as_mut_ptr(), incx, &mut tau) };
+    map_info("lapack", info)?;
+    Ok(tau)
+}
+/// `Complex64` Householder generator. See [`dlarfg`].
+pub fn zlarfg(n: usize, alpha: &mut Complex64, x: &mut [Complex64], incx: i32) -> Result<Complex64> {
+    let mut tau = Complex64::ZERO;
+    let info = unsafe {
+        sys::LAPACKE_zlarfg(
+            n as i32,
+            alpha as *mut _ as *mut sys::__BindgenComplex<f64>,
+            x.as_mut_ptr() as *mut sys::__BindgenComplex<f64>,
+            incx,
+            &mut tau as *mut _ as *mut sys::__BindgenComplex<f64>,
+        )
+    };
+    map_info("lapack", info)?;
+    Ok(tau)
+}
+/// `Complex32` Householder generator. See [`dlarfg`].
+pub fn clarfg(n: usize, alpha: &mut Complex32, x: &mut [Complex32], incx: i32) -> Result<Complex32> {
+    let mut tau = Complex32::ZERO;
+    let info = unsafe {
+        sys::LAPACKE_clarfg(
+            n as i32,
+            alpha as *mut _ as *mut sys::__BindgenComplex<f32>,
+            x.as_mut_ptr() as *mut sys::__BindgenComplex<f32>,
+            incx,
+            &mut tau as *mut _ as *mut sys::__BindgenComplex<f32>,
+        )
+    };
+    map_info("lapack", info)?;
+    Ok(tau)
+}
+
+// ----- lasrt: sort an array (real only) -----
+
+/// Sort a real vector in increasing (`b'I'`) or decreasing (`b'D'`)
+/// order. `id` is the sort direction char. (`f64`)
+pub fn dlasrt(id: u8, d: &mut [f64]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_dlasrt, id as c_char, d.len() as i32, d.as_mut_ptr())
+}
+/// `f32` sort. See [`dlasrt`].
+pub fn slasrt(id: u8, d: &mut [f32]) -> Result<()> {
+    lapack_call!("lapack", LAPACKE_slasrt, id as c_char, d.len() as i32, d.as_mut_ptr())
+}
+
+// =========================================================================
 //   Tests
 // =========================================================================
 
