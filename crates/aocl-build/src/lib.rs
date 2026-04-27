@@ -42,31 +42,47 @@ impl Component<'_> {
     /// `bindgen` against [`Self::wrapper`]. Reads `CARGO_FEATURE_ILP64` and
     /// `CARGO_FEATURE_STATIC_LINK` to choose layout.
     ///
-    /// In docs.rs builds (`DOCS_RS=1`), this is a no-op apart from
-    /// emitting an empty bindings file — docs.rs's sandbox does not
-    /// have AOCL native libraries, so attempting to link or run
-    /// `bindgen` would fail.
+    /// In docs.rs builds (`DOCS_RS=1`), `bindgen` is skipped (no AOCL
+    /// install in the sandbox) and instead the pre-generated bindings
+    /// vendored at `<crate>/bindings/<module>.rs` are copied into
+    /// `OUT_DIR`. Safe-wrapper crates can then compile against real
+    /// `sys::*` symbols without needing native libs at link time —
+    /// `cargo doc` only emits rmeta.
     ///
     /// Panics on misconfiguration (missing component dir, missing wrapper,
     /// bindgen failure) so build-script breakage surfaces clearly.
     pub fn build(&self, root: &Path) {
         let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR"));
 
-        // docs.rs short-circuit: write an empty bindings file and skip
-        // every step that needs the native AOCL install. The crate will
-        // then build with no symbols defined; safe wrappers must
-        // `#[cfg(not(docsrs))]` their FFI bodies to compile here too.
+        // docs.rs short-circuit: copy the vendored bindings into OUT_DIR
+        // and skip every step that needs the native AOCL install. If no
+        // vendored bindings file exists for this crate (e.g. ScaLAPACK,
+        // which is hand-written), fall back to an empty stub.
         if env::var_os("DOCS_RS").is_some() {
             if !self.module.is_empty() {
                 let stub = out_dir.join(format!("{}.rs", self.module));
-                std::fs::write(
-                    &stub,
-                    b"// docs.rs build: AOCL native libs unavailable; bindings omitted.\n",
-                )
-                .unwrap_or_else(|e| panic!("failed to write stub {}: {e}", stub.display()));
+                let manifest_dir = PathBuf::from(
+                    env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"),
+                );
+                let vendored = manifest_dir
+                    .join("bindings")
+                    .join(format!("{}.rs", self.module));
+                if vendored.exists() {
+                    std::fs::copy(&vendored, &stub).unwrap_or_else(|e| {
+                        panic!(
+                            "failed to copy vendored {} -> {}: {e}",
+                            vendored.display(),
+                            stub.display()
+                        )
+                    });
+                } else {
+                    std::fs::write(
+                        &stub,
+                        b"// docs.rs build: AOCL native libs unavailable; bindings omitted.\n",
+                    )
+                    .unwrap_or_else(|e| panic!("failed to write stub {}: {e}", stub.display()));
+                }
             }
-            // Tell rustc to enable `cfg(docsrs)` so downstream crates can
-            // gate FFI-using bodies if they want to.
             println!("cargo:rustc-cfg=docsrs");
             return;
         }

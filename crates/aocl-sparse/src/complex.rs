@@ -3,7 +3,7 @@
 //! These mirror the real-precision API: sparse vector AXPY / gather /
 //! scatter, plus a [`ComplexSparseMatrix`] handle wrapping AOCL's
 //! `aoclsparse_matrix` and operations against it: matrix–vector product
-//! [`mv`], triangular solve [`trsv`], sparse-sparse product [`csr2m`],
+//! [`mv`], triangular solve [`trsv`], sparse-sparse product [`spmmd`],
 //! ILU(0) smoother [`ilu_smoother`], and the iterative-solver suite via
 //! [`ComplexIterSolver`].
 
@@ -995,7 +995,7 @@ impl<T: ComplexScalar> ComplexSparseMatrix<T> {
     }
 
     /// Adopt a library-allocated matrix handle (e.g. the result of
-    /// [`csr2m`]).
+    /// [`spmmd`]).
     ///
     /// # Safety
     /// `raw` must be a valid `aoclsparse_matrix` whose precision matches

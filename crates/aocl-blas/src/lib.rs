@@ -17,7 +17,7 @@
 //!
 //! All wrappers take Rust slices with bounds-checked dimensions; mismatched
 //! sizes return [`Error::InvalidArgument`]. For routines not yet wrapped,
-//! drop down to [`aocl-blas-sys`].
+//! drop down to [`aocl_blas_sys`].
 
 #![warn(missing_debug_implementations)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
@@ -4158,8 +4158,8 @@ pub fn gemmt<T: BlasExt>(
 // ----- Real-only extras: rotm / rotmg / sdsdot -----------------------------
 
 /// Compute the modified Givens-rotation parameters from `(d1, d2, b1, b2)`,
-/// returning the 5-element parameter vector `P` used by [`rotm`]. `d1`,
-/// `d2`, `b1` are updated in place.
+/// returning the 5-element parameter vector `P` used by [`srotm`] /
+/// [`drotm`]. `d1`, `d2`, `b1` are updated in place.
 pub fn srotmg(d1: &mut f32, d2: &mut f32, b1: &mut f32, b2: f32) -> [f32; 5] {
     let mut p = [0.0_f32; 5];
     unsafe {
