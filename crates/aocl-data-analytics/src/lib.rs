@@ -973,6 +973,165 @@ impl<'a> std::fmt::Debug for Nlls<'a> {
 }
 
 // =========================================================================
+//   Datastore (CSV loading + column selection)
+// =========================================================================
+
+/// RAII wrapper around `da_datastore` — AOCL-DA's container for tabular
+/// data loaded from CSV. Use it to read a file, query its dimensions,
+/// label or select columns by name, and extract numeric blocks into
+/// caller-provided buffers.
+pub struct Datastore {
+    raw: sys::da_datastore,
+}
+
+unsafe impl Send for Datastore {}
+
+impl Datastore {
+    /// Create a fresh empty datastore.
+    pub fn new() -> Result<Self> {
+        let mut raw: sys::da_datastore = std::ptr::null_mut();
+        let status = unsafe { sys::da_datastore_init(&mut raw) };
+        check_status("data-analytics", status)?;
+        if raw.is_null() {
+            return Err(Error::AllocationFailed("data-analytics"));
+        }
+        Ok(Self { raw })
+    }
+
+    /// Set an integer-valued datastore option (e.g.
+    /// `set_int_option("use header row", 1)`,
+    /// `set_int_option("whitespace delimiter", 1)`).
+    pub fn set_int_option(&mut self, name: &str, value: i64) -> Result<()> {
+        let cs = std::ffi::CString::new(name)
+            .map_err(|e| Error::InvalidArgument(format!("set_int_option: {e}")))?;
+        let status = unsafe {
+            sys::da_datastore_options_set_int(self.raw, cs.as_ptr(), value as sys::da_int)
+        };
+        check_status("data-analytics", status)
+    }
+
+    /// Set a string-valued datastore option (e.g. `"comment"` to set a
+    /// comment-line prefix character, `"storage order"` to choose
+    /// row-major vs column-major).
+    pub fn set_string_option(&mut self, name: &str, value: &str) -> Result<()> {
+        let n = std::ffi::CString::new(name)
+            .map_err(|e| Error::InvalidArgument(format!("set_string_option: {e}")))?;
+        let v = std::ffi::CString::new(value)
+            .map_err(|e| Error::InvalidArgument(format!("set_string_option: {e}")))?;
+        let status = unsafe {
+            sys::da_datastore_options_set_string(self.raw, n.as_ptr(), v.as_ptr())
+        };
+        check_status("data-analytics", status)
+    }
+
+    /// Load a CSV file into the datastore.
+    pub fn load_csv(&mut self, path: &str) -> Result<()> {
+        let cs = std::ffi::CString::new(path)
+            .map_err(|e| Error::InvalidArgument(format!("load_csv: {e}")))?;
+        let status = unsafe { sys::da_data_load_from_csv(self.raw, cs.as_ptr()) };
+        check_status("data-analytics", status)
+    }
+
+    /// Number of rows currently held by the store.
+    pub fn n_rows(&self) -> Result<usize> {
+        let mut n: sys::da_int = 0;
+        let status = unsafe { sys::da_data_get_n_rows(self.raw, &mut n) };
+        check_status("data-analytics", status)?;
+        Ok(n as usize)
+    }
+
+    /// Number of columns currently held by the store.
+    pub fn n_cols(&self) -> Result<usize> {
+        let mut n: sys::da_int = 0;
+        let status = unsafe { sys::da_data_get_n_cols(self.raw, &mut n) };
+        check_status("data-analytics", status)?;
+        Ok(n as usize)
+    }
+
+    /// `(n_rows, n_cols)` dimensions.
+    pub fn dims(&self) -> Result<(usize, usize)> {
+        Ok((self.n_rows()?, self.n_cols()?))
+    }
+
+    /// Select a contiguous range of columns into the named selection
+    /// `key` (zero-based, inclusive bounds). Use [`Datastore::extract_f64`]
+    /// to read the selected columns into a buffer.
+    pub fn select_columns(&mut self, key: &str, lbound: usize, ubound: usize) -> Result<()> {
+        let cs = std::ffi::CString::new(key)
+            .map_err(|e| Error::InvalidArgument(format!("select_columns: {e}")))?;
+        let status = unsafe {
+            sys::da_data_select_columns(
+                self.raw,
+                cs.as_ptr(),
+                lbound as sys::da_int,
+                ubound as sys::da_int,
+            )
+        };
+        check_status("data-analytics", status)
+    }
+
+    /// Select a contiguous range of rows into the named selection `key`.
+    pub fn select_rows(&mut self, key: &str, lbound: usize, ubound: usize) -> Result<()> {
+        let cs = std::ffi::CString::new(key)
+            .map_err(|e| Error::InvalidArgument(format!("select_rows: {e}")))?;
+        let status = unsafe {
+            sys::da_data_select_rows(
+                self.raw,
+                cs.as_ptr(),
+                lbound as sys::da_int,
+                ubound as sys::da_int,
+            )
+        };
+        check_status("data-analytics", status)
+    }
+
+    /// Extract the named selection into `data` as `f64` values, in the
+    /// order specified by `layout`. `lddata` is the leading dimension
+    /// of the output buffer.
+    pub fn extract_f64(
+        &self,
+        key: &str,
+        layout: Layout,
+        data: &mut [f64],
+        lddata: usize,
+    ) -> Result<()> {
+        let cs = std::ffi::CString::new(key)
+            .map_err(|e| Error::InvalidArgument(format!("extract_f64: {e}")))?;
+        let status = unsafe {
+            sys::da_data_extract_selection_real_d(
+                self.raw,
+                cs.as_ptr(),
+                layout_raw(layout),
+                data.as_mut_ptr(),
+                lddata as sys::da_int,
+            )
+        };
+        check_status("data-analytics", status)
+    }
+
+    /// Borrow the raw `da_datastore` handle (for routines this crate
+    /// doesn't yet wrap).
+    pub fn as_raw(&self) -> sys::da_datastore {
+        self.raw
+    }
+}
+
+impl Drop for Datastore {
+    fn drop(&mut self) {
+        if !self.raw.is_null() {
+            unsafe { sys::da_datastore_destroy(&mut self.raw) };
+            self.raw = std::ptr::null_mut();
+        }
+    }
+}
+
+impl std::fmt::Debug for Datastore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Datastore").finish_non_exhaustive()
+    }
+}
+
+// =========================================================================
 //   Pairwise distances
 // =========================================================================
 
@@ -2581,6 +2740,54 @@ mod tests {
 
         let acc = forest.score(6, 2, &x_train, &y_train).unwrap();
         assert!((acc - 1.0).abs() < 1e-9, "score = {acc}");
+    }
+
+    #[test]
+    fn datastore_init_destroy_and_options() {
+        let mut store = Datastore::new().unwrap();
+        // Setting a few standard options should succeed even on an
+        // empty store.
+        store.set_int_option("use header row", 1).unwrap();
+        store.set_int_option("whitespace delimiter", 1).unwrap();
+        store.set_string_option("comment", "#").unwrap();
+        // dims() should report (0, 0) before any data is loaded.
+        let (r, c) = store.dims().unwrap();
+        assert_eq!((r, c), (0, 0));
+    }
+
+    #[test]
+    fn datastore_round_trip_through_temp_csv() {
+        // Write a minimal numeric CSV to a tempfile, load it via the
+        // datastore, select all columns, and extract.
+        use std::io::Write;
+        let mut path = std::env::temp_dir();
+        path.push(format!("aocl_da_csv_{}.csv", std::process::id()));
+        {
+            let mut f = std::fs::File::create(&path).unwrap();
+            // 3 rows × 2 cols; no header.
+            writeln!(f, "1.0,2.0").unwrap();
+            writeln!(f, "3.0,4.0").unwrap();
+            writeln!(f, "5.0,6.0").unwrap();
+        }
+
+        let mut store = Datastore::new().unwrap();
+        store.load_csv(path.to_str().unwrap()).unwrap();
+        let (r, c) = store.dims().unwrap();
+        assert_eq!((r, c), (3, 2));
+
+        store.select_columns("all", 0, 1).unwrap();
+        let mut buf = vec![0.0_f64; 6];
+        // Column-major layout, lddata = n_rows.
+        store.extract_f64("all", Layout::ColMajor, &mut buf, 3).unwrap();
+        // Column 0 = [1, 3, 5]; column 1 = [2, 4, 6].
+        assert!((buf[0] - 1.0).abs() < 1e-12);
+        assert!((buf[1] - 3.0).abs() < 1e-12);
+        assert!((buf[2] - 5.0).abs() < 1e-12);
+        assert!((buf[3] - 2.0).abs() < 1e-12);
+        assert!((buf[4] - 4.0).abs() < 1e-12);
+        assert!((buf[5] - 6.0).abs() < 1e-12);
+
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]
