@@ -1563,6 +1563,121 @@ impl<T: Scalar> SparseMatrix<T> {
         let val = unsafe { std::slice::from_raw_parts(val, nnz).to_vec() };
         Ok((base, row_ptr, col_ind, val))
     }
+
+    // --- Hints: tell the analysis pass how the matrix will be used.
+    // Pair with `optimize()` to actually run the analysis.
+
+    /// Hint that mat-vec (`mv`) will be called `expected_calls` times in
+    /// the given orientation `op`.
+    pub fn set_mv_hint(&mut self, op: Trans, descr: &MatDescr, expected_calls: usize) -> Result<()> {
+        let status = unsafe {
+            sys::aoclsparse_set_mv_hint(
+                self.raw, trans_raw(op), descr.as_raw(),
+                expected_calls as sys::aoclsparse_int,
+            )
+        };
+        check_status("sparse", status)
+    }
+
+    /// Hint for triangular solve (`trsv`).
+    pub fn set_sv_hint(&mut self, op: Trans, descr: &MatDescr, expected_calls: usize) -> Result<()> {
+        let status = unsafe {
+            sys::aoclsparse_set_sv_hint(
+                self.raw, trans_raw(op), descr.as_raw(),
+                expected_calls as sys::aoclsparse_int,
+            )
+        };
+        check_status("sparse", status)
+    }
+
+    /// Hint for sparse-dense matrix multiply (`csrmm`).
+    pub fn set_mm_hint(&mut self, op: Trans, descr: &MatDescr, expected_calls: usize) -> Result<()> {
+        let status = unsafe {
+            sys::aoclsparse_set_mm_hint(
+                self.raw, trans_raw(op), descr.as_raw(),
+                expected_calls as sys::aoclsparse_int,
+            )
+        };
+        check_status("sparse", status)
+    }
+
+    /// Hint for sparse-sparse matrix multiply (`csr2m`).
+    pub fn set_2m_hint(&mut self, op: Trans, descr: &MatDescr, expected_calls: usize) -> Result<()> {
+        let status = unsafe {
+            sys::aoclsparse_set_2m_hint(
+                self.raw, trans_raw(op), descr.as_raw(),
+                expected_calls as sys::aoclsparse_int,
+            )
+        };
+        check_status("sparse", status)
+    }
+
+    /// Hint for sparse triangular solve with multiple right-hand sides
+    /// (`trsm`). `order` is the layout of the dense `B`/`X` matrices.
+    pub fn set_sm_hint(
+        &mut self,
+        op: Trans,
+        descr: &MatDescr,
+        order: Order,
+        expected_calls: usize,
+    ) -> Result<()> {
+        let status = unsafe {
+            sys::aoclsparse_set_sm_hint(
+                self.raw, trans_raw(op), descr.as_raw(), order.raw(),
+                expected_calls as sys::aoclsparse_int,
+            )
+        };
+        check_status("sparse", status)
+    }
+
+    /// Hint for ILU smoothing.
+    pub fn set_lu_smoother_hint(&mut self, op: Trans, descr: &MatDescr, expected_calls: usize) -> Result<()> {
+        let status = unsafe {
+            sys::aoclsparse_set_lu_smoother_hint(
+                self.raw, trans_raw(op), descr.as_raw(),
+                expected_calls as sys::aoclsparse_int,
+            )
+        };
+        check_status("sparse", status)
+    }
+
+    /// Hint for symmetric Gauss-Seidel.
+    pub fn set_symgs_hint(&mut self, op: Trans, descr: &MatDescr, expected_calls: usize) -> Result<()> {
+        let status = unsafe {
+            sys::aoclsparse_set_symgs_hint(
+                self.raw, trans_raw(op), descr.as_raw(),
+                expected_calls as sys::aoclsparse_int,
+            )
+        };
+        check_status("sparse", status)
+    }
+
+    /// Hint for the fused dot-mat-vec routine.
+    pub fn set_dotmv_hint(&mut self, op: Trans, descr: &MatDescr, expected_calls: usize) -> Result<()> {
+        let status = unsafe {
+            sys::aoclsparse_set_dotmv_hint(
+                self.raw, trans_raw(op), descr.as_raw(),
+                expected_calls as sys::aoclsparse_int,
+            )
+        };
+        check_status("sparse", status)
+    }
+
+    /// Hint for SOR / Gauss-Seidel sweeps.
+    pub fn set_sorv_hint(
+        &mut self,
+        sor_type: SorType,
+        descr: &MatDescr,
+        expected_calls: usize,
+    ) -> Result<()> {
+        let status = unsafe {
+            sys::aoclsparse_set_sorv_hint(
+                self.raw, descr.as_raw(), sor_type.raw(),
+                expected_calls as sys::aoclsparse_int,
+            )
+        };
+        check_status("sparse", status)
+    }
 }
 
 impl<T: Scalar> Drop for SparseMatrix<T> {
@@ -1729,6 +1844,174 @@ pub fn sorv<T: Scalar>(
 // =========================================================================
 //   ILU smoother
 // =========================================================================
+
+// =========================================================================
+//   Real high-level mat-vec / triangular solve / triangular multi-RHS solve
+// =========================================================================
+
+/// Real high-level mat-vec `y := α · op(A) · x + β · y` against a
+/// `SparseMatrix<f64>` handle (per-precision; complex variants live in
+/// the [`complex`] submodule).
+#[allow(clippy::too_many_arguments)]
+pub fn mv_f64(
+    op: Trans,
+    alpha: f64,
+    a: &SparseMatrix<f64>,
+    descr: &MatDescr,
+    x: &[f64],
+    beta: f64,
+    y: &mut [f64],
+) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_dmv(
+            trans_raw(op), &alpha, a.as_raw(), descr.as_raw(),
+            x.as_ptr(), &beta, y.as_mut_ptr(),
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// `f32` mat-vec via the matrix-handle interface. See [`mv_f64`].
+#[allow(clippy::too_many_arguments)]
+pub fn mv_f32(
+    op: Trans,
+    alpha: f32,
+    a: &SparseMatrix<f32>,
+    descr: &MatDescr,
+    x: &[f32],
+    beta: f32,
+    y: &mut [f32],
+) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_smv(
+            trans_raw(op), &alpha, a.as_raw(), descr.as_raw(),
+            x.as_ptr(), &beta, y.as_mut_ptr(),
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// Solve `op(A) · x = α · b` for sparse triangular `A` against a
+/// `SparseMatrix<f64>` handle. The fill mode and unit/non-unit diag
+/// must be set on `descr` first.
+pub fn trsv_f64(
+    op: Trans,
+    alpha: f64,
+    a: &SparseMatrix<f64>,
+    descr: &MatDescr,
+    b: &[f64],
+    x: &mut [f64],
+) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_dtrsv(
+            trans_raw(op), alpha, a.as_raw(), descr.as_raw(),
+            b.as_ptr(), x.as_mut_ptr(),
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// `f32` triangular solve. See [`trsv_f64`].
+pub fn trsv_f32(
+    op: Trans,
+    alpha: f32,
+    a: &SparseMatrix<f32>,
+    descr: &MatDescr,
+    b: &[f32],
+    x: &mut [f32],
+) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_strsv(
+            trans_raw(op), alpha, a.as_raw(), descr.as_raw(),
+            b.as_ptr(), x.as_mut_ptr(),
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// Multi-RHS triangular solve: `op(A) · X = α · B` for `n_rhs`
+/// right-hand sides, `B`/`X` dense `m × n_rhs`.
+#[allow(clippy::too_many_arguments)]
+pub fn trsm_f64(
+    op: Trans,
+    alpha: f64,
+    a: &SparseMatrix<f64>,
+    descr: &MatDescr,
+    order: Order,
+    b: &[f64],
+    n_rhs: usize,
+    ldb: usize,
+    x: &mut [f64],
+    ldx: usize,
+) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_dtrsm(
+            trans_raw(op), alpha, a.as_raw(), descr.as_raw(),
+            order.raw(),
+            b.as_ptr(), n_rhs as sys::aoclsparse_int, ldb as sys::aoclsparse_int,
+            x.as_mut_ptr(), ldx as sys::aoclsparse_int,
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// `f32` multi-RHS triangular solve. See [`trsm_f64`].
+#[allow(clippy::too_many_arguments)]
+pub fn trsm_f32(
+    op: Trans,
+    alpha: f32,
+    a: &SparseMatrix<f32>,
+    descr: &MatDescr,
+    order: Order,
+    b: &[f32],
+    n_rhs: usize,
+    ldb: usize,
+    x: &mut [f32],
+    ldx: usize,
+) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_strsm(
+            trans_raw(op), alpha, a.as_raw(), descr.as_raw(),
+            order.raw(),
+            b.as_ptr(), n_rhs as sys::aoclsparse_int, ldb as sys::aoclsparse_int,
+            x.as_mut_ptr(), ldx as sys::aoclsparse_int,
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// Sparse vector dot product: `Σᵢ x[i] · y[indx[i]]`. `x` and `indx`
+/// must have the same length (the nnz count).
+pub fn doti_f64(x: &[f64], indx: &[sys::aoclsparse_int], y: &[f64]) -> Result<f64> {
+    if x.len() != indx.len() {
+        return Err(Error::InvalidArgument(format!(
+            "doti: x.len()={} != indx.len()={}", x.len(), indx.len()
+        )));
+    }
+    let r = unsafe {
+        sys::aoclsparse_ddoti(
+            x.len() as sys::aoclsparse_int,
+            x.as_ptr(), indx.as_ptr(), y.as_ptr(),
+        )
+    };
+    Ok(r)
+}
+
+/// `f32` sparse dot. See [`doti_f64`].
+pub fn doti_f32(x: &[f32], indx: &[sys::aoclsparse_int], y: &[f32]) -> Result<f32> {
+    if x.len() != indx.len() {
+        return Err(Error::InvalidArgument(format!(
+            "doti: x.len()={} != indx.len()={}", x.len(), indx.len()
+        )));
+    }
+    let r = unsafe {
+        sys::aoclsparse_sdoti(
+            x.len() as sys::aoclsparse_int,
+            x.as_ptr(), indx.as_ptr(), y.as_ptr(),
+        )
+    };
+    Ok(r)
+}
 
 /// Apply one ILU(0) smoothing step in-place to `x`, with right-hand side `b`.
 ///
