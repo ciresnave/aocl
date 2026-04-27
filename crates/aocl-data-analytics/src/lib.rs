@@ -2391,6 +2391,56 @@ impl DecisionTree {
         check_status("data-analytics", status)?;
         Ok(acc)
     }
+
+    /// Predict class probabilities for `n_samples × n_features` test
+    /// data. `y_proba` is `n_samples × n_class` row-major; `ldy` ≥
+    /// `n_class`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn predict_proba(
+        &mut self,
+        n_samples: usize,
+        n_features: usize,
+        x_test: &[f64],
+        y_proba: &mut [f64],
+        n_class: usize,
+        ldy: usize,
+    ) -> Result<()> {
+        let status = unsafe {
+            sys::da_tree_predict_proba_d(
+                self.handle.raw,
+                n_samples as sys::da_int, n_features as sys::da_int,
+                x_test.as_ptr(), n_samples as sys::da_int,
+                y_proba.as_mut_ptr(),
+                n_class as sys::da_int,
+                ldy as sys::da_int,
+            )
+        };
+        check_status("data-analytics", status)
+    }
+
+    /// Predict log class probabilities. See [`DecisionTree::predict_proba`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn predict_log_proba(
+        &mut self,
+        n_samples: usize,
+        n_features: usize,
+        x_test: &[f64],
+        y_log_proba: &mut [f64],
+        n_class: usize,
+        ldy: usize,
+    ) -> Result<()> {
+        let status = unsafe {
+            sys::da_tree_predict_log_proba_d(
+                self.handle.raw,
+                n_samples as sys::da_int, n_features as sys::da_int,
+                x_test.as_ptr(), n_samples as sys::da_int,
+                y_log_proba.as_mut_ptr(),
+                n_class as sys::da_int,
+                ldy as sys::da_int,
+            )
+        };
+        check_status("data-analytics", status)
+    }
 }
 
 impl std::fmt::Debug for DecisionTree {
@@ -2527,6 +2577,55 @@ impl DecisionForest {
         };
         check_status("data-analytics", status)?;
         Ok(acc)
+    }
+
+    /// Predict class probabilities for the random forest. See
+    /// [`DecisionTree::predict_proba`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn predict_proba(
+        &mut self,
+        n_samples: usize,
+        n_features: usize,
+        x_test: &[f64],
+        y_proba: &mut [f64],
+        n_class: usize,
+        ldy: usize,
+    ) -> Result<()> {
+        let status = unsafe {
+            sys::da_forest_predict_proba_d(
+                self.handle.raw,
+                n_samples as sys::da_int, n_features as sys::da_int,
+                x_test.as_ptr(), n_samples as sys::da_int,
+                y_proba.as_mut_ptr(),
+                n_class as sys::da_int,
+                ldy as sys::da_int,
+            )
+        };
+        check_status("data-analytics", status)
+    }
+
+    /// Predict log class probabilities for the random forest.
+    #[allow(clippy::too_many_arguments)]
+    pub fn predict_log_proba(
+        &mut self,
+        n_samples: usize,
+        n_features: usize,
+        x_test: &[f64],
+        y_log_proba: &mut [f64],
+        n_class: usize,
+        ldy: usize,
+    ) -> Result<()> {
+        let status = unsafe {
+            sys::da_forest_predict_log_proba_d(
+                self.handle.raw,
+                n_samples as sys::da_int, n_features as sys::da_int,
+                x_test.as_ptr(), n_samples as sys::da_int,
+                y_log_proba.as_mut_ptr(),
+                n_class as sys::da_int,
+                ldy as sys::da_int,
+            )
+        };
+        check_status("data-analytics", status)
     }
 }
 
