@@ -1224,6 +1224,181 @@ macro_rules! impl_dist_scalar {
 impl_dist_scalar!(f32, da_pairwise_distances_s);
 impl_dist_scalar!(f64, da_pairwise_distances_d);
 
+// =========================================================================
+//   Kernel functions (linear / RBF / polynomial / sigmoid)
+// =========================================================================
+
+/// Scalar element type for kernel-matrix computations.
+pub trait KernelScalar: Scalar {
+    /// Linear kernel: `K(x, y) = x · y`.
+    #[allow(clippy::too_many_arguments)]
+    fn linear_kernel(
+        layout: Layout, m: usize, n: usize, k: usize,
+        x: &[Self], ldx: usize, y: Option<&[Self]>, ldy: usize,
+        d: &mut [Self], ldd: usize,
+    ) -> Result<()>;
+
+    /// RBF (Gaussian) kernel: `K(x, y) = exp(-γ · ‖x − y‖²)`.
+    #[allow(clippy::too_many_arguments)]
+    fn rbf_kernel(
+        layout: Layout, m: usize, n: usize, k: usize,
+        x: &[Self], ldx: usize, y: Option<&[Self]>, ldy: usize,
+        d: &mut [Self], ldd: usize,
+        gamma: Self,
+    ) -> Result<()>;
+
+    /// Polynomial kernel: `K(x, y) = (γ · x · y + c)^degree`.
+    #[allow(clippy::too_many_arguments)]
+    fn polynomial_kernel(
+        layout: Layout, m: usize, n: usize, k: usize,
+        x: &[Self], ldx: usize, y: Option<&[Self]>, ldy: usize,
+        d: &mut [Self], ldd: usize,
+        gamma: Self, degree: i64, coef0: Self,
+    ) -> Result<()>;
+
+    /// Sigmoid kernel: `K(x, y) = tanh(γ · x · y + c)`.
+    #[allow(clippy::too_many_arguments)]
+    fn sigmoid_kernel(
+        layout: Layout, m: usize, n: usize, k: usize,
+        x: &[Self], ldx: usize, y: Option<&[Self]>, ldy: usize,
+        d: &mut [Self], ldd: usize,
+        gamma: Self, coef0: Self,
+    ) -> Result<()>;
+}
+
+macro_rules! impl_kernel_scalar {
+    ($t:ty, $linear:ident, $rbf:ident, $poly:ident, $sigmoid:ident) => {
+        impl KernelScalar for $t {
+            fn linear_kernel(
+                layout: Layout, m: usize, n: usize, k: usize,
+                x: &[Self], ldx: usize, y: Option<&[Self]>, ldy: usize,
+                d: &mut [Self], ldd: usize,
+            ) -> Result<()> {
+                let y_ptr = y.map(|s| s.as_ptr()).unwrap_or(std::ptr::null());
+                let status = unsafe {
+                    sys::$linear(
+                        layout_raw(layout),
+                        m as sys::da_int, n as sys::da_int, k as sys::da_int,
+                        x.as_ptr(), ldx as sys::da_int,
+                        y_ptr, ldy as sys::da_int,
+                        d.as_mut_ptr(), ldd as sys::da_int,
+                    )
+                };
+                check_status("data-analytics", status)
+            }
+
+            fn rbf_kernel(
+                layout: Layout, m: usize, n: usize, k: usize,
+                x: &[Self], ldx: usize, y: Option<&[Self]>, ldy: usize,
+                d: &mut [Self], ldd: usize,
+                gamma: Self,
+            ) -> Result<()> {
+                let y_ptr = y.map(|s| s.as_ptr()).unwrap_or(std::ptr::null());
+                let status = unsafe {
+                    sys::$rbf(
+                        layout_raw(layout),
+                        m as sys::da_int, n as sys::da_int, k as sys::da_int,
+                        x.as_ptr(), ldx as sys::da_int,
+                        y_ptr, ldy as sys::da_int,
+                        d.as_mut_ptr(), ldd as sys::da_int,
+                        gamma,
+                    )
+                };
+                check_status("data-analytics", status)
+            }
+
+            fn polynomial_kernel(
+                layout: Layout, m: usize, n: usize, k: usize,
+                x: &[Self], ldx: usize, y: Option<&[Self]>, ldy: usize,
+                d: &mut [Self], ldd: usize,
+                gamma: Self, degree: i64, coef0: Self,
+            ) -> Result<()> {
+                let y_ptr = y.map(|s| s.as_ptr()).unwrap_or(std::ptr::null());
+                let status = unsafe {
+                    sys::$poly(
+                        layout_raw(layout),
+                        m as sys::da_int, n as sys::da_int, k as sys::da_int,
+                        x.as_ptr(), ldx as sys::da_int,
+                        y_ptr, ldy as sys::da_int,
+                        d.as_mut_ptr(), ldd as sys::da_int,
+                        gamma, degree as sys::da_int, coef0,
+                    )
+                };
+                check_status("data-analytics", status)
+            }
+
+            fn sigmoid_kernel(
+                layout: Layout, m: usize, n: usize, k: usize,
+                x: &[Self], ldx: usize, y: Option<&[Self]>, ldy: usize,
+                d: &mut [Self], ldd: usize,
+                gamma: Self, coef0: Self,
+            ) -> Result<()> {
+                let y_ptr = y.map(|s| s.as_ptr()).unwrap_or(std::ptr::null());
+                let status = unsafe {
+                    sys::$sigmoid(
+                        layout_raw(layout),
+                        m as sys::da_int, n as sys::da_int, k as sys::da_int,
+                        x.as_ptr(), ldx as sys::da_int,
+                        y_ptr, ldy as sys::da_int,
+                        d.as_mut_ptr(), ldd as sys::da_int,
+                        gamma, coef0,
+                    )
+                };
+                check_status("data-analytics", status)
+            }
+        }
+    };
+}
+
+impl_kernel_scalar!(f32, da_linear_kernel_s, da_rbf_kernel_s, da_polynomial_kernel_s, da_sigmoid_kernel_s);
+impl_kernel_scalar!(f64, da_linear_kernel_d, da_rbf_kernel_d, da_polynomial_kernel_d, da_sigmoid_kernel_d);
+
+/// Linear kernel `K(x, y) = x · y` between rows of row-major matrices
+/// `x` (`m × k`) and optionally `y` (`n × k`). Output `d` is `m × n`
+/// (or `m × m` if `y` is `None`).
+pub fn linear_kernel<T: KernelScalar>(
+    m: usize, n: usize, k: usize,
+    x: &[T], y: Option<&[T]>, d: &mut [T],
+) -> Result<()> {
+    let ldd = if y.is_none() { m } else { n };
+    T::linear_kernel(Layout::RowMajor, m, n, k, x, k, y, k, d, ldd)
+}
+
+/// RBF kernel `K(x, y) = exp(-γ · ‖x − y‖²)` (row-major).
+#[allow(clippy::too_many_arguments)]
+pub fn rbf_kernel<T: KernelScalar>(
+    m: usize, n: usize, k: usize,
+    x: &[T], y: Option<&[T]>, d: &mut [T],
+    gamma: T,
+) -> Result<()> {
+    let ldd = if y.is_none() { m } else { n };
+    T::rbf_kernel(Layout::RowMajor, m, n, k, x, k, y, k, d, ldd, gamma)
+}
+
+/// Polynomial kernel `K(x, y) = (γ · x · y + c)^degree` (row-major).
+#[allow(clippy::too_many_arguments)]
+pub fn polynomial_kernel<T: KernelScalar>(
+    m: usize, n: usize, k: usize,
+    x: &[T], y: Option<&[T]>, d: &mut [T],
+    gamma: T, degree: i64, coef0: T,
+) -> Result<()> {
+    let ldd = if y.is_none() { m } else { n };
+    T::polynomial_kernel(Layout::RowMajor, m, n, k, x, k, y, k, d, ldd,
+                         gamma, degree, coef0)
+}
+
+/// Sigmoid kernel `K(x, y) = tanh(γ · x · y + c)` (row-major).
+#[allow(clippy::too_many_arguments)]
+pub fn sigmoid_kernel<T: KernelScalar>(
+    m: usize, n: usize, k: usize,
+    x: &[T], y: Option<&[T]>, d: &mut [T],
+    gamma: T, coef0: T,
+) -> Result<()> {
+    let ldd = if y.is_none() { m } else { n };
+    T::sigmoid_kernel(Layout::RowMajor, m, n, k, x, k, y, k, d, ldd,
+                      gamma, coef0)
+}
+
 /// Compute the pairwise distance matrix between rows of `x` (and
 /// optionally rows of `y`) under the given `metric`.
 ///
@@ -2826,6 +3001,34 @@ mod tests {
         assert!(!rinfo.is_empty());
         // info[2] is iter count per the C header; should be > 0.
         assert!(rinfo[2] > 0.0, "iterations = {}", rinfo[2]);
+    }
+
+    #[test]
+    fn linear_kernel_self_gram() {
+        // X = [[1, 0], [0, 1], [1, 1]] row-major; Gram = X·Xᵀ
+        // = [[1, 0, 1], [0, 1, 1], [1, 1, 2]]
+        let x = [1.0_f64, 0.0,  0.0, 1.0,  1.0, 1.0];
+        let mut d = [0.0_f64; 9];
+        linear_kernel::<f64>(3, 0, 2, &x, None, &mut d).unwrap();
+        let want = [1.0, 0.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 2.0];
+        for (got, w) in d.iter().zip(want.iter()) {
+            assert!((got - w).abs() < 1e-12, "got {got}, want {w}");
+        }
+    }
+
+    #[test]
+    fn rbf_kernel_diagonal_is_one() {
+        // RBF kernel of any vector with itself is exp(0) = 1.
+        // Two-point set; check the diagonal entries.
+        let x = [1.0_f64, 2.0, 3.0,  4.0, 5.0, 6.0]; // 2 rows × 3 cols
+        let mut d = [0.0_f64; 4];
+        rbf_kernel::<f64>(2, 0, 3, &x, None, &mut d, 0.5).unwrap();
+        // d[0] (= K(x0, x0)) and d[3] (= K(x1, x1)) should be 1.
+        assert!((d[0] - 1.0).abs() < 1e-12, "K(x0,x0) = {}", d[0]);
+        assert!((d[3] - 1.0).abs() < 1e-12, "K(x1,x1) = {}", d[3]);
+        // Off-diagonal should be < 1.
+        assert!(d[1] < 1.0);
+        assert!(d[2] < 1.0);
     }
 
     #[test]
