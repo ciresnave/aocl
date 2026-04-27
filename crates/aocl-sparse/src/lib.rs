@@ -2351,6 +2351,375 @@ pub fn update_values_f32(a: &mut SparseMatrix<f32>, val: &mut [f32]) -> Result<(
     check_status("sparse", status)
 }
 
+// =========================================================================
+//   Fused dot + mat-vec, sparse rotations, strided gather/scatter,
+//   symmetric rank-k, symmetric triple product
+// =========================================================================
+
+/// Fused dot product and mat-vec: `y := α · op(A) · x + β · y` and
+/// `d := xᵀ · y` (or `d := xᴴ · y` for complex). Saves one pass over
+/// the matrix versus calling `mv` then `dot` separately. (`f64`)
+#[allow(clippy::too_many_arguments)]
+pub fn dotmv_f64(
+    op: Trans,
+    alpha: f64,
+    a: &SparseMatrix<f64>,
+    descr: &MatDescr,
+    x: &[f64],
+    beta: f64,
+    y: &mut [f64],
+    d: &mut f64,
+) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_ddotmv(
+            trans_raw(op), alpha, a.as_raw(), descr.as_raw(),
+            x.as_ptr(), beta, y.as_mut_ptr(), d,
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// `f32` fused dot + mat-vec. See [`dotmv_f64`].
+#[allow(clippy::too_many_arguments)]
+pub fn dotmv_f32(
+    op: Trans,
+    alpha: f32,
+    a: &SparseMatrix<f32>,
+    descr: &MatDescr,
+    x: &[f32],
+    beta: f32,
+    y: &mut [f32],
+    d: &mut f32,
+) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_sdotmv(
+            trans_raw(op), alpha, a.as_raw(), descr.as_raw(),
+            x.as_ptr(), beta, y.as_mut_ptr(), d,
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// Symmetric rank-k update from a sparse matrix:
+/// `C := α · op(A) · op(A)ᵀ + β · C` (real) /
+/// `C := α · op(A) · op(A)ᴴ + β · C` (complex). `C` is dense. (`f64`)
+#[allow(clippy::too_many_arguments)]
+pub fn syrkd_f64(
+    op_a: Trans,
+    a: &SparseMatrix<f64>,
+    alpha: f64, beta: f64,
+    c: &mut [f64],
+    order_c: Order,
+    ldc: usize,
+) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_dsyrkd(
+            trans_raw(op_a), a.as_raw(),
+            alpha, beta,
+            c.as_mut_ptr(), order_c.raw(), ldc as sys::aoclsparse_int,
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// `f32` symmetric rank-k update from sparse `A`. See [`syrkd_f64`].
+#[allow(clippy::too_many_arguments)]
+pub fn syrkd_f32(
+    op_a: Trans,
+    a: &SparseMatrix<f32>,
+    alpha: f32, beta: f32,
+    c: &mut [f32],
+    order_c: Order,
+    ldc: usize,
+) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_ssyrkd(
+            trans_raw(op_a), a.as_raw(),
+            alpha, beta,
+            c.as_mut_ptr(), order_c.raw(), ldc as sys::aoclsparse_int,
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// Symmetric triple product from a sparse `A` and dense `B`:
+/// `C := α · op(A) · B · op(A)ᵀ + β · C`. (`f64`)
+#[allow(clippy::too_many_arguments)]
+pub fn syprd_f64(
+    op_a: Trans,
+    a: &SparseMatrix<f64>,
+    b: &[f64], order_b: Order, ldb: usize,
+    alpha: f64, beta: f64,
+    c: &mut [f64], order_c: Order, ldc: usize,
+) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_dsyprd(
+            trans_raw(op_a), a.as_raw(),
+            b.as_ptr(), order_b.raw(), ldb as sys::aoclsparse_int,
+            alpha, beta,
+            c.as_mut_ptr(), order_c.raw(), ldc as sys::aoclsparse_int,
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// `f32` symmetric triple product. See [`syprd_f64`].
+#[allow(clippy::too_many_arguments)]
+pub fn syprd_f32(
+    op_a: Trans,
+    a: &SparseMatrix<f32>,
+    b: &[f32], order_b: Order, ldb: usize,
+    alpha: f32, beta: f32,
+    c: &mut [f32], order_c: Order, ldc: usize,
+) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_ssyprd(
+            trans_raw(op_a), a.as_raw(),
+            b.as_ptr(), order_b.raw(), ldb as sys::aoclsparse_int,
+            alpha, beta,
+            c.as_mut_ptr(), order_c.raw(), ldc as sys::aoclsparse_int,
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// Sparse rotation: simultaneously rotate `(x, y)` at indices `indx`
+/// by `(c, s)`. `x` is sparse with `indx` indices into the dense `y`. (`f64`)
+pub fn roti_f64(
+    x: &mut [f64], indx: &[sys::aoclsparse_int], y: &mut [f64], c: f64, s: f64,
+) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_droti(
+            x.len() as sys::aoclsparse_int,
+            x.as_mut_ptr(), indx.as_ptr(),
+            y.as_mut_ptr(), c, s,
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// `f32` sparse rotation. See [`roti_f64`].
+pub fn roti_f32(
+    x: &mut [f32], indx: &[sys::aoclsparse_int], y: &mut [f32], c: f32, s: f32,
+) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_sroti(
+            x.len() as sys::aoclsparse_int,
+            x.as_mut_ptr(), indx.as_ptr(),
+            y.as_mut_ptr(), c, s,
+        )
+    };
+    check_status("sparse", status)
+}
+
+/// Strided sparse gather: `x[i] := y[i · stride]` for `i ∈ [0, nnz)`. (`f64`)
+pub fn gthrs_f64(y: &[f64], x: &mut [f64], stride: i32) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_dgthrs(
+            x.len() as sys::aoclsparse_int,
+            y.as_ptr(), x.as_mut_ptr(),
+            stride as sys::aoclsparse_int,
+        )
+    };
+    check_status("sparse", status)
+}
+/// `f32` strided gather. See [`gthrs_f64`].
+pub fn gthrs_f32(y: &[f32], x: &mut [f32], stride: i32) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_sgthrs(x.len() as sys::aoclsparse_int, y.as_ptr(), x.as_mut_ptr(), stride as sys::aoclsparse_int)
+    };
+    check_status("sparse", status)
+}
+
+/// Strided sparse scatter: `y[i · stride] := x[i]`. (`f64`)
+pub fn sctrs_f64(x: &[f64], y: &mut [f64], stride: i32) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_dsctrs(x.len() as sys::aoclsparse_int, x.as_ptr(), stride as sys::aoclsparse_int, y.as_mut_ptr())
+    };
+    check_status("sparse", status)
+}
+/// `f32` strided scatter. See [`sctrs_f64`].
+pub fn sctrs_f32(x: &[f32], y: &mut [f32], stride: i32) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_ssctrs(x.len() as sys::aoclsparse_int, x.as_ptr(), stride as sys::aoclsparse_int, y.as_mut_ptr())
+    };
+    check_status("sparse", status)
+}
+
+/// Gather-and-zero: copy `y[indx[i]]` into `x[i]` and zero the source.
+/// (`f64`)
+pub fn gthrz_f64(y: &mut [f64], indx: &[sys::aoclsparse_int], x: &mut [f64]) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_dgthrz(x.len() as sys::aoclsparse_int, y.as_mut_ptr(), x.as_mut_ptr(), indx.as_ptr())
+    };
+    check_status("sparse", status)
+}
+/// `f32` gather-and-zero. See [`gthrz_f64`].
+pub fn gthrz_f32(y: &mut [f32], indx: &[sys::aoclsparse_int], x: &mut [f32]) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_sgthrz(x.len() as sys::aoclsparse_int, y.as_mut_ptr(), x.as_mut_ptr(), indx.as_ptr())
+    };
+    check_status("sparse", status)
+}
+
+/// `f32` SOR / forward / backward Gauss-Seidel sweep. The existing
+/// generic [`sorv`] dispatches to this via the Scalar trait; this is
+/// a per-precision direct alias.
+#[allow(clippy::too_many_arguments)]
+pub fn sorv_f32(
+    sor_type: SorType,
+    descr: &MatDescr,
+    a: &SparseMatrix<f32>,
+    omega: f32, alpha: f32,
+    x: &mut [f32], b: &[f32],
+) -> Result<()> {
+    let status = unsafe {
+        sys::aoclsparse_ssorv(
+            sor_type.raw(), descr.as_raw(), a.as_raw(),
+            omega, alpha,
+            x.as_mut_ptr(), b.as_ptr(),
+        )
+    };
+    check_status("sparse", status)
+}
+
+// =========================================================================
+//   TCSR (triangular CSR): two parallel CSRs, one for L, one for U
+// =========================================================================
+
+/// Build a TCSR matrix handle from two CSR sub-arrays describing the
+/// strict-lower (`*_L`) and strict-upper (`*_U`) parts. (`f64`)
+#[allow(clippy::too_many_arguments)]
+pub fn create_tcsr_f64(
+    base: IndexBase,
+    m: usize, n: usize, nnz: usize,
+    row_ptr_l: &mut [sys::aoclsparse_int],
+    row_ptr_u: &mut [sys::aoclsparse_int],
+    col_idx_l: &mut [sys::aoclsparse_int],
+    col_idx_u: &mut [sys::aoclsparse_int],
+    val_l: &mut [f64],
+    val_u: &mut [f64],
+) -> Result<sys::aoclsparse_matrix> {
+    let mut raw: sys::aoclsparse_matrix = std::ptr::null_mut();
+    let status = unsafe {
+        sys::aoclsparse_create_dtcsr(
+            &mut raw,
+            base.raw(),
+            m as sys::aoclsparse_int, n as sys::aoclsparse_int, nnz as sys::aoclsparse_int,
+            row_ptr_l.as_mut_ptr(), row_ptr_u.as_mut_ptr(),
+            col_idx_l.as_mut_ptr(), col_idx_u.as_mut_ptr(),
+            val_l.as_mut_ptr(), val_u.as_mut_ptr(),
+        )
+    };
+    check_status("sparse", status)?;
+    if raw.is_null() {
+        return Err(Error::AllocationFailed("sparse"));
+    }
+    Ok(raw)
+}
+
+/// `f32` TCSR creator. See [`create_tcsr_f64`].
+#[allow(clippy::too_many_arguments)]
+pub fn create_tcsr_f32(
+    base: IndexBase,
+    m: usize, n: usize, nnz: usize,
+    row_ptr_l: &mut [sys::aoclsparse_int],
+    row_ptr_u: &mut [sys::aoclsparse_int],
+    col_idx_l: &mut [sys::aoclsparse_int],
+    col_idx_u: &mut [sys::aoclsparse_int],
+    val_l: &mut [f32],
+    val_u: &mut [f32],
+) -> Result<sys::aoclsparse_matrix> {
+    let mut raw: sys::aoclsparse_matrix = std::ptr::null_mut();
+    let status = unsafe {
+        sys::aoclsparse_create_stcsr(
+            &mut raw,
+            base.raw(),
+            m as sys::aoclsparse_int, n as sys::aoclsparse_int, nnz as sys::aoclsparse_int,
+            row_ptr_l.as_mut_ptr(), row_ptr_u.as_mut_ptr(),
+            col_idx_l.as_mut_ptr(), col_idx_u.as_mut_ptr(),
+            val_l.as_mut_ptr(), val_u.as_mut_ptr(),
+        )
+    };
+    check_status("sparse", status)?;
+    if raw.is_null() {
+        return Err(Error::AllocationFailed("sparse"));
+    }
+    Ok(raw)
+}
+
+// =========================================================================
+//   CSC creators (real)
+// =========================================================================
+
+/// Build a CSC matrix handle. Column-major analogue of CSR. (`f64`)
+#[allow(clippy::too_many_arguments)]
+pub fn create_csc_f64(
+    base: IndexBase,
+    m: usize, n: usize, nnz: usize,
+    col_ptr: &mut [sys::aoclsparse_int],
+    row_idx: &mut [sys::aoclsparse_int],
+    val: &mut [f64],
+) -> Result<sys::aoclsparse_matrix> {
+    let mut raw: sys::aoclsparse_matrix = std::ptr::null_mut();
+    let status = unsafe {
+        sys::aoclsparse_create_dcsc(
+            &mut raw, base.raw(),
+            m as sys::aoclsparse_int, n as sys::aoclsparse_int, nnz as sys::aoclsparse_int,
+            col_ptr.as_mut_ptr(), row_idx.as_mut_ptr(), val.as_mut_ptr(),
+        )
+    };
+    check_status("sparse", status)?;
+    if raw.is_null() { return Err(Error::AllocationFailed("sparse")); }
+    Ok(raw)
+}
+/// `f32` CSC creator. See [`create_csc_f64`].
+#[allow(clippy::too_many_arguments)]
+pub fn create_csc_f32(
+    base: IndexBase,
+    m: usize, n: usize, nnz: usize,
+    col_ptr: &mut [sys::aoclsparse_int],
+    row_idx: &mut [sys::aoclsparse_int],
+    val: &mut [f32],
+) -> Result<sys::aoclsparse_matrix> {
+    let mut raw: sys::aoclsparse_matrix = std::ptr::null_mut();
+    let status = unsafe {
+        sys::aoclsparse_create_scsc(
+            &mut raw, base.raw(),
+            m as sys::aoclsparse_int, n as sys::aoclsparse_int, nnz as sys::aoclsparse_int,
+            col_ptr.as_mut_ptr(), row_idx.as_mut_ptr(), val.as_mut_ptr(),
+        )
+    };
+    check_status("sparse", status)?;
+    if raw.is_null() { return Err(Error::AllocationFailed("sparse")); }
+    Ok(raw)
+}
+
+/// Memory-usage hint to give the analysis pass.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MemoryUsage {
+    /// Minimise extra memory; favour smaller working sets.
+    Minimal,
+    /// Allow the library to use additional memory if it speeds things up.
+    Unrestricted,
+}
+
+impl MemoryUsage {
+    fn raw(self) -> sys::aoclsparse_memory_usage {
+        match self {
+            MemoryUsage::Minimal => sys::aoclsparse_memory_usage__aoclsparse_memory_usage_minimal,
+            MemoryUsage::Unrestricted => sys::aoclsparse_memory_usage__aoclsparse_memory_usage_unrestricted,
+        }
+    }
+}
+
+/// Tell the library how much extra memory it may consume on this
+/// matrix. Pair with [`optimize`].
+pub fn set_memory_hint<T: Scalar>(mat: &mut SparseMatrix<T>, policy: MemoryUsage) -> Result<()> {
+    let status = unsafe { sys::aoclsparse_set_memory_hint(mat.as_raw(), policy.raw()) };
+    check_status("sparse", status)
+}
+
 /// Apply one ILU(0) smoothing step in-place to `x`, with right-hand side `b`.
 ///
 /// On the first call against a matrix this also factorizes; subsequent
