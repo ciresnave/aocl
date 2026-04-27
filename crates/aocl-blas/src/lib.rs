@@ -3173,6 +3173,651 @@ pub fn hpr2<T: ComplexScalar>(
 }
 
 // ===========================================================================
+//   BLAS extras: axpby, gemmt, gemm_batch, gemm_pack family,
+//   rotm/rotmg, sdsdot, complex Givens (crotg/zrotg/csrot/zdrot)
+// ===========================================================================
+
+/// Extension trait for BLAS routines added later than the Netlib core
+/// (axpby, gemmt). Implemented for `f32`, `f64`, `Complex32`, `Complex64`.
+pub trait BlasExt: Scalar {
+    /// `Y := α · X + β · Y` (an axpy with a scaling on `Y`).
+    fn axpby(
+        alpha: Self,
+        x: &[Self],
+        inc_x: usize,
+        beta: Self,
+        y: &mut [Self],
+        inc_y: usize,
+    ) -> Result<()>;
+
+    /// Triangular GEMM: `C := α · op(A) · op(B) + β · C` where only the
+    /// upper or lower triangle of `C` is updated.
+    #[allow(clippy::too_many_arguments)]
+    fn gemmt(
+        layout: Layout,
+        uplo: Uplo,
+        trans_a: Trans,
+        trans_b: Trans,
+        n: usize,
+        k: usize,
+        alpha: Self,
+        a: &[Self],
+        lda: usize,
+        b: &[Self],
+        ldb: usize,
+        beta: Self,
+        c: &mut [Self],
+        ldc: usize,
+    ) -> Result<()>;
+}
+
+impl BlasExt for f32 {
+    fn axpby(
+        alpha: Self, x: &[Self], inc_x: usize, beta: Self, y: &mut [Self], inc_y: usize,
+    ) -> Result<()> {
+        let n = infer_n(x.len(), inc_x, y.len(), inc_y);
+        unsafe {
+            sys::cblas_saxpby(
+                n as sys::f77_int,
+                alpha,
+                x.as_ptr(), inc_x as sys::f77_int,
+                beta,
+                y.as_mut_ptr(), inc_y as sys::f77_int,
+            );
+        }
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn gemmt(
+        layout: Layout, uplo: Uplo, trans_a: Trans, trans_b: Trans,
+        n: usize, k: usize, alpha: Self, a: &[Self], lda: usize,
+        b: &[Self], ldb: usize, beta: Self, c: &mut [Self], ldc: usize,
+    ) -> Result<()> {
+        unsafe {
+            sys::cblas_sgemmt(
+                layout_raw(layout), uplo_raw(uplo),
+                trans_raw(trans_a), trans_raw(trans_b),
+                n as sys::f77_int, k as sys::f77_int,
+                alpha,
+                a.as_ptr(), lda as sys::f77_int,
+                b.as_ptr(), ldb as sys::f77_int,
+                beta,
+                c.as_mut_ptr(), ldc as sys::f77_int,
+            );
+        }
+        Ok(())
+    }
+}
+
+impl BlasExt for f64 {
+    fn axpby(
+        alpha: Self, x: &[Self], inc_x: usize, beta: Self, y: &mut [Self], inc_y: usize,
+    ) -> Result<()> {
+        let n = infer_n(x.len(), inc_x, y.len(), inc_y);
+        unsafe {
+            sys::cblas_daxpby(
+                n as sys::f77_int,
+                alpha,
+                x.as_ptr(), inc_x as sys::f77_int,
+                beta,
+                y.as_mut_ptr(), inc_y as sys::f77_int,
+            );
+        }
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn gemmt(
+        layout: Layout, uplo: Uplo, trans_a: Trans, trans_b: Trans,
+        n: usize, k: usize, alpha: Self, a: &[Self], lda: usize,
+        b: &[Self], ldb: usize, beta: Self, c: &mut [Self], ldc: usize,
+    ) -> Result<()> {
+        unsafe {
+            sys::cblas_dgemmt(
+                layout_raw(layout), uplo_raw(uplo),
+                trans_raw(trans_a), trans_raw(trans_b),
+                n as sys::f77_int, k as sys::f77_int,
+                alpha,
+                a.as_ptr(), lda as sys::f77_int,
+                b.as_ptr(), ldb as sys::f77_int,
+                beta,
+                c.as_mut_ptr(), ldc as sys::f77_int,
+            );
+        }
+        Ok(())
+    }
+}
+
+impl BlasExt for Complex32 {
+    fn axpby(
+        alpha: Self, x: &[Self], inc_x: usize, beta: Self, y: &mut [Self], inc_y: usize,
+    ) -> Result<()> {
+        let n = infer_n(x.len(), inc_x, y.len(), inc_y);
+        unsafe {
+            sys::cblas_caxpby(
+                n as sys::f77_int,
+                &alpha as *const _ as *const std::os::raw::c_void,
+                x.as_ptr() as *const std::os::raw::c_void, inc_x as sys::f77_int,
+                &beta as *const _ as *const std::os::raw::c_void,
+                y.as_mut_ptr() as *mut std::os::raw::c_void, inc_y as sys::f77_int,
+            );
+        }
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn gemmt(
+        layout: Layout, uplo: Uplo, trans_a: Trans, trans_b: Trans,
+        n: usize, k: usize, alpha: Self, a: &[Self], lda: usize,
+        b: &[Self], ldb: usize, beta: Self, c: &mut [Self], ldc: usize,
+    ) -> Result<()> {
+        unsafe {
+            sys::cblas_cgemmt(
+                layout_raw(layout), uplo_raw(uplo),
+                trans_raw(trans_a), trans_raw(trans_b),
+                n as sys::f77_int, k as sys::f77_int,
+                &alpha as *const _ as *const std::os::raw::c_void,
+                a.as_ptr() as *const std::os::raw::c_void, lda as sys::f77_int,
+                b.as_ptr() as *const std::os::raw::c_void, ldb as sys::f77_int,
+                &beta as *const _ as *const std::os::raw::c_void,
+                c.as_mut_ptr() as *mut std::os::raw::c_void, ldc as sys::f77_int,
+            );
+        }
+        Ok(())
+    }
+}
+
+impl BlasExt for Complex64 {
+    fn axpby(
+        alpha: Self, x: &[Self], inc_x: usize, beta: Self, y: &mut [Self], inc_y: usize,
+    ) -> Result<()> {
+        let n = infer_n(x.len(), inc_x, y.len(), inc_y);
+        unsafe {
+            sys::cblas_zaxpby(
+                n as sys::f77_int,
+                &alpha as *const _ as *const std::os::raw::c_void,
+                x.as_ptr() as *const std::os::raw::c_void, inc_x as sys::f77_int,
+                &beta as *const _ as *const std::os::raw::c_void,
+                y.as_mut_ptr() as *mut std::os::raw::c_void, inc_y as sys::f77_int,
+            );
+        }
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn gemmt(
+        layout: Layout, uplo: Uplo, trans_a: Trans, trans_b: Trans,
+        n: usize, k: usize, alpha: Self, a: &[Self], lda: usize,
+        b: &[Self], ldb: usize, beta: Self, c: &mut [Self], ldc: usize,
+    ) -> Result<()> {
+        unsafe {
+            sys::cblas_zgemmt(
+                layout_raw(layout), uplo_raw(uplo),
+                trans_raw(trans_a), trans_raw(trans_b),
+                n as sys::f77_int, k as sys::f77_int,
+                &alpha as *const _ as *const std::os::raw::c_void,
+                a.as_ptr() as *const std::os::raw::c_void, lda as sys::f77_int,
+                b.as_ptr() as *const std::os::raw::c_void, ldb as sys::f77_int,
+                &beta as *const _ as *const std::os::raw::c_void,
+                c.as_mut_ptr() as *mut std::os::raw::c_void, ldc as sys::f77_int,
+            );
+        }
+        Ok(())
+    }
+}
+
+/// `Y := α · X + β · Y` — extension of [`axpy`] with a scaling on `Y`.
+pub fn axpby<T: BlasExt>(alpha: T, x: &[T], beta: T, y: &mut [T]) -> Result<()> {
+    T::axpby(alpha, x, 1, beta, y, 1)
+}
+
+/// Triangular GEMM: like [`gemm`], but only the upper or lower triangle
+/// of `C` is updated.
+#[allow(clippy::too_many_arguments)]
+pub fn gemmt<T: BlasExt>(
+    uplo: Uplo,
+    trans_a: Trans,
+    trans_b: Trans,
+    n: usize,
+    k: usize,
+    alpha: T,
+    a: &[T],
+    lda: usize,
+    b: &[T],
+    ldb: usize,
+    beta: T,
+    c: &mut [T],
+    ldc: usize,
+) -> Result<()> {
+    T::gemmt(Layout::RowMajor, uplo, trans_a, trans_b, n, k, alpha, a, lda, b, ldb, beta, c, ldc)
+}
+
+// ----- Real-only extras: rotm / rotmg / sdsdot -----------------------------
+
+/// Compute the modified Givens-rotation parameters from `(d1, d2, b1, b2)`,
+/// returning the 5-element parameter vector `P` used by [`rotm`]. `d1`,
+/// `d2`, `b1` are updated in place.
+pub fn srotmg(d1: &mut f32, d2: &mut f32, b1: &mut f32, b2: f32) -> [f32; 5] {
+    let mut p = [0.0_f32; 5];
+    unsafe { sys::cblas_srotmg(d1, d2, b1, b2, p.as_mut_ptr()); }
+    p
+}
+
+/// `f64` modified Givens-rotation generator. See [`srotmg`].
+pub fn drotmg(d1: &mut f64, d2: &mut f64, b1: &mut f64, b2: f64) -> [f64; 5] {
+    let mut p = [0.0_f64; 5];
+    unsafe { sys::cblas_drotmg(d1, d2, b1, b2, p.as_mut_ptr()); }
+    p
+}
+
+/// Apply a modified Givens rotation defined by `p` to `(x, y)`.
+pub fn srotm(x: &mut [f32], y: &mut [f32], p: &[f32; 5]) -> Result<()> {
+    let n = x.len().min(y.len());
+    unsafe {
+        sys::cblas_srotm(
+            n as sys::f77_int,
+            x.as_mut_ptr(), 1, y.as_mut_ptr(), 1,
+            p.as_ptr(),
+        );
+    }
+    Ok(())
+}
+
+/// `f64` modified Givens rotation. See [`srotm`].
+pub fn drotm(x: &mut [f64], y: &mut [f64], p: &[f64; 5]) -> Result<()> {
+    let n = x.len().min(y.len());
+    unsafe {
+        sys::cblas_drotm(
+            n as sys::f77_int,
+            x.as_mut_ptr(), 1, y.as_mut_ptr(), 1,
+            p.as_ptr(),
+        );
+    }
+    Ok(())
+}
+
+/// Single-precision dot product accumulated in double precision and
+/// returned as a `f32`. `alpha` is added to the accumulated sum before
+/// rounding back to single precision.
+pub fn sdsdot(alpha: f32, x: &[f32], y: &[f32]) -> f32 {
+    let n = x.len().min(y.len());
+    unsafe {
+        sys::cblas_sdsdot(
+            n as sys::f77_int,
+            alpha,
+            x.as_ptr(), 1,
+            y.as_ptr(), 1,
+        )
+    }
+}
+
+// ----- Complex-only Givens-rotation extras ---------------------------------
+
+/// Generate the parameters `(c, s)` of a complex Givens rotation. `a` is
+/// overwritten with the resulting `r`, `b` with `z` (per the BLAS spec).
+pub fn crotg(a: &mut Complex32, b: &mut Complex32) -> (f32, Complex32) {
+    let mut c: f32 = 0.0;
+    let mut s = Complex32::ZERO;
+    unsafe {
+        sys::cblas_crotg(
+            a as *mut _ as *mut std::os::raw::c_void,
+            b as *mut _ as *mut std::os::raw::c_void,
+            &mut c,
+            &mut s as *mut _ as *mut std::os::raw::c_void,
+        );
+    }
+    (c, s)
+}
+
+/// Double-precision complex Givens generator. See [`crotg`].
+pub fn zrotg(a: &mut Complex64, b: &mut Complex64) -> (f64, Complex64) {
+    let mut c: f64 = 0.0;
+    let mut s = Complex64::ZERO;
+    unsafe {
+        sys::cblas_zrotg(
+            a as *mut _ as *mut std::os::raw::c_void,
+            b as *mut _ as *mut std::os::raw::c_void,
+            &mut c,
+            &mut s as *mut _ as *mut std::os::raw::c_void,
+        );
+    }
+    (c, s)
+}
+
+/// Apply a real Givens rotation `(c, s)` to two complex vectors.
+pub fn csrot(x: &mut [Complex32], y: &mut [Complex32], c: f32, s: f32) -> Result<()> {
+    let n = x.len().min(y.len());
+    unsafe {
+        sys::cblas_csrot(
+            n as sys::f77_int,
+            x.as_mut_ptr() as *mut std::os::raw::c_void, 1,
+            y.as_mut_ptr() as *mut std::os::raw::c_void, 1,
+            c, s,
+        );
+    }
+    Ok(())
+}
+
+/// `Complex64` real Givens rotation. See [`csrot`].
+pub fn zdrot(x: &mut [Complex64], y: &mut [Complex64], c: f64, s: f64) -> Result<()> {
+    let n = x.len().min(y.len());
+    unsafe {
+        sys::cblas_zdrot(
+            n as sys::f77_int,
+            x.as_mut_ptr() as *mut std::os::raw::c_void, 1,
+            y.as_mut_ptr() as *mut std::os::raw::c_void, 1,
+            c, s,
+        );
+    }
+    Ok(())
+}
+
+// ----- Batched and packed GEMM (advanced) ----------------------------------
+//
+// These wrap the BLIS extensions `cblas_?gemm_batch` and the
+// `cblas_?gemm_pack`/`_pack_get_size`/`_compute` packed-GEMM API. They are
+// exposed as `unsafe fn` because the C signatures take arrays of raw
+// pointers (gemm_batch) or use a BLIS-defined opaque packed memory
+// layout (gemm_pack); a fully type-checked safe API would impose more
+// restrictions than the C surface.
+
+/// Group-batched single-precision GEMM. See AOCL-BLAS docs for layout
+/// of the array arguments.
+///
+/// # Safety
+/// All pointer arrays must be valid for the durations of the call,
+/// `a_array` / `b_array` / `c_array` must point to `Σ group_size`
+/// matrix pointers, and the per-group descriptor arrays must each
+/// have length `group_count`.
+#[allow(clippy::too_many_arguments)]
+pub unsafe fn sgemm_batch(
+    layout: Layout,
+    trans_a: &mut [sys::CBLAS_TRANSPOSE],
+    trans_b: &mut [sys::CBLAS_TRANSPOSE],
+    m: &mut [sys::f77_int],
+    n: &mut [sys::f77_int],
+    k: &mut [sys::f77_int],
+    alpha: &[f32],
+    a_array: &mut [*const f32],
+    lda: &mut [sys::f77_int],
+    b_array: &mut [*const f32],
+    ldb: &mut [sys::f77_int],
+    beta: &[f32],
+    c_array: &mut [*mut f32],
+    ldc: &mut [sys::f77_int],
+    group_count: usize,
+    group_size: &mut [sys::f77_int],
+) {
+    sys::cblas_sgemm_batch(
+        layout_raw(layout),
+        trans_a.as_mut_ptr(), trans_b.as_mut_ptr(),
+        m.as_mut_ptr(), n.as_mut_ptr(), k.as_mut_ptr(),
+        alpha.as_ptr(),
+        a_array.as_mut_ptr(), lda.as_mut_ptr(),
+        b_array.as_mut_ptr(), ldb.as_mut_ptr(),
+        beta.as_ptr(),
+        c_array.as_mut_ptr(), ldc.as_mut_ptr(),
+        group_count as sys::f77_int,
+        group_size.as_mut_ptr(),
+    );
+}
+
+/// Group-batched double-precision GEMM. See [`sgemm_batch`].
+///
+/// # Safety
+/// See [`sgemm_batch`].
+#[allow(clippy::too_many_arguments)]
+pub unsafe fn dgemm_batch(
+    layout: Layout,
+    trans_a: &mut [sys::CBLAS_TRANSPOSE],
+    trans_b: &mut [sys::CBLAS_TRANSPOSE],
+    m: &mut [sys::f77_int],
+    n: &mut [sys::f77_int],
+    k: &mut [sys::f77_int],
+    alpha: &[f64],
+    a_array: &mut [*const f64],
+    lda: &mut [sys::f77_int],
+    b_array: &mut [*const f64],
+    ldb: &mut [sys::f77_int],
+    beta: &[f64],
+    c_array: &mut [*mut f64],
+    ldc: &mut [sys::f77_int],
+    group_count: usize,
+    group_size: &mut [sys::f77_int],
+) {
+    sys::cblas_dgemm_batch(
+        layout_raw(layout),
+        trans_a.as_mut_ptr(), trans_b.as_mut_ptr(),
+        m.as_mut_ptr(), n.as_mut_ptr(), k.as_mut_ptr(),
+        alpha.as_ptr(),
+        a_array.as_mut_ptr(), lda.as_mut_ptr(),
+        b_array.as_mut_ptr(), ldb.as_mut_ptr(),
+        beta.as_ptr(),
+        c_array.as_mut_ptr(), ldc.as_mut_ptr(),
+        group_count as sys::f77_int,
+        group_size.as_mut_ptr(),
+    );
+}
+
+/// Group-batched complex single-precision GEMM. Pointers are raw `void*`
+/// per the C API.
+///
+/// # Safety
+/// See [`sgemm_batch`].
+#[allow(clippy::too_many_arguments)]
+pub unsafe fn cgemm_batch(
+    layout: Layout,
+    trans_a: &mut [sys::CBLAS_TRANSPOSE],
+    trans_b: &mut [sys::CBLAS_TRANSPOSE],
+    m: &mut [sys::f77_int],
+    n: &mut [sys::f77_int],
+    k: &mut [sys::f77_int],
+    alpha: *const std::os::raw::c_void,
+    a_array: *mut *const std::os::raw::c_void,
+    lda: &mut [sys::f77_int],
+    b_array: *mut *const std::os::raw::c_void,
+    ldb: &mut [sys::f77_int],
+    beta: *const std::os::raw::c_void,
+    c_array: *mut *mut std::os::raw::c_void,
+    ldc: &mut [sys::f77_int],
+    group_count: usize,
+    group_size: &mut [sys::f77_int],
+) {
+    sys::cblas_cgemm_batch(
+        layout_raw(layout),
+        trans_a.as_mut_ptr(), trans_b.as_mut_ptr(),
+        m.as_mut_ptr(), n.as_mut_ptr(), k.as_mut_ptr(),
+        alpha, a_array, lda.as_mut_ptr(),
+        b_array, ldb.as_mut_ptr(),
+        beta, c_array, ldc.as_mut_ptr(),
+        group_count as sys::f77_int,
+        group_size.as_mut_ptr(),
+    );
+}
+
+/// Group-batched complex double-precision GEMM.
+///
+/// # Safety
+/// See [`sgemm_batch`].
+#[allow(clippy::too_many_arguments)]
+pub unsafe fn zgemm_batch(
+    layout: Layout,
+    trans_a: &mut [sys::CBLAS_TRANSPOSE],
+    trans_b: &mut [sys::CBLAS_TRANSPOSE],
+    m: &mut [sys::f77_int],
+    n: &mut [sys::f77_int],
+    k: &mut [sys::f77_int],
+    alpha: *const std::os::raw::c_void,
+    a_array: *mut *const std::os::raw::c_void,
+    lda: &mut [sys::f77_int],
+    b_array: *mut *const std::os::raw::c_void,
+    ldb: &mut [sys::f77_int],
+    beta: *const std::os::raw::c_void,
+    c_array: *mut *mut std::os::raw::c_void,
+    ldc: &mut [sys::f77_int],
+    group_count: usize,
+    group_size: &mut [sys::f77_int],
+) {
+    sys::cblas_zgemm_batch(
+        layout_raw(layout),
+        trans_a.as_mut_ptr(), trans_b.as_mut_ptr(),
+        m.as_mut_ptr(), n.as_mut_ptr(), k.as_mut_ptr(),
+        alpha, a_array, lda.as_mut_ptr(),
+        b_array, ldb.as_mut_ptr(),
+        beta, c_array, ldc.as_mut_ptr(),
+        group_count as sys::f77_int,
+        group_size.as_mut_ptr(),
+    );
+}
+
+/// Which operand of a packed GEMM `pack` request is being prepared.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PackId {
+    A,
+    B,
+}
+
+impl PackId {
+    fn raw(self) -> sys::CBLAS_IDENTIFIER {
+        match self {
+            PackId::A => sys::CBLAS_IDENTIFIER_CblasAMatrix,
+            PackId::B => sys::CBLAS_IDENTIFIER_CblasBMatrix,
+        }
+    }
+}
+
+/// Required size in bytes (or elements; see AOCL-BLAS docs) for a packed
+/// `f32` GEMM operand. Pair with [`sgemm_pack`] / [`sgemm_compute`].
+pub fn sgemm_pack_get_size(id: PackId, m: usize, n: usize, k: usize) -> usize {
+    let r = unsafe {
+        sys::cblas_sgemm_pack_get_size(id.raw(), m as sys::f77_int, n as sys::f77_int, k as sys::f77_int)
+    };
+    r as usize
+}
+
+/// `f64` packed-GEMM size query. See [`sgemm_pack_get_size`].
+pub fn dgemm_pack_get_size(id: PackId, m: usize, n: usize, k: usize) -> usize {
+    let r = unsafe {
+        sys::cblas_dgemm_pack_get_size(id.raw(), m as sys::f77_int, n as sys::f77_int, k as sys::f77_int)
+    };
+    r as usize
+}
+
+/// Pack `src` into the BLIS-specific packed format used by
+/// [`sgemm_compute`]. `dest` must be at least
+/// [`sgemm_pack_get_size`] elements long.
+#[allow(clippy::too_many_arguments)]
+pub fn sgemm_pack(
+    layout: Layout,
+    id: PackId,
+    trans: Trans,
+    m: usize,
+    n: usize,
+    k: usize,
+    alpha: f32,
+    src: &[f32],
+    ld: usize,
+    dest: &mut [f32],
+) {
+    unsafe {
+        sys::cblas_sgemm_pack(
+            layout_raw(layout), id.raw(), trans_raw(trans),
+            m as sys::f77_int, n as sys::f77_int, k as sys::f77_int,
+            alpha,
+            src.as_ptr(), ld as sys::f77_int,
+            dest.as_mut_ptr(),
+        );
+    }
+}
+
+/// `f64` packed-GEMM packing. See [`sgemm_pack`].
+#[allow(clippy::too_many_arguments)]
+pub fn dgemm_pack(
+    layout: Layout,
+    id: PackId,
+    trans: Trans,
+    m: usize,
+    n: usize,
+    k: usize,
+    alpha: f64,
+    src: &[f64],
+    ld: usize,
+    dest: &mut [f64],
+) {
+    unsafe {
+        sys::cblas_dgemm_pack(
+            layout_raw(layout), id.raw(), trans_raw(trans),
+            m as sys::f77_int, n as sys::f77_int, k as sys::f77_int,
+            alpha,
+            src.as_ptr(), ld as sys::f77_int,
+            dest.as_mut_ptr(),
+        );
+    }
+}
+
+/// Compute `C := op_A(A) · op_B(B) + β · C` using one or both pre-packed
+/// operands produced by [`sgemm_pack`]. `trans_a`/`trans_b` carry both
+/// the `CblasNoTrans/Trans/ConjTrans` value and a `CblasPacked` bit set
+/// by the BLIS API to indicate which operand is pre-packed.
+#[allow(clippy::too_many_arguments)]
+pub fn sgemm_compute(
+    layout: Layout,
+    trans_a: sys::f77_int,
+    trans_b: sys::f77_int,
+    m: usize,
+    n: usize,
+    k: usize,
+    a: &[f32],
+    lda: usize,
+    b: &[f32],
+    ldb: usize,
+    beta: f32,
+    c: &mut [f32],
+    ldc: usize,
+) {
+    unsafe {
+        sys::cblas_sgemm_compute(
+            layout_raw(layout), trans_a, trans_b,
+            m as sys::f77_int, n as sys::f77_int, k as sys::f77_int,
+            a.as_ptr(), lda as sys::f77_int,
+            b.as_ptr(), ldb as sys::f77_int,
+            beta,
+            c.as_mut_ptr(), ldc as sys::f77_int,
+        );
+    }
+}
+
+/// `f64` packed-GEMM compute. See [`sgemm_compute`].
+#[allow(clippy::too_many_arguments)]
+pub fn dgemm_compute(
+    layout: Layout,
+    trans_a: sys::f77_int,
+    trans_b: sys::f77_int,
+    m: usize,
+    n: usize,
+    k: usize,
+    a: &[f64],
+    lda: usize,
+    b: &[f64],
+    ldb: usize,
+    beta: f64,
+    c: &mut [f64],
+    ldc: usize,
+) {
+    unsafe {
+        sys::cblas_dgemm_compute(
+            layout_raw(layout), trans_a, trans_b,
+            m as sys::f77_int, n as sys::f77_int, k as sys::f77_int,
+            a.as_ptr(), lda as sys::f77_int,
+            b.as_ptr(), ldb as sys::f77_int,
+            beta,
+            c.as_mut_ptr(), ldc as sys::f77_int,
+        );
+    }
+}
+
+// ===========================================================================
 //   Tests
 // ===========================================================================
 
@@ -3723,6 +4368,63 @@ mod tests {
         let x = [1.0_f64, 2.0];
         spr(Uplo::Upper, 2, 1.0, &x, &mut ap).unwrap();
         assert_eq!(ap, [1.0, 2.0, 4.0]);
+    }
+
+    #[test]
+    fn axpby_real_and_complex() {
+        // y := 2·x + 3·y; x = [1, 2], y = [10, 20] → [2+30, 4+60] = [32, 64]
+        let x = [1.0_f64, 2.0];
+        let mut y = [10.0_f64, 20.0];
+        axpby(2.0, &x, 3.0, &mut y).unwrap();
+        assert_eq!(y, [32.0, 64.0]);
+
+        // Complex case: y := (1+0i) · x + (1+0i) · y identity sums them.
+        let x = [Complex64::new(1.0, 1.0), Complex64::new(2.0, -1.0)];
+        let mut y = [Complex64::new(3.0, 0.0), Complex64::new(0.0, 2.0)];
+        axpby(Complex64::ONE, &x, Complex64::ONE, &mut y).unwrap();
+        assert!((y[0].re - 4.0).abs() < 1e-12);
+        assert!((y[0].im - 1.0).abs() < 1e-12);
+        assert!((y[1].re - 2.0).abs() < 1e-12);
+        assert!((y[1].im - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn gemmt_only_updates_chosen_triangle() {
+        // 2x2 GEMM: A = [[1,2],[3,4]], B = I, α=1, β=0 → C should be A
+        // but only the upper triangle of C is written; lower stays at the
+        // pre-existing sentinel value.
+        let a = [1.0_f64, 2.0, 3.0, 4.0];
+        let b = [1.0_f64, 0.0, 0.0, 1.0];
+        let mut c = [-7.0_f64; 4]; // sentinel
+        gemmt(Uplo::Upper, Trans::No, Trans::No, 2, 2,
+              1.0, &a, 2, &b, 2, 0.0, &mut c, 2).unwrap();
+        // Upper triangle of A: positions 0 (=A[0,0]) and 1 (=A[0,1]) and
+        // 3 (=A[1,1]). Lower (pos 2) untouched.
+        assert!((c[0] - 1.0).abs() < 1e-12);
+        assert!((c[1] - 2.0).abs() < 1e-12);
+        assert!((c[3] - 4.0).abs() < 1e-12);
+        assert!((c[2] - (-7.0)).abs() < 1e-12, "lower triangle changed: {}", c[2]);
+    }
+
+    #[test]
+    fn sdsdot_matches_double_precision_sum() {
+        // sdsdot(α, x, y) = α + Σ x_i · y_i (sum done in double precision).
+        let x = [1.0_f32; 8];
+        let y = [2.0_f32; 8];
+        let r = sdsdot(0.5, &x, &y);
+        assert!((r - 16.5).abs() < 1e-6, "got {}", r);
+    }
+
+    #[test]
+    fn rotm_apply_identity() {
+        // P = (-2, ...) is the "identity" flag in BLAS modified Givens —
+        // rotm leaves x and y unchanged.
+        let p = [-2.0_f32, 0.0, 0.0, 0.0, 0.0];
+        let mut x = [1.0_f32, 2.0, 3.0];
+        let mut y = [4.0_f32, 5.0, 6.0];
+        srotm(&mut x, &mut y, &p).unwrap();
+        assert_eq!(x, [1.0, 2.0, 3.0]);
+        assert_eq!(y, [4.0, 5.0, 6.0]);
     }
 
     #[test]
