@@ -306,6 +306,53 @@ pub trait Scalar: Copy + Sized + Sealed {
         layout: Order,
         ldc: usize,
     ) -> Result<()>;
+
+    /// Sparse-sparse `C := α · op(A) + B` returning a fresh CSR handle.
+    ///
+    /// # Safety
+    /// Caller must adopt the resulting `*out` (e.g. via
+    /// [`SparseMatrix::from_library_owned`]).
+    unsafe fn add_ffi(
+        op: sys::aoclsparse_operation,
+        a: sys::aoclsparse_matrix,
+        alpha: Self,
+        b: sys::aoclsparse_matrix,
+        out: *mut sys::aoclsparse_matrix,
+    ) -> sys::aoclsparse_status;
+
+    /// One step of the (S)SOR / forward / backward Gauss-Seidel
+    /// relaxation: `x_new := (1 − ω) x + ω · A⁻¹ (α · b)`.
+    #[allow(clippy::too_many_arguments)]
+    fn sorv(
+        sor_type: SorType,
+        descr: &MatDescr,
+        a: sys::aoclsparse_matrix,
+        omega: Self,
+        alpha: Self,
+        x: &mut [Self],
+        b: &[Self],
+    ) -> Result<()>;
+}
+
+/// Sweep direction for [`sorv`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SorType {
+    /// Forward Gauss-Seidel sweep.
+    Forward,
+    /// Backward Gauss-Seidel sweep.
+    Backward,
+    /// Symmetric (forward + backward) sweep.
+    Symmetric,
+}
+
+impl SorType {
+    fn raw(self) -> sys::aoclsparse_sor_type {
+        match self {
+            SorType::Forward => sys::aoclsparse_sor_type__aoclsparse_sor_forward,
+            SorType::Backward => sys::aoclsparse_sor_type__aoclsparse_sor_backward,
+            SorType::Symmetric => sys::aoclsparse_sor_type__aoclsparse_sor_symmetric,
+        }
+    }
 }
 
 macro_rules! impl_scalar {
@@ -328,7 +375,9 @@ macro_rules! impl_scalar {
         csr2m = $csr2m:ident,
         csrmm = $csrmm:ident,
         spmmd = $spmmd:ident,
-        sp2md = $sp2md:ident
+        sp2md = $sp2md:ident,
+        add = $add:ident,
+        sorv = $sorv:ident
     ) => {
         impl Scalar for $t {
             fn csrmv(
@@ -880,6 +929,39 @@ macro_rules! impl_scalar {
                 };
                 check_status("sparse", status)
             }
+
+            unsafe fn add_ffi(
+                op: sys::aoclsparse_operation,
+                a: sys::aoclsparse_matrix,
+                alpha: Self,
+                b: sys::aoclsparse_matrix,
+                out: *mut sys::aoclsparse_matrix,
+            ) -> sys::aoclsparse_status {
+                sys::$add(op, a, alpha, b, out)
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn sorv(
+                sor_type: SorType,
+                descr: &MatDescr,
+                a: sys::aoclsparse_matrix,
+                omega: Self,
+                alpha: Self,
+                x: &mut [Self],
+                b: &[Self],
+            ) -> Result<()> {
+                let status = unsafe {
+                    sys::$sorv(
+                        sor_type.raw(),
+                        descr.as_raw(),
+                        a,
+                        omega, alpha,
+                        x.as_mut_ptr(),
+                        b.as_ptr(),
+                    )
+                };
+                check_status("sparse", status)
+            }
         }
     };
 }
@@ -903,7 +985,9 @@ impl_scalar!(
     csr2m = aoclsparse_scsr2m,
     csrmm = aoclsparse_scsrmm,
     spmmd = aoclsparse_sspmmd,
-    sp2md = aoclsparse_ssp2md
+    sp2md = aoclsparse_ssp2md,
+    add = aoclsparse_sadd,
+    sorv = aoclsparse_ssorv
 );
 impl_scalar!(
     f64,
@@ -924,7 +1008,9 @@ impl_scalar!(
     csr2m = aoclsparse_dcsr2m,
     csrmm = aoclsparse_dcsrmm,
     spmmd = aoclsparse_dspmmd,
-    sp2md = aoclsparse_dsp2md
+    sp2md = aoclsparse_dsp2md,
+    add = aoclsparse_dadd,
+    sorv = aoclsparse_dsorv
 );
 
 /// Compute `y := α · A · x + β · y` for a CSR matrix `A`.
@@ -1442,6 +1528,46 @@ pub fn sp2md<T: Scalar>(
 }
 
 // =========================================================================
+//   Sparse-sparse addition and SOR sweep
+// =========================================================================
+
+/// Compute `C := α · op(A) + B` returning a fresh sparse CSR matrix.
+pub fn add<T: Scalar>(
+    op: Trans,
+    a: &SparseMatrix<T>,
+    alpha: T,
+    b: &SparseMatrix<T>,
+) -> Result<SparseMatrix<T>> {
+    let mut c_raw: sys::aoclsparse_matrix = std::ptr::null_mut();
+    let status = unsafe {
+        T::add_ffi(trans_raw(op), a.as_raw(), alpha, b.as_raw(), &mut c_raw)
+    };
+    check_status("sparse", status)?;
+    unsafe { SparseMatrix::from_library_owned(c_raw) }
+}
+
+/// One step of (S)SOR / forward / backward Gauss-Seidel relaxation:
+/// `x_new := (1 − ω) x + ω · A⁻¹ (α · b)`. Useful as a smoother
+/// inside iterative-solver loops.
+pub fn sorv<T: Scalar>(
+    sor_type: SorType,
+    descr: &MatDescr,
+    a: &SparseMatrix<T>,
+    omega: T,
+    alpha: T,
+    x: &mut [T],
+    b: &[T],
+) -> Result<()> {
+    if x.len() < a.dims().1 || b.len() < a.dims().0 {
+        return Err(Error::InvalidArgument(format!(
+            "sorv: x.len()={}, b.len()={}, dims=({}, {})",
+            x.len(), b.len(), a.dims().0, a.dims().1
+        )));
+    }
+    T::sorv(sor_type, descr, a.as_raw(), omega, alpha, x, b)
+}
+
+// =========================================================================
 //   ILU smoother
 // =========================================================================
 
@@ -1613,6 +1739,23 @@ mod tests {
         let mut y2 = [0.0_f64; 4];
         sctr(&x, &indx, &mut y2).unwrap();
         assert_eq!(y2, [0.0, 20.0, 0.0, 40.0]);
+    }
+
+    #[test]
+    fn add_identity_plus_identity_is_2_diag() {
+        // A = B = 2x2 identity; C = 1·A + B = 2·I.
+        let val = [1.0_f64, 1.0];
+        let col: [sys::aoclsparse_int; 2] = [0, 1];
+        let rp: [sys::aoclsparse_int; 3] = [0, 1, 2];
+        let a = SparseMatrix::<f64>::from_csr(IndexBase::Zero, 2, 2, &rp, &col, &val).unwrap();
+        let b = SparseMatrix::<f64>::from_csr(IndexBase::Zero, 2, 2, &rp, &col, &val).unwrap();
+        let c = add(Trans::No, &a, 1.0, &b).unwrap();
+        let (_, _, _, val_c) = c.export_csr().unwrap();
+        // Both diagonal entries should equal 2.
+        assert_eq!(val_c.len(), 2);
+        for v in &val_c {
+            assert!((v - 2.0).abs() < 1e-12, "got {v}, want 2.0");
+        }
     }
 
     #[test]
