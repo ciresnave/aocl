@@ -73,6 +73,165 @@ impl MatDescr {
     pub fn as_raw(&self) -> sys::aoclsparse_mat_descr {
         self.raw
     }
+
+    /// Set the matrix-type hint (general / symmetric / hermitian /
+    /// triangular). Affects which fast paths the library can take.
+    pub fn set_type(&mut self, ty: MatType) -> Result<()> {
+        let status = unsafe { sys::aoclsparse_set_mat_type(self.raw, ty.raw()) };
+        check_status("sparse", status)
+    }
+
+    /// Set the index base (zero- or one-based) for column / row arrays.
+    pub fn set_index_base(&mut self, base: IndexBase) -> Result<()> {
+        let status = unsafe { sys::aoclsparse_set_mat_index_base(self.raw, base.raw()) };
+        check_status("sparse", status)
+    }
+
+    /// For triangular / symmetric matrices, declare which triangle is
+    /// stored (upper or lower).
+    pub fn set_fill_mode(&mut self, fill: FillMode) -> Result<()> {
+        let status = unsafe { sys::aoclsparse_set_mat_fill_mode(self.raw, fill.raw()) };
+        check_status("sparse", status)
+    }
+
+    /// For triangular matrices, declare whether the diagonal is unit
+    /// (implicit) or non-unit (explicitly stored).
+    pub fn set_diag_type(&mut self, diag: DiagType) -> Result<()> {
+        let status = unsafe { sys::aoclsparse_set_mat_diag_type(self.raw, diag.raw()) };
+        check_status("sparse", status)
+    }
+
+    /// Read back the matrix-type hint.
+    pub fn ty(&self) -> MatType {
+        let raw = unsafe { sys::aoclsparse_get_mat_type(self.raw) };
+        MatType::from_raw(raw).unwrap_or(MatType::General)
+    }
+
+    /// Read back the index base.
+    pub fn index_base(&self) -> IndexBase {
+        let raw = unsafe { sys::aoclsparse_get_mat_index_base(self.raw) };
+        if raw == sys::aoclsparse_index_base__aoclsparse_index_base_one {
+            IndexBase::One
+        } else {
+            IndexBase::Zero
+        }
+    }
+
+    /// Read back the fill mode.
+    pub fn fill_mode(&self) -> FillMode {
+        let raw = unsafe { sys::aoclsparse_get_mat_fill_mode(self.raw) };
+        FillMode::from_raw(raw).unwrap_or(FillMode::Lower)
+    }
+
+    /// Read back the diagonal-type hint.
+    pub fn diag_type(&self) -> DiagType {
+        let raw = unsafe { sys::aoclsparse_get_mat_diag_type(self.raw) };
+        DiagType::from_raw(raw).unwrap_or(DiagType::NonUnit)
+    }
+}
+
+/// Storage type of a sparse matrix's nonzero pattern.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MatType {
+    General,
+    Symmetric,
+    Hermitian,
+    Triangular,
+}
+
+impl MatType {
+    fn raw(self) -> sys::aoclsparse_matrix_type {
+        match self {
+            MatType::General => sys::aoclsparse_matrix_type__aoclsparse_matrix_type_general,
+            MatType::Symmetric => sys::aoclsparse_matrix_type__aoclsparse_matrix_type_symmetric,
+            MatType::Hermitian => sys::aoclsparse_matrix_type__aoclsparse_matrix_type_hermitian,
+            MatType::Triangular => sys::aoclsparse_matrix_type__aoclsparse_matrix_type_triangular,
+        }
+    }
+
+    fn from_raw(raw: sys::aoclsparse_matrix_type) -> Option<Self> {
+        Some(match raw {
+            r if r == sys::aoclsparse_matrix_type__aoclsparse_matrix_type_general => MatType::General,
+            r if r == sys::aoclsparse_matrix_type__aoclsparse_matrix_type_symmetric => MatType::Symmetric,
+            r if r == sys::aoclsparse_matrix_type__aoclsparse_matrix_type_hermitian => MatType::Hermitian,
+            r if r == sys::aoclsparse_matrix_type__aoclsparse_matrix_type_triangular => MatType::Triangular,
+            _ => return None,
+        })
+    }
+}
+
+/// Which triangle of a symmetric / triangular matrix is stored.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FillMode {
+    Lower,
+    Upper,
+}
+
+impl FillMode {
+    fn raw(self) -> sys::aoclsparse_fill_mode {
+        match self {
+            FillMode::Lower => sys::aoclsparse_fill_mode__aoclsparse_fill_mode_lower,
+            FillMode::Upper => sys::aoclsparse_fill_mode__aoclsparse_fill_mode_upper,
+        }
+    }
+    fn from_raw(raw: sys::aoclsparse_fill_mode) -> Option<Self> {
+        Some(match raw {
+            r if r == sys::aoclsparse_fill_mode__aoclsparse_fill_mode_lower => FillMode::Lower,
+            r if r == sys::aoclsparse_fill_mode__aoclsparse_fill_mode_upper => FillMode::Upper,
+            _ => return None,
+        })
+    }
+}
+
+/// Whether the diagonal of a triangular matrix is implicitly unit
+/// (`Unit`) or explicitly stored (`NonUnit`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DiagType {
+    Unit,
+    NonUnit,
+}
+
+impl DiagType {
+    fn raw(self) -> sys::aoclsparse_diag_type {
+        match self {
+            DiagType::Unit => sys::aoclsparse_diag_type__aoclsparse_diag_type_unit,
+            DiagType::NonUnit => sys::aoclsparse_diag_type__aoclsparse_diag_type_non_unit,
+        }
+    }
+    fn from_raw(raw: sys::aoclsparse_diag_type) -> Option<Self> {
+        Some(match raw {
+            r if r == sys::aoclsparse_diag_type__aoclsparse_diag_type_unit => DiagType::Unit,
+            r if r == sys::aoclsparse_diag_type__aoclsparse_diag_type_non_unit => DiagType::NonUnit,
+            _ => return None,
+        })
+    }
+}
+
+/// Make a deep copy of a `MatDescr` with the same options.
+pub fn copy_mat_descr(src: &MatDescr) -> Result<MatDescr> {
+    let dest = MatDescr::new()?;
+    let status = unsafe { sys::aoclsparse_copy_mat_descr(dest.raw, src.raw) };
+    check_status("sparse", status)?;
+    Ok(dest)
+}
+
+/// Run AOCL-Sparse's analysis / optimization step on a matrix handle.
+/// Use this after declaring hints (e.g. `set_mv_hint`) to let the
+/// library choose specialised kernels for repeated operations.
+pub fn optimize<T: Scalar>(mat: &mut SparseMatrix<T>) -> Result<()> {
+    let status = unsafe { sys::aoclsparse_optimize(mat.as_raw()) };
+    check_status("sparse", status)
+}
+
+/// AOCL-Sparse library version string (e.g. `"AOCL-Sparse 5.1.0"`).
+pub fn version() -> &'static str {
+    unsafe {
+        let p = sys::aoclsparse_get_version();
+        if p.is_null() {
+            return "";
+        }
+        std::ffi::CStr::from_ptr(p).to_str().unwrap_or("")
+    }
 }
 
 impl Drop for MatDescr {
