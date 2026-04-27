@@ -260,6 +260,52 @@ pub trait Scalar: Copy + Sized + Sealed {
         request: sys::aoclsparse_request,
         out: *mut sys::aoclsparse_matrix,
     ) -> sys::aoclsparse_status;
+
+    /// `C := α · op(A) · B + β · C` where `A` is sparse (CSR via the
+    /// matrix handle) and `B`, `C` are dense.
+    #[allow(clippy::too_many_arguments)]
+    fn csrmm(
+        op: Trans,
+        alpha: Self,
+        a: sys::aoclsparse_matrix,
+        descr: &MatDescr,
+        order: Order,
+        b: &[Self],
+        n: usize,
+        ldb: usize,
+        beta: Self,
+        c: &mut [Self],
+        ldc: usize,
+    ) -> Result<()>;
+
+    /// `C := op(A) · B` where both `A` and `B` are sparse and `C` is
+    /// dense.
+    #[allow(clippy::too_many_arguments)]
+    fn spmmd(
+        op: Trans,
+        a: sys::aoclsparse_matrix,
+        b: sys::aoclsparse_matrix,
+        layout: Order,
+        c: &mut [Self],
+        ldc: usize,
+    ) -> Result<()>;
+
+    /// `C := α · op_A(A) · op_B(B) + β · C` where both `A` and `B` are
+    /// sparse and `C` is dense.
+    #[allow(clippy::too_many_arguments)]
+    fn sp2md(
+        op_a: Trans,
+        descr_a: &MatDescr,
+        a: sys::aoclsparse_matrix,
+        op_b: Trans,
+        descr_b: &MatDescr,
+        b: sys::aoclsparse_matrix,
+        alpha: Self,
+        beta: Self,
+        c: &mut [Self],
+        layout: Order,
+        ldc: usize,
+    ) -> Result<()>;
 }
 
 macro_rules! impl_scalar {
@@ -279,7 +325,10 @@ macro_rules! impl_scalar {
         ilu_smoother = $ilu_smoother:ident,
         itsol_init = $itsol_init:ident,
         itsol_solve = $itsol_solve:ident,
-        csr2m = $csr2m:ident
+        csr2m = $csr2m:ident,
+        csrmm = $csrmm:ident,
+        spmmd = $spmmd:ident,
+        sp2md = $sp2md:ident
     ) => {
         impl Scalar for $t {
             fn csrmv(
@@ -748,6 +797,89 @@ macro_rules! impl_scalar {
             ) -> sys::aoclsparse_status {
                 sys::$csr2m(op_a, descr_a, a, op_b, descr_b, b, request, out)
             }
+
+            #[allow(clippy::too_many_arguments)]
+            fn csrmm(
+                op: Trans,
+                alpha: Self,
+                a: sys::aoclsparse_matrix,
+                descr: &MatDescr,
+                order: Order,
+                b: &[Self],
+                n: usize,
+                ldb: usize,
+                beta: Self,
+                c: &mut [Self],
+                ldc: usize,
+            ) -> Result<()> {
+                let status = unsafe {
+                    sys::$csrmm(
+                        trans_raw(op),
+                        alpha,
+                        a,
+                        descr.as_raw(),
+                        order.raw(),
+                        b.as_ptr(),
+                        n as sys::aoclsparse_int,
+                        ldb as sys::aoclsparse_int,
+                        beta,
+                        c.as_mut_ptr(),
+                        ldc as sys::aoclsparse_int,
+                    )
+                };
+                check_status("sparse", status)
+            }
+
+            fn spmmd(
+                op: Trans,
+                a: sys::aoclsparse_matrix,
+                b: sys::aoclsparse_matrix,
+                layout: Order,
+                c: &mut [Self],
+                ldc: usize,
+            ) -> Result<()> {
+                let status = unsafe {
+                    sys::$spmmd(
+                        trans_raw(op),
+                        a, b,
+                        layout.raw(),
+                        c.as_mut_ptr(),
+                        ldc as sys::aoclsparse_int,
+                    )
+                };
+                check_status("sparse", status)
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn sp2md(
+                op_a: Trans,
+                descr_a: &MatDescr,
+                a: sys::aoclsparse_matrix,
+                op_b: Trans,
+                descr_b: &MatDescr,
+                b: sys::aoclsparse_matrix,
+                alpha: Self,
+                beta: Self,
+                c: &mut [Self],
+                layout: Order,
+                ldc: usize,
+            ) -> Result<()> {
+                let status = unsafe {
+                    sys::$sp2md(
+                        trans_raw(op_a),
+                        descr_a.as_raw(),
+                        a,
+                        trans_raw(op_b),
+                        descr_b.as_raw(),
+                        b,
+                        alpha, beta,
+                        c.as_mut_ptr(),
+                        layout.raw(),
+                        ldc as sys::aoclsparse_int,
+                    )
+                };
+                check_status("sparse", status)
+            }
         }
     };
 }
@@ -768,7 +900,10 @@ impl_scalar!(
     ilu_smoother = aoclsparse_silu_smoother,
     itsol_init = aoclsparse_itsol_s_init,
     itsol_solve = aoclsparse_itsol_s_solve,
-    csr2m = aoclsparse_scsr2m
+    csr2m = aoclsparse_scsr2m,
+    csrmm = aoclsparse_scsrmm,
+    spmmd = aoclsparse_sspmmd,
+    sp2md = aoclsparse_ssp2md
 );
 impl_scalar!(
     f64,
@@ -786,7 +921,10 @@ impl_scalar!(
     ilu_smoother = aoclsparse_dilu_smoother,
     itsol_init = aoclsparse_itsol_d_init,
     itsol_solve = aoclsparse_itsol_d_solve,
-    csr2m = aoclsparse_dcsr2m
+    csr2m = aoclsparse_dcsr2m,
+    csrmm = aoclsparse_dcsrmm,
+    spmmd = aoclsparse_dspmmd,
+    sp2md = aoclsparse_dsp2md
 );
 
 /// Compute `y := α · A · x + β · y` for a CSR matrix `A`.
@@ -1245,6 +1383,65 @@ pub fn csr2m<T: Scalar>(
 }
 
 // =========================================================================
+//   Sparse-dense matrix products (csrmm, spmmd, sp2md)
+// =========================================================================
+
+/// Compute `C := α · op(A) · B + β · C` where `A` is sparse (CSR via the
+/// matrix handle) and `B`, `C` are dense matrices laid out per `order`.
+///
+/// `n` is the number of columns of `B` (and `C`). `ldb` and `ldc` are
+/// the leading dimensions of `B` and `C` respectively.
+#[allow(clippy::too_many_arguments)]
+pub fn csrmm<T: Scalar>(
+    op: Trans,
+    alpha: T,
+    a: &SparseMatrix<T>,
+    descr: &MatDescr,
+    order: Order,
+    b: &[T],
+    n: usize,
+    ldb: usize,
+    beta: T,
+    c: &mut [T],
+    ldc: usize,
+) -> Result<()> {
+    T::csrmm(op, alpha, a.as_raw(), descr, order, b, n, ldb, beta, c, ldc)
+}
+
+/// Compute `C := op(A) · B` where both `A` and `B` are sparse and `C` is
+/// a dense matrix. `ldc` is the leading dimension of `C` per `layout`.
+pub fn spmmd<T: Scalar>(
+    op: Trans,
+    a: &SparseMatrix<T>,
+    b: &SparseMatrix<T>,
+    layout: Order,
+    c: &mut [T],
+    ldc: usize,
+) -> Result<()> {
+    T::spmmd(op, a.as_raw(), b.as_raw(), layout, c, ldc)
+}
+
+/// Compute `C := α · op_A(A) · op_B(B) + β · C` where both `A` and `B`
+/// are sparse and `C` is dense.
+#[allow(clippy::too_many_arguments)]
+pub fn sp2md<T: Scalar>(
+    op_a: Trans,
+    descr_a: &MatDescr,
+    a: &SparseMatrix<T>,
+    op_b: Trans,
+    descr_b: &MatDescr,
+    b: &SparseMatrix<T>,
+    alpha: T,
+    beta: T,
+    c: &mut [T],
+    layout: Order,
+    ldc: usize,
+) -> Result<()> {
+    T::sp2md(op_a, descr_a, a.as_raw(), op_b, descr_b, b.as_raw(),
+             alpha, beta, c, layout, ldc)
+}
+
+// =========================================================================
 //   ILU smoother
 // =========================================================================
 
@@ -1416,6 +1613,40 @@ mod tests {
         let mut y2 = [0.0_f64; 4];
         sctr(&x, &indx, &mut y2).unwrap();
         assert_eq!(y2, [0.0, 20.0, 0.0, 40.0]);
+    }
+
+    #[test]
+    fn csrmm_2x2_identity_against_2x3_dense() {
+        // 2×2 identity sparse A; 2×3 dense B; C = A · B should equal B.
+        // Row-major: ldb = ldc = 3.
+        let val = [1.0_f64, 1.0];
+        let col: [sys::aoclsparse_int; 2] = [0, 1];
+        let rp: [sys::aoclsparse_int; 3] = [0, 1, 2];
+        let a = SparseMatrix::<f64>::from_csr(IndexBase::Zero, 2, 2, &rp, &col, &val).unwrap();
+        let descr = MatDescr::new().unwrap();
+        let b: [f64; 6] = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let mut c = [0.0_f64; 6];
+        csrmm(Trans::No, 1.0, &a, &descr, Order::RowMajor, &b, 3, 3, 0.0, &mut c, 3).unwrap();
+        for (got, want) in c.iter().zip(b.iter()) {
+            assert!((got - want).abs() < 1e-12, "got {got}, want {want}");
+        }
+    }
+
+    #[test]
+    fn spmmd_identity_squared_yields_identity_dense() {
+        // 3×3 identity * 3×3 identity = 3×3 identity dense.
+        let val = [1.0_f64; 3];
+        let col: [sys::aoclsparse_int; 3] = [0, 1, 2];
+        let rp: [sys::aoclsparse_int; 4] = [0, 1, 2, 3];
+        let a = SparseMatrix::<f64>::from_csr(IndexBase::Zero, 3, 3, &rp, &col, &val).unwrap();
+        let b = SparseMatrix::<f64>::from_csr(IndexBase::Zero, 3, 3, &rp, &col, &val).unwrap();
+        let mut c = [0.0_f64; 9];
+        spmmd(Trans::No, &a, &b, Order::RowMajor, &mut c, 3).unwrap();
+        // Row-major identity matrix.
+        let expected = [1.0, 0.0, 0.0,  0.0, 1.0, 0.0,  0.0, 0.0, 1.0];
+        for (got, want) in c.iter().zip(expected.iter()) {
+            assert!((got - want).abs() < 1e-12, "got {got}, want {want}");
+        }
     }
 
     #[test]
