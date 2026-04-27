@@ -495,6 +495,290 @@ pub fn pdgeqrf(
     map_info("scalapack", info)
 }
 
+// ===========================================================================
+//   Single-precision real (ps*) wrappers
+// ===========================================================================
+
+/// Single-precision distributed `A·X = B` solve. See [`pdgesv`].
+#[allow(clippy::too_many_arguments)]
+pub fn psgesv(
+    n: usize,
+    nrhs: usize,
+    a: &mut [f32], ia: i32, ja: i32, desca: &BlockCyclic,
+    ipiv: &mut [i32],
+    b: &mut [f32], ib: i32, jb: i32, descb: &BlockCyclic,
+) -> Result<()> {
+    let n_i = n as c_int;
+    let nrhs_i = nrhs as c_int;
+    let mut info: c_int = 0;
+    unsafe {
+        sys::psgesv_(
+            &n_i, &nrhs_i,
+            a.as_mut_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
+            ipiv.as_mut_ptr(),
+            b.as_mut_ptr(), &ib, &jb, descb.as_raw().as_ptr(),
+            &mut info,
+        );
+    }
+    map_info("scalapack", info)
+}
+
+/// Single-precision distributed `C := α · op(A) · op(B) + β · C`. See [`pdgemm`].
+#[allow(clippy::too_many_arguments)]
+pub fn psgemm(
+    trans_a: Trans, trans_b: Trans,
+    m: usize, n: usize, k: usize,
+    alpha: f32,
+    a: &[f32], ia: i32, ja: i32, desca: &BlockCyclic,
+    b: &[f32], ib: i32, jb: i32, descb: &BlockCyclic,
+    beta: f32,
+    c: &mut [f32], ic: i32, jc: i32, descc: &BlockCyclic,
+) {
+    let m_i = m as c_int;
+    let n_i = n as c_int;
+    let k_i = k as c_int;
+    let ta = trans_char(trans_a);
+    let tb = trans_char(trans_b);
+    unsafe {
+        sys::psgemm_(
+            &ta, &tb,
+            &m_i, &n_i, &k_i,
+            &alpha,
+            a.as_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
+            b.as_ptr(), &ib, &jb, descb.as_raw().as_ptr(),
+            &beta,
+            c.as_mut_ptr(), &ic, &jc, descc.as_raw().as_ptr(),
+        );
+    }
+}
+
+/// Single-precision distributed Cholesky factorisation. See [`pdpotrf`].
+pub fn pspotrf(
+    uplo: Uplo,
+    n: usize,
+    a: &mut [f32], ia: i32, ja: i32, desca: &BlockCyclic,
+) -> Result<()> {
+    let n_i = n as c_int;
+    let u = uplo_char(uplo);
+    let mut info: c_int = 0;
+    unsafe {
+        sys::pspotrf_(
+            &u, &n_i,
+            a.as_mut_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
+            &mut info,
+        );
+    }
+    map_info("scalapack", info)
+}
+
+/// Single-precision distributed LU factorisation. See [`pdgetrf`].
+pub fn psgetrf(
+    m: usize, n: usize,
+    a: &mut [f32], ia: i32, ja: i32, desca: &BlockCyclic,
+    ipiv: &mut [i32],
+) -> Result<()> {
+    let m_i = m as c_int;
+    let n_i = n as c_int;
+    let mut info: c_int = 0;
+    unsafe {
+        sys::psgetrf_(
+            &m_i, &n_i,
+            a.as_mut_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
+            ipiv.as_mut_ptr(),
+            &mut info,
+        );
+    }
+    map_info("scalapack", info)
+}
+
+/// Single-precision distributed back-substitution after [`psgetrf`]. See
+/// [`pdgetrs`].
+#[allow(clippy::too_many_arguments)]
+pub fn psgetrs(
+    trans: Trans,
+    n: usize, nrhs: usize,
+    a: &[f32], ia: i32, ja: i32, desca: &BlockCyclic,
+    ipiv: &[i32],
+    b: &mut [f32], ib: i32, jb: i32, descb: &BlockCyclic,
+) -> Result<()> {
+    let n_i = n as c_int;
+    let nrhs_i = nrhs as c_int;
+    let t = trans_char(trans);
+    let mut info: c_int = 0;
+    unsafe {
+        sys::psgetrs_(
+            &t, &n_i, &nrhs_i,
+            a.as_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
+            ipiv.as_ptr(),
+            b.as_mut_ptr(), &ib, &jb, descb.as_raw().as_ptr(),
+            &mut info,
+        );
+    }
+    map_info("scalapack", info)
+}
+
+/// Single-precision Cholesky back-substitution. See [`pdpotrs`].
+#[allow(clippy::too_many_arguments)]
+pub fn pspotrs(
+    uplo: Uplo,
+    n: usize, nrhs: usize,
+    a: &[f32], ia: i32, ja: i32, desca: &BlockCyclic,
+    b: &mut [f32], ib: i32, jb: i32, descb: &BlockCyclic,
+) -> Result<()> {
+    let n_i = n as c_int;
+    let nrhs_i = nrhs as c_int;
+    let u = uplo_char(uplo);
+    let mut info: c_int = 0;
+    unsafe {
+        sys::pspotrs_(
+            &u, &n_i, &nrhs_i,
+            a.as_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
+            b.as_mut_ptr(), &ib, &jb, descb.as_raw().as_ptr(),
+            &mut info,
+        );
+    }
+    map_info("scalapack", info)
+}
+
+/// Single-precision symmetric eigendecomposition. See [`pdsyev`].
+#[allow(clippy::too_many_arguments)]
+pub fn pssyev(
+    compute: EigCompute,
+    uplo: Uplo,
+    n: usize,
+    a: &mut [f32], ia: i32, ja: i32, desca: &BlockCyclic,
+    w: &mut [f32],
+    z: &mut [f32], iz: i32, jz: i32, descz: &BlockCyclic,
+    work: &mut [f32], lwork: i32,
+) -> Result<()> {
+    let n_i = n as c_int;
+    let jobz = match compute {
+        EigCompute::ValuesOnly => b'N' as c_char,
+        EigCompute::ValuesAndVectors => b'V' as c_char,
+    };
+    let u = uplo_char(uplo);
+    let lwork = lwork as c_int;
+    let mut info: c_int = 0;
+    unsafe {
+        sys::pssyev_(
+            &jobz, &u, &n_i,
+            a.as_mut_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
+            w.as_mut_ptr(),
+            z.as_mut_ptr(), &iz, &jz, descz.as_raw().as_ptr(),
+            work.as_mut_ptr(), &lwork,
+            &mut info,
+        );
+    }
+    map_info("scalapack", info)
+}
+
+/// Single-precision distributed least-squares solve. See [`pdgels`].
+#[allow(clippy::too_many_arguments)]
+pub fn psgels(
+    trans: Trans,
+    m: usize, n: usize, nrhs: usize,
+    a: &mut [f32], ia: i32, ja: i32, desca: &BlockCyclic,
+    b: &mut [f32], ib: i32, jb: i32, descb: &BlockCyclic,
+    work: &mut [f32], lwork: i32,
+) -> Result<()> {
+    let m_i = m as c_int;
+    let n_i = n as c_int;
+    let nrhs_i = nrhs as c_int;
+    let t = trans_char(trans);
+    let lwork = lwork as c_int;
+    let mut info: c_int = 0;
+    unsafe {
+        sys::psgels_(
+            &t, &m_i, &n_i, &nrhs_i,
+            a.as_mut_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
+            b.as_mut_ptr(), &ib, &jb, descb.as_raw().as_ptr(),
+            work.as_mut_ptr(), &lwork,
+            &mut info,
+        );
+    }
+    map_info("scalapack", info)
+}
+
+/// Single-precision distributed QR. See [`pdgeqrf`].
+#[allow(clippy::too_many_arguments)]
+pub fn psgeqrf(
+    m: usize, n: usize,
+    a: &mut [f32], ia: i32, ja: i32, desca: &BlockCyclic,
+    tau: &mut [f32],
+    work: &mut [f32], lwork: i32,
+) -> Result<()> {
+    let m_i = m as c_int;
+    let n_i = n as c_int;
+    let lwork = lwork as c_int;
+    let mut info: c_int = 0;
+    unsafe {
+        sys::psgeqrf_(
+            &m_i, &n_i,
+            a.as_mut_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
+            tau.as_mut_ptr(),
+            work.as_mut_ptr(), &lwork,
+            &mut info,
+        );
+    }
+    map_info("scalapack", info)
+}
+
+// ===========================================================================
+//   Complex distributed solves: pcgesv (c32) and pzgesv (c64)
+// ===========================================================================
+
+/// Single-precision complex distributed solve `A·X = B`. Elements are
+/// passed as `[f32; 2]` `(re, im)` pairs (ABI-compatible with
+/// `Complex32`).
+#[allow(clippy::too_many_arguments)]
+pub fn pcgesv(
+    n: usize,
+    nrhs: usize,
+    a: &mut [[f32; 2]], ia: i32, ja: i32, desca: &BlockCyclic,
+    ipiv: &mut [i32],
+    b: &mut [[f32; 2]], ib: i32, jb: i32, descb: &BlockCyclic,
+) -> Result<()> {
+    let n_i = n as c_int;
+    let nrhs_i = nrhs as c_int;
+    let mut info: c_int = 0;
+    unsafe {
+        sys::pcgesv_(
+            &n_i, &nrhs_i,
+            a.as_mut_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
+            ipiv.as_mut_ptr(),
+            b.as_mut_ptr(), &ib, &jb, descb.as_raw().as_ptr(),
+            &mut info,
+        );
+    }
+    map_info("scalapack", info)
+}
+
+/// Double-precision complex distributed solve `A·X = B`. Elements are
+/// passed as `[f64; 2]` `(re, im)` pairs (ABI-compatible with
+/// `Complex64`).
+#[allow(clippy::too_many_arguments)]
+pub fn pzgesv(
+    n: usize,
+    nrhs: usize,
+    a: &mut [[f64; 2]], ia: i32, ja: i32, desca: &BlockCyclic,
+    ipiv: &mut [i32],
+    b: &mut [[f64; 2]], ib: i32, jb: i32, descb: &BlockCyclic,
+) -> Result<()> {
+    let n_i = n as c_int;
+    let nrhs_i = nrhs as c_int;
+    let mut info: c_int = 0;
+    unsafe {
+        sys::pzgesv_(
+            &n_i, &nrhs_i,
+            a.as_mut_ptr(), &ia, &ja, desca.as_raw().as_ptr(),
+            ipiv.as_mut_ptr(),
+            b.as_mut_ptr(), &ib, &jb, descb.as_raw().as_ptr(),
+            &mut info,
+        );
+    }
+    map_info("scalapack", info)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
