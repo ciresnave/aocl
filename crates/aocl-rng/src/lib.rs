@@ -287,6 +287,160 @@ impl Rng {
         })
     }
 
+    /// Hypergeometric distribution: number of successes in `m` draws
+    /// without replacement from a population of `np` items containing
+    /// `ns` successes.
+    pub fn hypergeometric(&mut self, np: RngInt, ns: RngInt, m: RngInt, out: &mut [RngInt]) -> Result<()> {
+        self.fill_int("hypergeometric", out, |n, st, ptr, info| unsafe {
+            sys::drandhypergeometric(n, np, ns, m, st, ptr, info)
+        })
+    }
+
+    /// General discrete distribution. `ref_dist` is the cumulative
+    /// probability vector (sorted, with `ref_dist[k-1] == 1.0`); `out`
+    /// receives integer indices into it.
+    pub fn general_discrete(&mut self, ref_dist: &mut [f64], out: &mut [RngInt]) -> Result<()> {
+        let n = out.len();
+        if n == 0 {
+            return Ok(());
+        }
+        let n_int: RngInt = n.try_into().map_err(|_| {
+            Error::InvalidArgument(format!("general_discrete: n={n} exceeds rng_int_t range"))
+        })?;
+        let mut info: RngInt = 0;
+        unsafe {
+            sys::drandgeneraldiscrete(
+                n_int,
+                ref_dist.as_mut_ptr(),
+                self.state.as_mut_ptr(),
+                out.as_mut_ptr(),
+                &mut info,
+            );
+        }
+        if info != 0 {
+            return Err(Error::Status {
+                component: "rng",
+                code: info as i64,
+                message: format!("general_discrete returned info={info}"),
+            });
+        }
+        Ok(())
+    }
+
+    /// Multinomial distribution: each of `n` samples is the count
+    /// vector (length `k`) from `m` trials with category probabilities
+    /// `p` (length `k`). `out` is laid out as `n × k` with leading
+    /// dimension `ldx`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn multinomial(
+        &mut self,
+        m: RngInt,
+        p: &mut [f64],
+        k: RngInt,
+        out: &mut [RngInt],
+        ldx: RngInt,
+    ) -> Result<()> {
+        let n_samples = if k > 0 { out.len() / k as usize } else { 0 };
+        if n_samples == 0 {
+            return Ok(());
+        }
+        let n_int: RngInt = n_samples.try_into().map_err(|_| {
+            Error::InvalidArgument(format!("multinomial: n={n_samples} exceeds rng_int_t range"))
+        })?;
+        let mut info: RngInt = 0;
+        unsafe {
+            sys::drandmultinomial(
+                n_int, m, p.as_mut_ptr(), k,
+                self.state.as_mut_ptr(),
+                out.as_mut_ptr(), ldx,
+                &mut info,
+            );
+        }
+        if info != 0 {
+            return Err(Error::Status {
+                component: "rng",
+                code: info as i64,
+                message: format!("multinomial returned info={info}"),
+            });
+        }
+        Ok(())
+    }
+
+    /// Multivariate normal: `n` samples each drawn from `N(xmu, C)`
+    /// where `C` is an `m × m` covariance matrix with leading
+    /// dimension `ldc`. `out` is laid out as `n × m` with leading
+    /// dimension `ldx`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn multinormal(
+        &mut self,
+        m: RngInt,
+        xmu: &mut [f64],
+        c: &mut [f64], ldc: RngInt,
+        out: &mut [f64], ldx: RngInt,
+    ) -> Result<()> {
+        let n_samples = if m > 0 { out.len() / m as usize } else { 0 };
+        if n_samples == 0 {
+            return Ok(());
+        }
+        let n_int: RngInt = n_samples.try_into().map_err(|_| {
+            Error::InvalidArgument(format!("multinormal: n={n_samples} exceeds rng_int_t range"))
+        })?;
+        let mut info: RngInt = 0;
+        unsafe {
+            sys::drandmultinormal(
+                n_int, m,
+                xmu.as_mut_ptr(),
+                c.as_mut_ptr(), ldc,
+                self.state.as_mut_ptr(),
+                out.as_mut_ptr(), ldx,
+                &mut info,
+            );
+        }
+        if info != 0 {
+            return Err(Error::Status {
+                component: "rng",
+                code: info as i64,
+                message: format!("multinormal returned info={info}"),
+            });
+        }
+        Ok(())
+    }
+
+    /// Skip-ahead: advance the state as if `n_skip` samples had been
+    /// drawn. Useful for splitting a single seed into independent
+    /// substreams.
+    pub fn skip_ahead(&mut self, n_skip: u64) -> Result<()> {
+        let n_int: RngInt = n_skip.try_into().map_err(|_| {
+            Error::InvalidArgument(format!("skip_ahead: n={n_skip} exceeds rng_int_t range"))
+        })?;
+        let mut info: RngInt = 0;
+        unsafe { sys::drandskipahead(n_int, self.state.as_mut_ptr(), &mut info); }
+        if info != 0 {
+            return Err(Error::Status {
+                component: "rng",
+                code: info as i64,
+                message: format!("skip_ahead returned info={info}"),
+            });
+        }
+        Ok(())
+    }
+
+    /// Leapfrog: split this stream into `n` substreams and advance
+    /// this state to substream `k` (0-based). Each `leapfrog(n, _)`
+    /// call subselects every `n`-th sample.
+    pub fn leapfrog(&mut self, n: RngInt, k: RngInt) -> Result<()> {
+        let mut info: RngInt = 0;
+        unsafe { sys::drandleapfrog(n, k, self.state.as_mut_ptr(), &mut info); }
+        if info != 0 {
+            return Err(Error::Status {
+                component: "rng",
+                code: info as i64,
+                message: format!("leapfrog returned info={info}"),
+            });
+        }
+        Ok(())
+    }
+
     // ---- internal helpers ----------------------------------------------
 
     fn fill_real<F>(&mut self, op: &'static str, out: &mut [f64], call: F) -> Result<()>
