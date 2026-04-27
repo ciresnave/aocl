@@ -1821,6 +1821,75 @@ impl KNearestNeighbours {
         };
         check_status("data-analytics", status)
     }
+
+    /// For each of `n_queries` test rows, write into `n_ind` (length
+    /// `n_queries · k`) the column-major indices of its `k` nearest
+    /// training-set neighbours. If `return_distance` is true, also fill
+    /// `n_dist` (same shape) with the distances.
+    #[allow(clippy::too_many_arguments)]
+    pub fn kneighbors(
+        &mut self,
+        n_queries: usize,
+        n_features: usize,
+        x_test: &[f64],
+        n_ind: &mut [i32],
+        n_dist: &mut [f64],
+        k: usize,
+        return_distance: bool,
+    ) -> Result<()> {
+        let status = unsafe {
+            sys::da_knn_kneighbors_d(
+                self.handle.raw,
+                n_queries as sys::da_int,
+                n_features as sys::da_int,
+                x_test.as_ptr(),
+                n_queries as sys::da_int,
+                n_ind.as_mut_ptr() as *mut sys::da_int,
+                n_dist.as_mut_ptr(),
+                k as sys::da_int,
+                if return_distance { 1 } else { 0 } as sys::da_int,
+            )
+        };
+        check_status("data-analytics", status)
+    }
+
+    /// Retrieve the unique class labels seen during training. `classes`
+    /// must be sized at least `n_classes`. Returns `n_classes`.
+    pub fn classes(&self, classes: &mut [i32]) -> Result<usize> {
+        let mut n_classes: sys::da_int = classes.len() as sys::da_int;
+        let status = unsafe {
+            sys::da_knn_classes_d(
+                self.handle.raw,
+                &mut n_classes,
+                classes.as_mut_ptr() as *mut sys::da_int,
+            )
+        };
+        check_status("data-analytics", status)?;
+        Ok(n_classes as usize)
+    }
+
+    /// Probability estimates: `n_queries × n_classes` row-major matrix
+    /// at `proba`. Use [`KNearestNeighbours::classes`] to discover
+    /// which class each column corresponds to.
+    pub fn predict_proba(
+        &mut self,
+        n_queries: usize,
+        n_features: usize,
+        x_test: &[f64],
+        proba: &mut [f64],
+    ) -> Result<()> {
+        let status = unsafe {
+            sys::da_knn_predict_proba_d(
+                self.handle.raw,
+                n_queries as sys::da_int,
+                n_features as sys::da_int,
+                x_test.as_ptr(),
+                n_queries as sys::da_int,
+                proba.as_mut_ptr(),
+            )
+        };
+        check_status("data-analytics", status)
+    }
 }
 
 impl std::fmt::Debug for KNearestNeighbours {

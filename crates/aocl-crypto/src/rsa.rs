@@ -255,6 +255,128 @@ impl Rsa {
             )
         })
     }
+
+    /// PKCS#1 v1.5 encrypt with public key. `random_pad` is a caller-
+    /// provided random pad of length (key size − text size − 11) bytes.
+    pub fn encrypt_pkcs1v15(
+        &mut self,
+        plaintext: &[u8],
+        random_pad: &[u8],
+        ciphertext: &mut [u8],
+    ) -> Result<()> {
+        check(unsafe {
+            sys::alcp_rsa_publickey_encrypt_pkcs1v15(
+                &mut self.handle,
+                plaintext.as_ptr(),
+                plaintext.len() as u64,
+                ciphertext.as_mut_ptr(),
+                random_pad.as_ptr(),
+            )
+        })
+    }
+
+    /// PKCS#1 v1.5 decrypt with private key. Returns the recovered
+    /// plaintext length.
+    pub fn decrypt_pkcs1v15(
+        &mut self,
+        ciphertext: &[u8],
+        plaintext: &mut [u8],
+    ) -> Result<usize> {
+        let mut text_len: u64 = plaintext.len() as u64;
+        check(unsafe {
+            sys::alcp_rsa_privatekey_decrypt_pkcs1v15(
+                &mut self.handle,
+                ciphertext.as_ptr(),
+                plaintext.as_mut_ptr(),
+                &mut text_len,
+            )
+        })?;
+        Ok(text_len as usize)
+    }
+
+    /// Sign an already-computed digest using PSS padding.
+    pub fn sign_hash_pss(
+        &mut self,
+        hash: &[u8],
+        salt: &[u8],
+        signature: &mut [u8],
+    ) -> Result<()> {
+        check(unsafe {
+            sys::alcp_rsa_privatekey_sign_hash_pss(
+                &mut self.handle,
+                hash.as_ptr(),
+                hash.len() as u64,
+                salt.as_ptr(),
+                salt.len() as u64,
+                signature.as_mut_ptr(),
+            )
+        })
+    }
+
+    /// Verify a PSS signature over a pre-computed digest.
+    pub fn verify_hash_pss(&mut self, hash: &[u8], signature: &[u8]) -> Result<()> {
+        check(unsafe {
+            sys::alcp_rsa_publickey_verify_hash_pss(
+                &mut self.handle,
+                hash.as_ptr(),
+                hash.len() as u64,
+                signature.as_ptr(),
+            )
+        })
+    }
+
+    /// Sign an already-computed digest using PKCS#1 v1.5 padding.
+    pub fn sign_hash_pkcs1v15(&mut self, hash: &[u8], signature: &mut [u8]) -> Result<()> {
+        check(unsafe {
+            sys::alcp_rsa_privatekey_sign_hash_pkcs1v15(
+                &mut self.handle,
+                hash.as_ptr(),
+                hash.len() as u64,
+                signature.as_mut_ptr(),
+            )
+        })
+    }
+
+    /// Verify a PKCS#1 v1.5 signature over a pre-computed digest.
+    pub fn verify_hash_pkcs1v15(&mut self, hash: &[u8], signature: &[u8]) -> Result<()> {
+        check(unsafe {
+            sys::alcp_rsa_publickey_verify_hash_pkcs1v15(
+                &mut self.handle,
+                hash.as_ptr(),
+                hash.len() as u64,
+                signature.as_ptr(),
+            )
+        })
+    }
+
+    /// Deep-copy this RSA context into `dest`. Both handles must
+    /// already be live ([`Rsa::new`]'d).
+    pub fn copy_context_into(&mut self, dest: &mut Rsa) -> Result<()> {
+        check(unsafe {
+            sys::alcp_rsa_context_copy(&mut self.handle, &mut dest.handle)
+        })
+    }
+
+    /// Borrow the raw `_alc_rsa_handle` for routines this crate
+    /// doesn't yet wrap (e.g. the bignum-key setters, which take
+    /// ALCP `BigNum` types).
+    ///
+    /// # Safety
+    /// The returned pointer is only valid for the lifetime of `self`.
+    pub fn as_raw(&mut self) -> *mut sys::_alc_rsa_handle {
+        &mut self.handle
+    }
+}
+
+/// Index of a digest mode in ALCP's RSA digest-info table. Used with
+/// the OAEP / PSS / PKCS#1 v1.5 paths to size hash inputs / outputs.
+pub fn digest_info_index(digest: DigestMode) -> i32 {
+    unsafe { sys::alcp_rsa_get_digest_info_index(digest.raw()) }
+}
+
+/// Output size in bytes of `digest` when used as the OAEP / PSS hash.
+pub fn digest_info_size(digest: DigestMode) -> i32 {
+    unsafe { sys::alcp_rsa_get_digest_info_size(digest.raw()) }
 }
 
 impl Drop for Rsa {
