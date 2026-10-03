@@ -61,9 +61,8 @@ impl Component<'_> {
         if env::var_os("DOCS_RS").is_some() {
             if !self.module.is_empty() {
                 let stub = out_dir.join(format!("{}.rs", self.module));
-                let manifest_dir = PathBuf::from(
-                    env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"),
-                );
+                let manifest_dir =
+                    PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
                 let vendored = manifest_dir
                     .join("bindings")
                     .join(format!("{}.rs", self.module));
