@@ -9,7 +9,8 @@
     non_snake_case,
     dead_code,
     improper_ctypes,
-    clippy::all
+    clippy::all,
+    reason = "bindgen output mirrors the C headers: names, unused items and C-only types are not ours to change"
 )]
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));

@@ -1,5 +1,9 @@
 //! Safe wrappers for AOCL-DA (Data Analytics).
 
+#![allow(
+    clippy::too_many_arguments,
+    reason = "wrappers mirror the C API's argument lists"
+)]
 #![warn(missing_debug_implementations)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
@@ -149,7 +153,6 @@ impl QuantileType {
 /// Scalar element type usable with the wrapped DA routines.
 pub trait Scalar: Copy + Sized + Sealed {
     /// Compute means along `axis` for an `n_rows × n_cols` matrix.
-    #[allow(clippy::too_many_arguments)]
     fn mean(
         layout: Layout,
         axis: Axis,
@@ -166,7 +169,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     /// - `dof < 0` — divide by `n` (number of observations).
     /// - `dof == 0` — divide by `n - 1` (Bessel-corrected, unbiased).
     /// - `dof > 0` — divide by the literal value of `dof`.
-    #[allow(clippy::too_many_arguments)]
     fn variance(
         layout: Layout,
         axis: Axis,
@@ -180,7 +182,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     ) -> Result<()>;
 
     /// Geometric mean. Requires non-negative data.
-    #[allow(clippy::too_many_arguments)]
     fn geometric_mean(
         layout: Layout,
         axis: Axis,
@@ -192,7 +193,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     ) -> Result<()>;
 
     /// Harmonic mean.
-    #[allow(clippy::too_many_arguments)]
     fn harmonic_mean(
         layout: Layout,
         axis: Axis,
@@ -204,7 +204,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     ) -> Result<()>;
 
     /// Mean, variance, and skewness together.
-    #[allow(clippy::too_many_arguments)]
     fn skewness(
         layout: Layout,
         axis: Axis,
@@ -219,7 +218,6 @@ pub trait Scalar: Copy + Sized + Sealed {
 
     /// Mean, variance, and excess kurtosis together (Fisher convention,
     /// so a normal distribution scores zero).
-    #[allow(clippy::too_many_arguments)]
     fn kurtosis(
         layout: Layout,
         axis: Axis,
@@ -235,7 +233,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     /// `k`-th central moment. If `mean_out` already holds means and
     /// `use_precomputed_mean` is true, those means are used; otherwise
     /// they are computed and stored.
-    #[allow(clippy::too_many_arguments)]
     fn moment(
         layout: Layout,
         axis: Axis,
@@ -250,7 +247,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     ) -> Result<()>;
 
     /// Quantile of the data along `axis`. `q` ∈ [0, 1].
-    #[allow(clippy::too_many_arguments)]
     fn quantile(
         layout: Layout,
         axis: Axis,
@@ -265,7 +261,6 @@ pub trait Scalar: Copy + Sized + Sealed {
 
     /// Min, lower hinge (25th percentile), median, upper hinge
     /// (75th percentile), max — Tukey's "five-number summary".
-    #[allow(clippy::too_many_arguments)]
     fn five_point_summary(
         layout: Layout,
         axis: Axis,
@@ -282,7 +277,6 @@ pub trait Scalar: Copy + Sized + Sealed {
 
     /// Compute the `n_cols × n_cols` covariance matrix (rows are
     /// observations). `dof` follows the same convention as `variance`.
-    #[allow(clippy::too_many_arguments)]
     fn covariance_matrix(
         layout: Layout,
         n_rows: usize,
@@ -296,7 +290,6 @@ pub trait Scalar: Copy + Sized + Sealed {
 
     /// Compute the `n_cols × n_cols` correlation matrix (rows are
     /// observations).
-    #[allow(clippy::too_many_arguments)]
     fn correlation_matrix(
         layout: Layout,
         n_rows: usize,
@@ -861,7 +854,6 @@ pub fn kurtosis<T: Scalar>(
 /// Compute the `k`-th central moment along `axis`. If `mean_out` already
 /// holds means and `use_precomputed_mean` is `true`, those are used
 /// directly; otherwise means are computed and stored.
-#[allow(clippy::too_many_arguments)]
 pub fn moment<T: Scalar>(
     axis: Axis,
     n_rows: usize,
@@ -889,7 +881,6 @@ pub fn moment<T: Scalar>(
 /// Compute the `q`-th quantile along `axis` (`q` ∈ [0, 1]). The
 /// `qtype` selects one of the nine standard quantile formulae;
 /// `QuantileType::Type7` matches numpy and R's defaults.
-#[allow(clippy::too_many_arguments)]
 pub fn quantile<T: Scalar>(
     axis: Axis,
     n_rows: usize,
@@ -914,7 +905,6 @@ pub fn quantile<T: Scalar>(
 
 /// Compute Tukey's five-number summary (min, lower hinge, median,
 /// upper hinge, max) along `axis`.
-#[allow(clippy::too_many_arguments)]
 pub fn five_point_summary<T: Scalar>(
     axis: Axis,
     n_rows: usize,
@@ -1433,7 +1423,6 @@ pub trait DistScalar: Scalar {
     /// Compute the pairwise distance matrix `D[i,j] = metric(X[i], Y[j])`.
     /// If `y` is `None`, distances are computed within `x` (so `D` is
     /// `m × m`); otherwise `D` is `m × n`.
-    #[allow(clippy::too_many_arguments)]
     fn pairwise_distances(
         layout: Layout,
         m: usize,
@@ -1500,7 +1489,6 @@ impl_dist_scalar!(f64, da_pairwise_distances_d);
 /// Scalar element type for kernel-matrix computations.
 pub trait KernelScalar: Scalar {
     /// Linear kernel: `K(x, y) = x · y`.
-    #[allow(clippy::too_many_arguments)]
     fn linear_kernel(
         layout: Layout,
         m: usize,
@@ -1515,7 +1503,6 @@ pub trait KernelScalar: Scalar {
     ) -> Result<()>;
 
     /// RBF (Gaussian) kernel: `K(x, y) = exp(-γ · ‖x − y‖²)`.
-    #[allow(clippy::too_many_arguments)]
     fn rbf_kernel(
         layout: Layout,
         m: usize,
@@ -1531,7 +1518,6 @@ pub trait KernelScalar: Scalar {
     ) -> Result<()>;
 
     /// Polynomial kernel: `K(x, y) = (γ · x · y + c)^degree`.
-    #[allow(clippy::too_many_arguments)]
     fn polynomial_kernel(
         layout: Layout,
         m: usize,
@@ -1549,7 +1535,6 @@ pub trait KernelScalar: Scalar {
     ) -> Result<()>;
 
     /// Sigmoid kernel: `K(x, y) = tanh(γ · x · y + c)`.
-    #[allow(clippy::too_many_arguments)]
     fn sigmoid_kernel(
         layout: Layout,
         m: usize,
@@ -1735,7 +1720,6 @@ pub fn linear_kernel<T: KernelScalar>(
 }
 
 /// RBF kernel `K(x, y) = exp(-γ · ‖x − y‖²)` (row-major).
-#[allow(clippy::too_many_arguments)]
 pub fn rbf_kernel<T: KernelScalar>(
     m: usize,
     n: usize,
@@ -1750,7 +1734,6 @@ pub fn rbf_kernel<T: KernelScalar>(
 }
 
 /// Polynomial kernel `K(x, y) = (γ · x · y + c)^degree` (row-major).
-#[allow(clippy::too_many_arguments)]
 pub fn polynomial_kernel<T: KernelScalar>(
     m: usize,
     n: usize,
@@ -1781,7 +1764,6 @@ pub fn polynomial_kernel<T: KernelScalar>(
 }
 
 /// Sigmoid kernel `K(x, y) = tanh(γ · x · y + c)` (row-major).
-#[allow(clippy::too_many_arguments)]
 pub fn sigmoid_kernel<T: KernelScalar>(
     m: usize,
     n: usize,
@@ -1803,7 +1785,6 @@ pub fn sigmoid_kernel<T: KernelScalar>(
 /// `y` is `None`, distances are computed *within* `x` and the output
 /// `d` is `m × m`. Otherwise `d` is `m × n`. `p` is the Minkowski
 /// exponent (ignored for non-Minkowski metrics).
-#[allow(clippy::too_many_arguments)]
 pub fn pairwise_distances<T: DistScalar>(
     m: usize,
     n: usize,
@@ -2233,7 +2214,6 @@ impl KNearestNeighbours {
     /// `n_queries · k`) the column-major indices of its `k` nearest
     /// training-set neighbours. If `return_distance` is true, also fill
     /// `n_dist` (same shape) with the distances.
-    #[allow(clippy::too_many_arguments)]
     pub fn kneighbors(
         &mut self,
         n_queries: usize,
@@ -2883,7 +2863,6 @@ impl DecisionTree {
     /// Predict class probabilities for `n_samples × n_features` test
     /// data. `y_proba` is `n_samples × n_class` row-major; `ldy` ≥
     /// `n_class`.
-    #[allow(clippy::too_many_arguments)]
     pub fn predict_proba(
         &mut self,
         n_samples: usize,
@@ -2909,7 +2888,6 @@ impl DecisionTree {
     }
 
     /// Predict log class probabilities. See [`DecisionTree::predict_proba`].
-    #[allow(clippy::too_many_arguments)]
     pub fn predict_log_proba(
         &mut self,
         n_samples: usize,
@@ -3077,7 +3055,6 @@ impl DecisionForest {
 
     /// Predict class probabilities for the random forest. See
     /// [`DecisionTree::predict_proba`].
-    #[allow(clippy::too_many_arguments)]
     pub fn predict_proba(
         &mut self,
         n_samples: usize,
@@ -3103,7 +3080,6 @@ impl DecisionForest {
     }
 
     /// Predict log class probabilities for the random forest.
-    #[allow(clippy::too_many_arguments)]
     pub fn predict_log_proba(
         &mut self,
         n_samples: usize,

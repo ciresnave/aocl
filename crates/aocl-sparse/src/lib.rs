@@ -1,5 +1,9 @@
 //! Safe wrappers for AOCL-Sparse.
 
+#![allow(
+    clippy::too_many_arguments,
+    reason = "wrappers mirror the C API's argument lists"
+)]
 #![warn(missing_debug_implementations)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 // The Scalar / ComplexScalar traits in this crate are sealed (require
@@ -8,11 +12,17 @@
 // are FFI plumbing called only by the safe wrappers in this same
 // crate; clippy's lint targets the case where a downstream
 // implementer might deref a hostile pointer, which can't happen here.
-#![allow(clippy::not_unsafe_ptr_arg_deref)]
+#![allow(
+    clippy::not_unsafe_ptr_arg_deref,
+    reason = "sealed traits; the raw-pointer arguments are FFI plumbing called only by this crate's wrappers"
+)]
 // Some `(IndexBase, Vec, Vec, Vec)` return tuples are intentional —
 // they mirror what the C API hands back. Aliasing them would obscure
 // rather than clarify the underlying data layout.
-#![allow(clippy::type_complexity)]
+#![allow(
+    clippy::type_complexity,
+    reason = "return tuples intentionally mirror what the C API hands back"
+)]
 
 use std::ffi::CString;
 use std::marker::PhantomData;
@@ -273,7 +283,6 @@ impl std::fmt::Debug for MatDescr {
 /// Scalar element type usable with the wrapped sparse routines.
 pub trait Scalar: Copy + Sized + Sealed {
     /// `y := α · op(A) · x + β · y` where `A` is in CSR format.
-    #[allow(clippy::too_many_arguments)]
     fn csrmv(
         op: Trans,
         alpha: Self,
@@ -298,7 +307,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     fn sctr(x: &[Self], indx: &[sys::aoclsparse_int], y: &mut [Self]) -> Result<()>;
 
     /// Solve `op(A) · y = α · x` where `A` is sparse triangular (CSR).
-    #[allow(clippy::too_many_arguments)]
     fn csrsv(
         op: Trans,
         alpha: Self,
@@ -312,7 +320,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     ) -> Result<()>;
 
     /// Convert a CSR matrix to a dense `m × n` matrix.
-    #[allow(clippy::too_many_arguments)]
     fn csr_to_dense(
         m: usize,
         n: usize,
@@ -326,7 +333,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     ) -> Result<()>;
 
     /// Convert CSR → CSC.
-    #[allow(clippy::too_many_arguments)]
     fn csr_to_csc(
         m: usize,
         n: usize,
@@ -342,7 +348,6 @@ pub trait Scalar: Copy + Sized + Sealed {
 
     /// `y := α · op(A) · x + β · y` where `A` is in ELLPACK format.
     /// Library only supports `op = aoclsparse_operation_none`.
-    #[allow(clippy::too_many_arguments)]
     fn ellmv(
         op: Trans,
         alpha: Self,
@@ -360,7 +365,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     /// `y := α · op(A) · x + β · y` where `A` is in BSR format.
     /// `mb`/`nb` are block-row / block-column counts and `bsr_dim` is the
     /// block edge length. Library only supports `op = aoclsparse_operation_none`.
-    #[allow(clippy::too_many_arguments)]
     fn bsrmv(
         op: Trans,
         alpha: Self,
@@ -379,7 +383,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     /// Wrap raw CSR pointers in a fresh `aoclsparse_matrix` handle. The
     /// library does not copy the underlying arrays — keep them alive for as
     /// long as the returned handle is in use.
-    #[allow(clippy::too_many_arguments)]
     fn create_csr(
         base: IndexBase,
         m: usize,
@@ -417,7 +420,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     fn itsol_init(handle: &mut sys::aoclsparse_itsol_handle) -> Result<()>;
 
     /// Run the iterative solver's forward (direct) interface.
-    #[allow(clippy::too_many_arguments)]
     fn itsol_solve(
         handle: sys::aoclsparse_itsol_handle,
         n: usize,
@@ -435,7 +437,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     /// Caller is responsible for the validity of all `aoclsparse_*` handle
     /// arguments and for adopting `*out` (e.g. via
     /// [`SparseMatrix::from_library_owned`]) on success.
-    #[allow(clippy::too_many_arguments)]
     unsafe fn csr2m_ffi(
         op_a: sys::aoclsparse_operation,
         descr_a: sys::aoclsparse_mat_descr,
@@ -449,7 +450,6 @@ pub trait Scalar: Copy + Sized + Sealed {
 
     /// `C := α · op(A) · B + β · C` where `A` is sparse (CSR via the
     /// matrix handle) and `B`, `C` are dense.
-    #[allow(clippy::too_many_arguments)]
     fn csrmm(
         op: Trans,
         alpha: Self,
@@ -466,7 +466,6 @@ pub trait Scalar: Copy + Sized + Sealed {
 
     /// `C := op(A) · B` where both `A` and `B` are sparse and `C` is
     /// dense.
-    #[allow(clippy::too_many_arguments)]
     fn spmmd(
         op: Trans,
         a: sys::aoclsparse_matrix,
@@ -478,7 +477,6 @@ pub trait Scalar: Copy + Sized + Sealed {
 
     /// `C := α · op_A(A) · op_B(B) + β · C` where both `A` and `B` are
     /// sparse and `C` is dense.
-    #[allow(clippy::too_many_arguments)]
     fn sp2md(
         op_a: Trans,
         descr_a: &MatDescr,
@@ -508,7 +506,6 @@ pub trait Scalar: Copy + Sized + Sealed {
 
     /// One step of the (S)SOR / forward / backward Gauss-Seidel
     /// relaxation: `x_new := (1 − ω) x + ω · A⁻¹ (α · b)`.
-    #[allow(clippy::too_many_arguments)]
     fn sorv(
         sor_type: SorType,
         descr: &MatDescr,
@@ -672,7 +669,6 @@ macro_rules! impl_scalar {
                 check_status("sparse", status)
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn csrsv(
                 op: Trans,
                 alpha: Self,
@@ -714,7 +710,6 @@ macro_rules! impl_scalar {
                 check_status("sparse", status)
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn csr_to_dense(
                 m: usize,
                 n: usize,
@@ -742,7 +737,6 @@ macro_rules! impl_scalar {
                 check_status("sparse", status)
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn csr_to_csc(
                 m: usize,
                 n: usize,
@@ -774,7 +768,6 @@ macro_rules! impl_scalar {
                 check_status("sparse", status)
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn ellmv(
                 op: Trans,
                 alpha: Self,
@@ -833,7 +826,6 @@ macro_rules! impl_scalar {
                 check_status("sparse", status)
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn bsrmv(
                 op: Trans,
                 alpha: Self,
@@ -1045,7 +1037,6 @@ macro_rules! impl_scalar {
                 sys::$csr2m(op_a, descr_a, a, op_b, descr_b, b, request, out)
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn csrmm(
                 op: Trans,
                 alpha: Self,
@@ -1098,7 +1089,6 @@ macro_rules! impl_scalar {
                 check_status("sparse", status)
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn sp2md(
                 op_a: Trans,
                 descr_a: &MatDescr,
@@ -1140,7 +1130,6 @@ macro_rules! impl_scalar {
                 sys::$add(op, a, alpha, b, out)
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn sorv(
                 sor_type: SorType,
                 descr: &MatDescr,
@@ -1215,7 +1204,6 @@ impl_scalar!(
 );
 
 /// Compute `y := α · A · x + β · y` for a CSR matrix `A`.
-#[allow(clippy::too_many_arguments)]
 pub fn csrmv<T: Scalar>(
     alpha: T,
     m: usize,
@@ -1298,7 +1286,6 @@ pub fn sctr<T: Scalar>(x: &[T], indx: &[sys::aoclsparse_int], y: &mut [T]) -> Re
 /// Solve `op(A) · y = α · x` where `A` is sparse triangular in CSR
 /// format. The triangle is determined by the `descr`'s fill mode (set
 /// via the `aoclsparse_set_mat_*` C-API; defaults to upper, non-unit).
-#[allow(clippy::too_many_arguments)]
 pub fn csrsv<T: Scalar>(
     op: Trans,
     alpha: T,
@@ -1334,7 +1321,6 @@ impl Order {
 }
 
 /// Convert a CSR sparse matrix to a dense `m × n` matrix in `out`.
-#[allow(clippy::too_many_arguments)]
 pub fn csr_to_dense<T: Scalar>(
     m: usize,
     n: usize,
@@ -1367,7 +1353,6 @@ pub fn csr_to_dense<T: Scalar>(
 }
 
 /// Convert a CSR matrix to CSC. Output arrays must be pre-sized.
-#[allow(clippy::too_many_arguments)]
 pub fn csr_to_csc<T: Scalar>(
     m: usize,
     n: usize,
@@ -1441,7 +1426,6 @@ impl IndexBase {
 /// shorter than `ell_width` are padded.
 ///
 /// AOCL only implements `op = Trans::No` for ELLPACK at present.
-#[allow(clippy::too_many_arguments)]
 pub fn ellmv<T: Scalar>(
     op: Trans,
     alpha: T,
@@ -1476,7 +1460,6 @@ pub fn ellmv<T: Scalar>(
 /// `bsr_val` is laid out as `nnzb` consecutive `bsr_dim × bsr_dim` blocks.
 ///
 /// AOCL only implements `op = Trans::No` for BSR at present.
-#[allow(clippy::too_many_arguments)]
 pub fn bsrmv<T: Scalar>(
     op: Trans,
     alpha: T,
@@ -1550,7 +1533,7 @@ enum CsrStorage<T: Scalar> {
 /// like [`csr2m`].
 pub struct SparseMatrix<T: Scalar> {
     raw: sys::aoclsparse_matrix,
-    #[allow(dead_code)] // kept alive so the library can keep its pointers
+    #[allow(dead_code, reason = "kept alive so the library can keep its pointers")]
     storage: CsrStorage<T>,
     base: IndexBase,
     m: usize,
@@ -1874,7 +1857,6 @@ impl<T: Scalar> std::fmt::Debug for SparseMatrix<T> {
 /// Use `Stage::FullComputation` for a one-shot call. The two-stage form
 /// (`NnzCount` followed by `Finalize`) is for repeated multiplies sharing
 /// the same sparsity pattern.
-#[allow(clippy::too_many_arguments)]
 pub fn csr2m<T: Scalar>(
     op_a: Trans,
     descr_a: &MatDescr,
@@ -1912,7 +1894,6 @@ pub fn csr2m<T: Scalar>(
 ///
 /// `n` is the number of columns of `B` (and `C`). `ldb` and `ldc` are
 /// the leading dimensions of `B` and `C` respectively.
-#[allow(clippy::too_many_arguments)]
 pub fn csrmm<T: Scalar>(
     op: Trans,
     alpha: T,
@@ -1944,7 +1925,6 @@ pub fn spmmd<T: Scalar>(
 
 /// Compute `C := α · op_A(A) · op_B(B) + β · C` where both `A` and `B`
 /// are sparse and `C` is dense.
-#[allow(clippy::too_many_arguments)]
 pub fn sp2md<T: Scalar>(
     op_a: Trans,
     descr_a: &MatDescr,
@@ -2025,7 +2005,6 @@ pub fn sorv<T: Scalar>(
 /// Real high-level mat-vec `y := α · op(A) · x + β · y` against a
 /// `SparseMatrix<f64>` handle (per-precision; complex variants live in
 /// the [`complex`] submodule).
-#[allow(clippy::too_many_arguments)]
 pub fn mv_f64(
     op: Trans,
     alpha: f64,
@@ -2050,7 +2029,6 @@ pub fn mv_f64(
 }
 
 /// `f32` mat-vec via the matrix-handle interface. See [`mv_f64`].
-#[allow(clippy::too_many_arguments)]
 pub fn mv_f32(
     op: Trans,
     alpha: f32,
@@ -2122,7 +2100,6 @@ pub fn trsv_f32(
 
 /// Multi-RHS triangular solve: `op(A) · X = α · B` for `n_rhs`
 /// right-hand sides, `B`/`X` dense `m × n_rhs`.
-#[allow(clippy::too_many_arguments)]
 pub fn trsm_f64(
     op: Trans,
     alpha: f64,
@@ -2153,7 +2130,6 @@ pub fn trsm_f64(
 }
 
 /// `f32` multi-RHS triangular solve. See [`trsm_f64`].
-#[allow(clippy::too_many_arguments)]
 pub fn trsm_f32(
     op: Trans,
     alpha: f32,
@@ -2232,7 +2208,6 @@ pub fn doti_f32(x: &[f32], indx: &[sys::aoclsparse_int], y: &[f32]) -> Result<f3
 /// Convert CSR → ELLPACK. `ell_width` is the chosen padded row length;
 /// caller must allocate `ell_col_ind` and `ell_val` of size
 /// `m * ell_width`. (`f64`)
-#[allow(clippy::too_many_arguments)]
 pub fn csr2ell_f64(
     m: usize,
     descr: &MatDescr,
@@ -2259,7 +2234,6 @@ pub fn csr2ell_f64(
 }
 
 /// `f32` CSR → ELLPACK. See [`csr2ell_f64`].
-#[allow(clippy::too_many_arguments)]
 pub fn csr2ell_f32(
     m: usize,
     descr: &MatDescr,
@@ -2288,7 +2262,6 @@ pub fn csr2ell_f32(
 /// Convert CSR → DIA (diagonal storage). `dia_offset` and `dia_val`
 /// must be pre-allocated; `dia_num_diag` is the number of distinct
 /// diagonals. (`f64`)
-#[allow(clippy::too_many_arguments)]
 pub fn csr2dia_f64(
     m: usize,
     n: usize,
@@ -2317,7 +2290,6 @@ pub fn csr2dia_f64(
 }
 
 /// `f32` CSR → DIA. See [`csr2dia_f64`].
-#[allow(clippy::too_many_arguments)]
 pub fn csr2dia_f32(
     m: usize,
     n: usize,
@@ -2374,7 +2346,6 @@ pub fn csr2bsr_nnz(
 }
 
 /// Convert CSR → BSR. Run [`csr2bsr_nnz`] first to size the output. (`f64`)
-#[allow(clippy::too_many_arguments)]
 pub fn csr2bsr_f64(
     m: usize,
     n: usize,
@@ -2405,7 +2376,6 @@ pub fn csr2bsr_f64(
 }
 
 /// `f32` CSR → BSR. See [`csr2bsr_f64`].
-#[allow(clippy::too_many_arguments)]
 pub fn csr2bsr_f32(
     m: usize,
     n: usize,
@@ -2438,7 +2408,6 @@ pub fn csr2bsr_f32(
 /// Block-CSR mat-vec with a per-block bitmask. `masks[i]` is a u8 bit
 /// pattern indicating which rows of block `i` participate. `n_rows_blk`
 /// is the block height. (`f64`)
-#[allow(clippy::too_many_arguments)]
 pub fn blkcsrmv_f64(
     op: Trans,
     alpha: f64,
@@ -2523,7 +2492,6 @@ pub fn symgs_f32(
 
 /// Fused Gauss-Seidel + matrix-vector: produces both the updated `x`
 /// and `y := A·x` in one pass. (`f64`)
-#[allow(clippy::too_many_arguments)]
 pub fn symgs_mv_f64(
     op: Trans,
     a: &SparseMatrix<f64>,
@@ -2548,7 +2516,6 @@ pub fn symgs_mv_f64(
 }
 
 /// `f32` fused symmetric Gauss-Seidel + mat-vec. See [`symgs_mv_f64`].
-#[allow(clippy::too_many_arguments)]
 pub fn symgs_mv_f32(
     op: Trans,
     a: &SparseMatrix<f32>,
@@ -2643,7 +2610,6 @@ pub fn update_values_f32(a: &mut SparseMatrix<f32>, val: &mut [f32]) -> Result<(
 /// Fused dot product and mat-vec: `y := α · op(A) · x + β · y` and
 /// `d := xᵀ · y` (or `d := xᴴ · y` for complex). Saves one pass over
 /// the matrix versus calling `mv` then `dot` separately. (`f64`)
-#[allow(clippy::too_many_arguments)]
 pub fn dotmv_f64(
     op: Trans,
     alpha: f64,
@@ -2670,7 +2636,6 @@ pub fn dotmv_f64(
 }
 
 /// `f32` fused dot + mat-vec. See [`dotmv_f64`].
-#[allow(clippy::too_many_arguments)]
 pub fn dotmv_f32(
     op: Trans,
     alpha: f32,
@@ -2699,7 +2664,6 @@ pub fn dotmv_f32(
 /// Symmetric rank-k update from a sparse matrix:
 /// `C := α · op(A) · op(A)ᵀ + β · C` (real) /
 /// `C := α · op(A) · op(A)ᴴ + β · C` (complex). `C` is dense. (`f64`)
-#[allow(clippy::too_many_arguments)]
 pub fn syrkd_f64(
     op_a: Trans,
     a: &SparseMatrix<f64>,
@@ -2724,7 +2688,6 @@ pub fn syrkd_f64(
 }
 
 /// `f32` symmetric rank-k update from sparse `A`. See [`syrkd_f64`].
-#[allow(clippy::too_many_arguments)]
 pub fn syrkd_f32(
     op_a: Trans,
     a: &SparseMatrix<f32>,
@@ -2750,7 +2713,6 @@ pub fn syrkd_f32(
 
 /// Symmetric triple product from a sparse `A` and dense `B`:
 /// `C := α · op(A) · B · op(A)ᵀ + β · C`. (`f64`)
-#[allow(clippy::too_many_arguments)]
 pub fn syprd_f64(
     op_a: Trans,
     a: &SparseMatrix<f64>,
@@ -2781,7 +2743,6 @@ pub fn syprd_f64(
 }
 
 /// `f32` symmetric triple product. See [`syprd_f64`].
-#[allow(clippy::too_many_arguments)]
 pub fn syprd_f32(
     op_a: Trans,
     a: &SparseMatrix<f32>,
@@ -2933,7 +2894,6 @@ pub fn gthrz_f32(y: &mut [f32], indx: &[sys::aoclsparse_int], x: &mut [f32]) -> 
 /// `f32` SOR / forward / backward Gauss-Seidel sweep. The existing
 /// generic [`sorv`] dispatches to this via the Scalar trait; this is
 /// a per-precision direct alias.
-#[allow(clippy::too_many_arguments)]
 pub fn sorv_f32(
     sor_type: SorType,
     descr: &MatDescr,
@@ -2963,7 +2923,6 @@ pub fn sorv_f32(
 
 /// Build a TCSR matrix handle from two CSR sub-arrays describing the
 /// strict-lower (`*_L`) and strict-upper (`*_U`) parts. (`f64`)
-#[allow(clippy::too_many_arguments)]
 pub fn create_tcsr_f64(
     base: IndexBase,
     m: usize,
@@ -3000,7 +2959,6 @@ pub fn create_tcsr_f64(
 }
 
 /// `f32` TCSR creator. See [`create_tcsr_f64`].
-#[allow(clippy::too_many_arguments)]
 pub fn create_tcsr_f32(
     base: IndexBase,
     m: usize,
@@ -3041,7 +2999,6 @@ pub fn create_tcsr_f32(
 // =========================================================================
 
 /// Build a CSC matrix handle. Column-major analogue of CSR. (`f64`)
-#[allow(clippy::too_many_arguments)]
 pub fn create_csc_f64(
     base: IndexBase,
     m: usize,
@@ -3071,7 +3028,6 @@ pub fn create_csc_f64(
     Ok(raw)
 }
 /// `f32` CSC creator. See [`create_csc_f64`].
-#[allow(clippy::too_many_arguments)]
 pub fn create_csc_f32(
     base: IndexBase,
     m: usize,

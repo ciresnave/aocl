@@ -27,7 +27,6 @@ pub trait ComplexScalar: Copy + Sized + Sealed {
     fn sctr(x: &[Self], indx: &[sys::aoclsparse_int], y: &mut [Self]) -> Result<()>;
 
     /// Wrap raw CSR pointers in an `aoclsparse_matrix` handle.
-    #[allow(clippy::too_many_arguments)]
     fn create_csr(
         base: IndexBase,
         m: usize,
@@ -52,7 +51,6 @@ pub trait ComplexScalar: Copy + Sized + Sealed {
     )>;
 
     /// `y := α · op(A) · x + β · y` via the high-level matrix handle.
-    #[allow(clippy::too_many_arguments)]
     fn mv(
         op: Trans,
         alpha: Self,
@@ -64,7 +62,6 @@ pub trait ComplexScalar: Copy + Sized + Sealed {
     ) -> Result<()>;
 
     /// Solve `op(A) · x = α · b` where `A` is sparse triangular.
-    #[allow(clippy::too_many_arguments)]
     fn trsv(
         op: Trans,
         alpha: Self,
@@ -87,7 +84,6 @@ pub trait ComplexScalar: Copy + Sized + Sealed {
     fn itsol_init(handle: &mut sys::aoclsparse_itsol_handle) -> Result<()>;
 
     /// Run the iterative solver's forward (direct) interface.
-    #[allow(clippy::too_many_arguments)]
     fn itsol_solve(
         handle: sys::aoclsparse_itsol_handle,
         n: usize,
@@ -100,7 +96,6 @@ pub trait ComplexScalar: Copy + Sized + Sealed {
 
     /// `C := α · op(A) · B + β · C` where `A` is sparse (CSR via the
     /// matrix handle) and `B`, `C` are dense.
-    #[allow(clippy::too_many_arguments)]
     fn csrmm(
         op: Trans,
         alpha: Self,
@@ -116,7 +111,6 @@ pub trait ComplexScalar: Copy + Sized + Sealed {
     ) -> Result<()>;
 
     /// `C := op(A) · B` where both `A` and `B` are sparse and `C` is dense.
-    #[allow(clippy::too_many_arguments)]
     fn spmmd(
         op: Trans,
         a: sys::aoclsparse_matrix,
@@ -127,7 +121,6 @@ pub trait ComplexScalar: Copy + Sized + Sealed {
     ) -> Result<()>;
 
     /// `C := α · op_A(A) · op_B(B) + β · C` (sparse·sparse → dense).
-    #[allow(clippy::too_many_arguments)]
     fn sp2md(
         op_a: Trans,
         descr_a: &MatDescr,
@@ -156,7 +149,6 @@ pub trait ComplexScalar: Copy + Sized + Sealed {
     ) -> sys::aoclsparse_status;
 
     /// One step of (S)SOR / forward / backward Gauss-Seidel relaxation.
-    #[allow(clippy::too_many_arguments)]
     fn sorv(
         sor_type: SorType,
         descr: &MatDescr,
@@ -936,7 +928,10 @@ enum CsrStorage<T: ComplexScalar> {
 /// RAII wrapper for a complex `aoclsparse_matrix` in CSR format.
 pub struct ComplexSparseMatrix<T: ComplexScalar> {
     raw: sys::aoclsparse_matrix,
-    #[allow(dead_code)]
+    #[allow(
+        dead_code,
+        reason = "owns the buffers the C library keeps pointers into"
+    )]
     storage: CsrStorage<T>,
     base: IndexBase,
     m: usize,
@@ -1119,7 +1114,6 @@ pub fn sctr<T: ComplexScalar>(x: &[T], indx: &[sys::aoclsparse_int], y: &mut [T]
 }
 
 /// Compute `y := α · op(A) · x + β · y` for a complex CSR matrix `A`.
-#[allow(clippy::too_many_arguments)]
 pub fn mv<T: ComplexScalar>(
     op: Trans,
     alpha: T,
@@ -1144,7 +1138,6 @@ pub fn mv<T: ComplexScalar>(
 }
 
 /// Solve `op(A) · x = α · b` where `A` is sparse triangular.
-#[allow(clippy::too_many_arguments)]
 pub fn trsv<T: ComplexScalar>(
     op: Trans,
     alpha: T,
@@ -1166,7 +1159,6 @@ pub fn trsv<T: ComplexScalar>(
 
 /// Compute `C := α · op(A) · B + β · C` where `A` is sparse complex
 /// (CSR) and `B`, `C` are dense complex matrices laid out per `order`.
-#[allow(clippy::too_many_arguments)]
 pub fn csrmm<T: ComplexScalar>(
     op: Trans,
     alpha: T,
@@ -1198,7 +1190,6 @@ pub fn spmmd<T: ComplexScalar>(
 
 /// Compute `C := α · op_A(A) · op_B(B) + β · C` for complex sparse `A`
 /// and `B`, dense complex `C`.
-#[allow(clippy::too_many_arguments)]
 pub fn sp2md<T: ComplexScalar>(
     op_a: Trans,
     descr_a: &MatDescr,
@@ -1418,7 +1409,6 @@ pub fn symgs_c32(
 }
 
 /// Fused symgs + mat-vec. (`Complex64`)
-#[allow(clippy::too_many_arguments)]
 pub fn symgs_mv_c64(
     op: Trans,
     a: &ComplexSparseMatrix<Complex64>,
@@ -1447,7 +1437,6 @@ pub fn symgs_mv_c64(
 }
 
 /// `Complex32` fused symgs + mat-vec. See [`symgs_mv_c64`].
-#[allow(clippy::too_many_arguments)]
 pub fn symgs_mv_c32(
     op: Trans,
     a: &ComplexSparseMatrix<Complex32>,
@@ -1553,7 +1542,6 @@ pub fn update_values_c32(
 
 /// Multi-RHS triangular solve `op(A) · X = α · B` for complex sparse
 /// triangular `A`. (`Complex64`)
-#[allow(clippy::too_many_arguments)]
 pub fn trsm_c64(
     op: Trans,
     alpha: Complex64,
@@ -1587,7 +1575,6 @@ pub fn trsm_c64(
 }
 
 /// `Complex32` multi-RHS triangular solve. See [`trsm_c64`].
-#[allow(clippy::too_many_arguments)]
 pub fn trsm_c32(
     op: Trans,
     alpha: Complex32,
@@ -1623,7 +1610,6 @@ pub fn trsm_c32(
 // ----- dotmv (fused dot + mv) and sparse complex dot (dotui/dotci) -----
 
 /// Fused dot + mat-vec: `y := α A x + β y` and `d := xᵀ y`. (`Complex64`)
-#[allow(clippy::too_many_arguments)]
 pub fn dotmv_c64(
     op: Trans,
     alpha: Complex64,
@@ -1658,7 +1644,6 @@ pub fn dotmv_c64(
 }
 
 /// `Complex32` fused dot + mat-vec. See [`dotmv_c64`].
-#[allow(clippy::too_many_arguments)]
 pub fn dotmv_c32(
     op: Trans,
     alpha: Complex32,
@@ -1858,7 +1843,6 @@ pub fn sctrs_c32(x: &[Complex32], y: &mut [Complex32], stride: i32) -> Result<()
 // ----- syrkd / syprd (complex) -----
 
 /// Symmetric rank-k update from a complex sparse matrix. (`Complex64`)
-#[allow(clippy::too_many_arguments)]
 pub fn syrkd_c64(
     op_a: Trans,
     a: &ComplexSparseMatrix<Complex64>,
@@ -1890,7 +1874,6 @@ pub fn syrkd_c64(
     check_status("sparse", status)
 }
 /// `Complex32` symmetric rank-k update. See [`syrkd_c64`].
-#[allow(clippy::too_many_arguments)]
 pub fn syrkd_c32(
     op_a: Trans,
     a: &ComplexSparseMatrix<Complex32>,
@@ -1924,7 +1907,6 @@ pub fn syrkd_c32(
 
 /// Symmetric triple product `C := α · op(A) · B · op(A)ᵀ + β · C` for
 /// complex sparse `A`, dense `B`/`C`. (`Complex64`)
-#[allow(clippy::too_many_arguments)]
 pub fn syprd_c64(
     op_a: Trans,
     a: &ComplexSparseMatrix<Complex64>,
@@ -1962,7 +1944,6 @@ pub fn syprd_c64(
     check_status("sparse", status)
 }
 /// `Complex32` symmetric triple product. See [`syprd_c64`].
-#[allow(clippy::too_many_arguments)]
 pub fn syprd_c32(
     op_a: Trans,
     a: &ComplexSparseMatrix<Complex32>,
@@ -2003,7 +1984,6 @@ pub fn syprd_c32(
 // ----- Complex CSC and TCSR creators -----
 
 /// Build a complex CSC matrix handle. (`Complex64`)
-#[allow(clippy::too_many_arguments)]
 pub fn create_csc_c64(
     base: IndexBase,
     m: usize,
@@ -2033,7 +2013,6 @@ pub fn create_csc_c64(
     Ok(raw)
 }
 /// `Complex32` CSC creator. See [`create_csc_c64`].
-#[allow(clippy::too_many_arguments)]
 pub fn create_csc_c32(
     base: IndexBase,
     m: usize,
@@ -2065,7 +2044,6 @@ pub fn create_csc_c32(
 
 /// Build a complex TCSR matrix handle (parallel L / U triangular CSRs).
 /// (`Complex64`)
-#[allow(clippy::too_many_arguments)]
 pub fn create_tcsr_c64(
     base: IndexBase,
     m: usize,
@@ -2101,7 +2079,6 @@ pub fn create_tcsr_c64(
     Ok(raw)
 }
 /// `Complex32` TCSR creator. See [`create_tcsr_c64`].
-#[allow(clippy::too_many_arguments)]
 pub fn create_tcsr_c32(
     base: IndexBase,
     m: usize,

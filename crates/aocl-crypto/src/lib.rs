@@ -8,6 +8,10 @@
 //! - [`aead`] — AES-GCM, AES-CCM, AES-SIV, ChaCha20-Poly1305 authenticated
 //!   encryption with associated data
 
+#![allow(
+    clippy::too_many_arguments,
+    reason = "wrappers mirror the C API's argument lists"
+)]
 #![warn(missing_debug_implementations)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
