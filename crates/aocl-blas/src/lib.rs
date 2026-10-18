@@ -19,6 +19,10 @@
 //! sizes return [`Error::InvalidArgument`]. For routines not yet wrapped,
 //! drop down to [`aocl_blas_sys`].
 
+#![allow(
+    clippy::too_many_arguments,
+    reason = "wrappers mirror the C API's argument lists"
+)]
 #![warn(missing_debug_implementations)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
@@ -106,7 +110,6 @@ fn check_matrix(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 fn check_gemv(
     layout: Layout,
     trans_a: Trans,
@@ -141,7 +144,6 @@ fn check_n_square(
     check_strided_len(&format!("{name}: x"), x_len, n, inc_x)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn check_n_square_xy(
     name: &str,
     layout: Layout,
@@ -158,7 +160,6 @@ fn check_n_square_xy(
     check_strided_len(&format!("{name}: y"), y_len, n, inc_y)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn check_ger(
     layout: Layout,
     m: usize,
@@ -189,7 +190,6 @@ fn side_raw(s: Side) -> sys::CBLAS_SIDE {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn check_symm(
     layout: Layout,
     side: Side,
@@ -208,7 +208,6 @@ fn check_symm(
     check_matrix("symm: C", layout, m, n, ldc, c_len)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn check_syrk(
     layout: Layout,
     trans: Trans,
@@ -227,7 +226,6 @@ fn check_syrk(
     check_matrix("syrk: C", layout, n, n, ldc, c_len)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn check_syr2k(
     layout: Layout,
     trans: Trans,
@@ -249,7 +247,6 @@ fn check_syr2k(
     check_matrix("syr2k: C", layout, n, n, ldc, c_len)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn check_trxxm(
     name: &str,
     layout: Layout,
@@ -268,7 +265,6 @@ fn check_trxxm(
 
 // --- Banded / packed validators ------------------------------------------
 
-#[allow(clippy::too_many_arguments)]
 fn check_gbmv(
     trans_a: Trans,
     m: usize,
@@ -329,7 +325,6 @@ fn check_band_n_square(
     check_strided_len(&format!("{name}: x"), x_len, n, inc_x)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn check_band_n_square_xy(
     name: &str,
     n: usize,
@@ -366,7 +361,6 @@ fn check_packed_n_square(
     check_strided_len(&format!("{name}: x"), x_len, n, inc_x)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn check_packed_n_square_xy(
     name: &str,
     n: usize,
@@ -422,7 +416,6 @@ fn infer_n(x_len: usize, inc_x: usize, y_len: usize, inc_y: usize) -> usize {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn check_gemm_shapes(
     layout: Layout,
     trans_a: Trans,
@@ -555,7 +548,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     // --- Level-2 (matrix-vector) -----------------------------------------
 
     /// `Y := α · op(A) · X + β · Y` where `op(A)` is `m × n`.
-    #[allow(clippy::too_many_arguments)]
     fn gemv(
         layout: Layout,
         trans_a: Trans,
@@ -572,7 +564,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     ) -> Result<()>;
 
     /// `X := op(A) · X` for triangular `A` (`n × n`).
-    #[allow(clippy::too_many_arguments)]
     fn trmv(
         layout: Layout,
         uplo: Uplo,
@@ -587,7 +578,6 @@ pub trait Scalar: Copy + Sized + Sealed {
 
     /// Solve `op(A) · X' = X` for triangular `A` (`n × n`), overwriting `X`
     /// with the solution `X'`.
-    #[allow(clippy::too_many_arguments)]
     fn trsv(
         layout: Layout,
         uplo: Uplo,
@@ -603,7 +593,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     // --- Level-3 ---------------------------------------------------------
 
     /// `C := α · op(A) · op(B) + β · C`.
-    #[allow(clippy::too_many_arguments)]
     fn gemm(
         layout: Layout,
         trans_a: Trans,
@@ -624,7 +613,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     /// `C := α · A · B + β · C` (Side::Left) or `C := α · B · A + β · C`
     /// (Side::Right) where `A` is symmetric (`m × m` for Left, `n × n`
     /// for Right). Only the `uplo` triangle of `A` is referenced.
-    #[allow(clippy::too_many_arguments)]
     fn symm(
         layout: Layout,
         side: Side,
@@ -643,7 +631,6 @@ pub trait Scalar: Copy + Sized + Sealed {
 
     /// Symmetric rank-k update: `C := α · op(A) · op(A)ᵀ + β · C`.
     /// `op(A)` is `n × k`. Only the `uplo` triangle of `C` is updated.
-    #[allow(clippy::too_many_arguments)]
     fn syrk(
         layout: Layout,
         uplo: Uplo,
@@ -660,7 +647,6 @@ pub trait Scalar: Copy + Sized + Sealed {
 
     /// Symmetric rank-2k update:
     /// `C := α · op(A) · op(B)ᵀ + α · op(B) · op(A)ᵀ + β · C`.
-    #[allow(clippy::too_many_arguments)]
     fn syr2k(
         layout: Layout,
         uplo: Uplo,
@@ -680,7 +666,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     /// `Y := α · op(A) · X + β · Y` for general banded `A`. `kl` is the
     /// number of subdiagonals and `ku` the number of superdiagonals. `A`
     /// is stored in band-storage layout with `lda ≥ kl + ku + 1`.
-    #[allow(clippy::too_many_arguments)]
     fn gbmv(
         layout: Layout,
         trans_a: Trans,
@@ -700,7 +685,6 @@ pub trait Scalar: Copy + Sized + Sealed {
 
     /// `X := op(A) · X` for triangular banded `A`. `k` is the number of
     /// super- (Upper) or sub-diagonals (Lower); `lda ≥ k + 1`.
-    #[allow(clippy::too_many_arguments)]
     fn tbmv(
         layout: Layout,
         uplo: Uplo,
@@ -715,7 +699,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     ) -> Result<()>;
 
     /// Solve `op(A) · X' = X` for triangular banded `A`.
-    #[allow(clippy::too_many_arguments)]
     fn tbsv(
         layout: Layout,
         uplo: Uplo,
@@ -731,7 +714,6 @@ pub trait Scalar: Copy + Sized + Sealed {
 
     /// `X := op(A) · X` for triangular packed `A`. `Ap` is the column
     /// (Upper) or row (Lower) packed `n(n+1)/2`-element storage.
-    #[allow(clippy::too_many_arguments)]
     fn tpmv(
         layout: Layout,
         uplo: Uplo,
@@ -744,7 +726,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     ) -> Result<()>;
 
     /// Solve `op(A) · X' = X` for triangular packed `A`.
-    #[allow(clippy::too_many_arguments)]
     fn tpsv(
         layout: Layout,
         uplo: Uplo,
@@ -758,7 +739,6 @@ pub trait Scalar: Copy + Sized + Sealed {
 
     /// `B := α · op(A) · B` (Side::Left) or `B := α · B · op(A)`
     /// (Side::Right) where `A` is triangular.
-    #[allow(clippy::too_many_arguments)]
     fn trmm(
         layout: Layout,
         side: Side,
@@ -776,7 +756,6 @@ pub trait Scalar: Copy + Sized + Sealed {
 
     /// Solve `op(A) · X = α · B` (Side::Left) or `X · op(A) = α · B`
     /// (Side::Right) for triangular `A`, overwriting `B` with `X`.
-    #[allow(clippy::too_many_arguments)]
     fn trsm(
         layout: Layout,
         side: Side,
@@ -816,7 +795,6 @@ pub trait RealScalar: Scalar<Real = Self> {
 
     /// `Y := α · A · X + β · Y` for symmetric `A` (`n × n`).
     /// Only the triangle indicated by `uplo` is referenced.
-    #[allow(clippy::too_many_arguments)]
     fn symv(
         layout: Layout,
         uplo: Uplo,
@@ -833,7 +811,6 @@ pub trait RealScalar: Scalar<Real = Self> {
 
     /// Symmetric rank-1 update: `A := α · X · Xᵀ + A` for symmetric `A`.
     /// Only the triangle indicated by `uplo` is referenced and updated.
-    #[allow(clippy::too_many_arguments)]
     fn syr(
         layout: Layout,
         uplo: Uplo,
@@ -846,7 +823,6 @@ pub trait RealScalar: Scalar<Real = Self> {
     ) -> Result<()>;
 
     /// Symmetric rank-2 update: `A := α · X · Yᵀ + α · Y · Xᵀ + A`.
-    #[allow(clippy::too_many_arguments)]
     fn syr2(
         layout: Layout,
         uplo: Uplo,
@@ -861,7 +837,6 @@ pub trait RealScalar: Scalar<Real = Self> {
     ) -> Result<()>;
 
     /// General rank-1 update: `A := α · X · Yᵀ + A` for `m × n` `A`.
-    #[allow(clippy::too_many_arguments)]
     fn ger(
         layout: Layout,
         m: usize,
@@ -877,7 +852,6 @@ pub trait RealScalar: Scalar<Real = Self> {
 
     /// `Y := α · A · X + β · Y` for symmetric banded `A` (`n × n` with `k`
     /// off-diagonals). `lda ≥ k + 1`.
-    #[allow(clippy::too_many_arguments)]
     fn sbmv(
         layout: Layout,
         uplo: Uplo,
@@ -894,7 +868,6 @@ pub trait RealScalar: Scalar<Real = Self> {
     ) -> Result<()>;
 
     /// `Y := α · A · X + β · Y` for symmetric packed `A`.
-    #[allow(clippy::too_many_arguments)]
     fn spmv(
         layout: Layout,
         uplo: Uplo,
@@ -909,7 +882,6 @@ pub trait RealScalar: Scalar<Real = Self> {
     ) -> Result<()>;
 
     /// Symmetric packed rank-1 update `Ap := α · X · Xᵀ + Ap`.
-    #[allow(clippy::too_many_arguments)]
     fn spr(
         layout: Layout,
         uplo: Uplo,
@@ -921,7 +893,6 @@ pub trait RealScalar: Scalar<Real = Self> {
     ) -> Result<()>;
 
     /// Symmetric packed rank-2 update `Ap := α · X · Yᵀ + α · Y · Xᵀ + Ap`.
-    #[allow(clippy::too_many_arguments)]
     fn spr2(
         layout: Layout,
         uplo: Uplo,
@@ -940,7 +911,6 @@ pub trait RealScalar: Scalar<Real = Self> {
 pub trait ComplexScalar: Scalar {
     /// `Y := α · A · X + β · Y` for Hermitian `A` (`n × n`).
     /// Only the triangle indicated by `uplo` is referenced.
-    #[allow(clippy::too_many_arguments)]
     fn hemv(
         layout: Layout,
         uplo: Uplo,
@@ -959,7 +929,6 @@ pub trait ComplexScalar: Scalar {
     /// require the scalar `α` to be **real** here (the diagonal of `A`
     /// is enforced real). Pass `Self::Real`, which is `f32` for
     /// `Complex32` and `f64` for `Complex64`.
-    #[allow(clippy::too_many_arguments)]
     fn her(
         layout: Layout,
         uplo: Uplo,
@@ -972,7 +941,6 @@ pub trait ComplexScalar: Scalar {
     ) -> Result<()>;
 
     /// Hermitian rank-2 update: `A := α · X · Yᴴ + conj(α) · Y · Xᴴ + A`.
-    #[allow(clippy::too_many_arguments)]
     fn her2(
         layout: Layout,
         uplo: Uplo,
@@ -987,7 +955,6 @@ pub trait ComplexScalar: Scalar {
     ) -> Result<()>;
 
     /// Unconjugated rank-1 update: `A := α · X · Yᵀ + A` for `m × n` `A`.
-    #[allow(clippy::too_many_arguments)]
     fn geru(
         layout: Layout,
         m: usize,
@@ -1002,7 +969,6 @@ pub trait ComplexScalar: Scalar {
     ) -> Result<()>;
 
     /// Conjugated rank-1 update: `A := α · X · Yᴴ + A` for `m × n` `A`.
-    #[allow(clippy::too_many_arguments)]
     fn gerc(
         layout: Layout,
         m: usize,
@@ -1020,7 +986,6 @@ pub trait ComplexScalar: Scalar {
 
     /// `C := α · A · B + β · C` (Side::Left) or `C := α · B · A + β · C`
     /// (Side::Right) where `A` is Hermitian.
-    #[allow(clippy::too_many_arguments)]
     fn hemm(
         layout: Layout,
         side: Side,
@@ -1041,7 +1006,6 @@ pub trait ComplexScalar: Scalar {
     /// Both `α` and `β` are real (the diagonal of `C` is enforced real).
     /// For Hermitian, `Trans::T` is illegal; use `Trans::No` or
     /// `Trans::C`.
-    #[allow(clippy::too_many_arguments)]
     fn herk(
         layout: Layout,
         uplo: Uplo,
@@ -1059,7 +1023,6 @@ pub trait ComplexScalar: Scalar {
     /// Hermitian rank-2k update:
     /// `C := α · op(A) · op(B)ᴴ + conj(α) · op(B) · op(A)ᴴ + β · C`,
     /// where `β` is real.
-    #[allow(clippy::too_many_arguments)]
     fn her2k(
         layout: Layout,
         uplo: Uplo,
@@ -1077,7 +1040,6 @@ pub trait ComplexScalar: Scalar {
     ) -> Result<()>;
 
     /// `Y := α · A · X + β · Y` for Hermitian banded `A`.
-    #[allow(clippy::too_many_arguments)]
     fn hbmv(
         layout: Layout,
         uplo: Uplo,
@@ -1094,7 +1056,6 @@ pub trait ComplexScalar: Scalar {
     ) -> Result<()>;
 
     /// `Y := α · A · X + β · Y` for Hermitian packed `A`.
-    #[allow(clippy::too_many_arguments)]
     fn hpmv(
         layout: Layout,
         uplo: Uplo,
@@ -1109,7 +1070,6 @@ pub trait ComplexScalar: Scalar {
     ) -> Result<()>;
 
     /// Hermitian packed rank-1 update `Ap := α · X · Xᴴ + Ap` (real `α`).
-    #[allow(clippy::too_many_arguments)]
     fn hpr(
         layout: Layout,
         uplo: Uplo,
@@ -1121,7 +1081,6 @@ pub trait ComplexScalar: Scalar {
     ) -> Result<()>;
 
     /// Hermitian packed rank-2 update.
-    #[allow(clippy::too_many_arguments)]
     fn hpr2(
         layout: Layout,
         uplo: Uplo,
@@ -1307,7 +1266,6 @@ macro_rules! impl_real_scalar {
                 Ok(i as usize)
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn gemv(
                 layout: Layout,
                 trans_a: Trans,
@@ -1353,7 +1311,6 @@ macro_rules! impl_real_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn trmv(
                 layout: Layout,
                 uplo: Uplo,
@@ -1382,7 +1339,6 @@ macro_rules! impl_real_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn trsv(
                 layout: Layout,
                 uplo: Uplo,
@@ -1411,7 +1367,6 @@ macro_rules! impl_real_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn gemm(
                 layout: Layout,
                 trans_a: Trans,
@@ -1463,7 +1418,6 @@ macro_rules! impl_real_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn symm(
                 layout: Layout,
                 side: Side,
@@ -1500,7 +1454,6 @@ macro_rules! impl_real_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn syrk(
                 layout: Layout,
                 uplo: Uplo,
@@ -1533,7 +1486,6 @@ macro_rules! impl_real_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn syr2k(
                 layout: Layout,
                 uplo: Uplo,
@@ -1581,7 +1533,6 @@ macro_rules! impl_real_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn trmm(
                 layout: Layout,
                 side: Side,
@@ -1616,7 +1567,6 @@ macro_rules! impl_real_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn trsm(
                 layout: Layout,
                 side: Side,
@@ -1651,7 +1601,6 @@ macro_rules! impl_real_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn gbmv(
                 layout: Layout,
                 trans_a: Trans,
@@ -1702,7 +1651,6 @@ macro_rules! impl_real_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn tbmv(
                 layout: Layout,
                 uplo: Uplo,
@@ -1733,7 +1681,6 @@ macro_rules! impl_real_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn tbsv(
                 layout: Layout,
                 uplo: Uplo,
@@ -1764,7 +1711,6 @@ macro_rules! impl_real_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn tpmv(
                 layout: Layout,
                 uplo: Uplo,
@@ -1791,7 +1737,6 @@ macro_rules! impl_real_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn tpsv(
                 layout: Layout,
                 uplo: Uplo,
@@ -1865,7 +1810,6 @@ macro_rules! impl_real_scalar {
                 Ok(r)
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn symv(
                 layout: Layout,
                 uplo: Uplo,
@@ -1908,7 +1852,6 @@ macro_rules! impl_real_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn syr(
                 layout: Layout,
                 uplo: Uplo,
@@ -1935,7 +1878,6 @@ macro_rules! impl_real_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn syr2(
                 layout: Layout,
                 uplo: Uplo,
@@ -1976,7 +1918,6 @@ macro_rules! impl_real_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn ger(
                 layout: Layout,
                 m: usize,
@@ -2007,7 +1948,6 @@ macro_rules! impl_real_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn sbmv(
                 layout: Layout,
                 uplo: Uplo,
@@ -2052,7 +1992,6 @@ macro_rules! impl_real_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn spmv(
                 layout: Layout,
                 uplo: Uplo,
@@ -2083,7 +2022,6 @@ macro_rules! impl_real_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn spr(
                 layout: Layout,
                 uplo: Uplo,
@@ -2108,7 +2046,6 @@ macro_rules! impl_real_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn spr2(
                 layout: Layout,
                 uplo: Uplo,
@@ -2416,7 +2353,6 @@ macro_rules! impl_complex_scalar {
                 Ok(i as usize)
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn gemv(
                 layout: Layout, trans_a: Trans,
                 m: usize, n: usize,
@@ -2439,7 +2375,6 @@ macro_rules! impl_complex_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn trmv(
                 layout: Layout, uplo: Uplo, trans_a: Trans, diag: Diag,
                 n: usize, a: &[Self], lda: usize,
@@ -2457,7 +2392,6 @@ macro_rules! impl_complex_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn trsv(
                 layout: Layout, uplo: Uplo, trans_a: Trans, diag: Diag,
                 n: usize, a: &[Self], lda: usize,
@@ -2475,7 +2409,6 @@ macro_rules! impl_complex_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn gemm(
                 layout: Layout, trans_a: Trans, trans_b: Trans,
                 m: usize, n: usize, k: usize,
@@ -2499,7 +2432,6 @@ macro_rules! impl_complex_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn symm(
                 layout: Layout, side: Side, uplo: Uplo,
                 m: usize, n: usize,
@@ -2522,7 +2454,6 @@ macro_rules! impl_complex_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn syrk(
                 layout: Layout, uplo: Uplo, trans: Trans,
                 n: usize, k: usize,
@@ -2543,7 +2474,6 @@ macro_rules! impl_complex_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn syr2k(
                 layout: Layout, uplo: Uplo, trans: Trans,
                 n: usize, k: usize,
@@ -2566,7 +2496,6 @@ macro_rules! impl_complex_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn trmm(
                 layout: Layout, side: Side, uplo: Uplo,
                 trans_a: Trans, diag: Diag,
@@ -2588,7 +2517,6 @@ macro_rules! impl_complex_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn trsm(
                 layout: Layout, side: Side, uplo: Uplo,
                 trans_a: Trans, diag: Diag,
@@ -2610,7 +2538,6 @@ macro_rules! impl_complex_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn gbmv(
                 layout: Layout, trans_a: Trans,
                 m: usize, n: usize, kl: usize, ku: usize,
@@ -2634,7 +2561,6 @@ macro_rules! impl_complex_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn tbmv(
                 layout: Layout, uplo: Uplo, trans_a: Trans, diag: Diag,
                 n: usize, k: usize, a: &[Self], lda: usize,
@@ -2652,7 +2578,6 @@ macro_rules! impl_complex_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn tbsv(
                 layout: Layout, uplo: Uplo, trans_a: Trans, diag: Diag,
                 n: usize, k: usize, a: &[Self], lda: usize,
@@ -2670,7 +2595,6 @@ macro_rules! impl_complex_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn tpmv(
                 layout: Layout, uplo: Uplo, trans_a: Trans, diag: Diag,
                 n: usize, ap: &[Self], x: &mut [Self], inc_x: usize,
@@ -2686,7 +2610,6 @@ macro_rules! impl_complex_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn tpsv(
                 layout: Layout, uplo: Uplo, trans_a: Trans, diag: Diag,
                 n: usize, ap: &[Self], x: &mut [Self], inc_x: usize,
@@ -2704,7 +2627,6 @@ macro_rules! impl_complex_scalar {
         }
 
         impl ComplexScalar for $t {
-            #[allow(clippy::too_many_arguments)]
             fn hemv(
                 layout: Layout, uplo: Uplo, n: usize,
                 alpha: Self, a: &[Self], lda: usize,
@@ -2726,7 +2648,6 @@ macro_rules! impl_complex_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn her(
                 layout: Layout, uplo: Uplo, n: usize,
                 alpha: Self::Real, x: &[Self], inc_x: usize,
@@ -2744,7 +2665,6 @@ macro_rules! impl_complex_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn her2(
                 layout: Layout, uplo: Uplo, n: usize,
                 alpha: Self, x: &[Self], inc_x: usize,
@@ -2765,7 +2685,6 @@ macro_rules! impl_complex_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn geru(
                 layout: Layout, m: usize, n: usize,
                 alpha: Self, x: &[Self], inc_x: usize,
@@ -2786,7 +2705,6 @@ macro_rules! impl_complex_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn gerc(
                 layout: Layout, m: usize, n: usize,
                 alpha: Self, x: &[Self], inc_x: usize,
@@ -2807,7 +2725,6 @@ macro_rules! impl_complex_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn hemm(
                 layout: Layout, side: Side, uplo: Uplo,
                 m: usize, n: usize,
@@ -2830,7 +2747,6 @@ macro_rules! impl_complex_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn herk(
                 layout: Layout, uplo: Uplo, trans: Trans,
                 n: usize, k: usize,
@@ -2856,7 +2772,6 @@ macro_rules! impl_complex_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn her2k(
                 layout: Layout, uplo: Uplo, trans: Trans,
                 n: usize, k: usize,
@@ -2884,7 +2799,6 @@ macro_rules! impl_complex_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn hbmv(
                 layout: Layout, uplo: Uplo, n: usize, k: usize,
                 alpha: Self, a: &[Self], lda: usize,
@@ -2906,7 +2820,6 @@ macro_rules! impl_complex_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn hpmv(
                 layout: Layout, uplo: Uplo, n: usize,
                 alpha: Self, ap: &[Self],
@@ -2928,7 +2841,6 @@ macro_rules! impl_complex_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn hpr(
                 layout: Layout, uplo: Uplo, n: usize,
                 alpha: Self::Real, x: &[Self], inc_x: usize,
@@ -2946,7 +2858,6 @@ macro_rules! impl_complex_scalar {
                 Ok(())
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn hpr2(
                 layout: Layout, uplo: Uplo, n: usize,
                 alpha: Self, x: &[Self], inc_x: usize,
@@ -3129,7 +3040,6 @@ pub fn iamin<T: Scalar>(x: &[T]) -> Result<usize> {
 }
 
 /// `C := α · op(A) · op(B) + β · C` for tightly-packed row-major matrices.
-#[allow(clippy::too_many_arguments)]
 pub fn gemm<T: Scalar>(
     trans_a: Trans,
     trans_b: Trans,
@@ -3198,7 +3108,6 @@ pub fn rot<T: RealScalar>(x: &mut [T], y: &mut [T], c: T, s: T) -> Result<()> {
 /// `Y := α · op(A) · X + β · Y` where `A` is `m × n` row-major
 /// tightly-packed. `X` length must match `n` (no trans) or `m` (trans);
 /// `Y` length must match the other.
-#[allow(clippy::too_many_arguments)]
 pub fn gemv<T: Scalar>(
     trans_a: Trans,
     m: usize,
@@ -3250,7 +3159,6 @@ pub fn trsv<T: Scalar>(
 }
 
 /// `Y := α · A · X + β · Y` for symmetric row-major `A` (`n × n`).
-#[allow(clippy::too_many_arguments)]
 pub fn symv<T: RealScalar>(
     uplo: Uplo,
     n: usize,
@@ -3293,7 +3201,6 @@ pub fn ger<T: RealScalar>(
 }
 
 /// `Y := α · A · X + β · Y` for Hermitian row-major `A` (`n × n`).
-#[allow(clippy::too_many_arguments)]
 pub fn hemv<T: ComplexScalar>(
     uplo: Uplo,
     n: usize,
@@ -3359,7 +3266,6 @@ pub fn gerc<T: ComplexScalar>(
 
 /// `C := α · A · B + β · C` (Side::Left) or `C := α · B · A + β · C`
 /// (Side::Right) where `A` is symmetric, row-major tightly-packed.
-#[allow(clippy::too_many_arguments)]
 pub fn symm<T: Scalar>(
     side: Side,
     uplo: Uplo,
@@ -3391,7 +3297,6 @@ pub fn symm<T: Scalar>(
 
 /// Symmetric rank-k update `C := α · op(A) · op(A)ᵀ + β · C`,
 /// row-major tightly-packed.
-#[allow(clippy::too_many_arguments)]
 pub fn syrk<T: Scalar>(
     uplo: Uplo,
     trans: Trans,
@@ -3422,7 +3327,6 @@ pub fn syrk<T: Scalar>(
 }
 
 /// Symmetric rank-2k update.
-#[allow(clippy::too_many_arguments)]
 pub fn syr2k<T: Scalar>(
     uplo: Uplo,
     trans: Trans,
@@ -3458,7 +3362,6 @@ pub fn syr2k<T: Scalar>(
 
 /// Triangular matrix-matrix multiply `B := α · op(A) · B` (Side::Left)
 /// or `B := α · B · op(A)` (Side::Right). Row-major tightly-packed.
-#[allow(clippy::too_many_arguments)]
 pub fn trmm<T: Scalar>(
     side: Side,
     uplo: Uplo,
@@ -3488,7 +3391,6 @@ pub fn trmm<T: Scalar>(
 }
 
 /// Triangular solve with multiple right-hand sides.
-#[allow(clippy::too_many_arguments)]
 pub fn trsm<T: Scalar>(
     side: Side,
     uplo: Uplo,
@@ -3518,7 +3420,6 @@ pub fn trsm<T: Scalar>(
 }
 
 /// Hermitian matrix-matrix multiply (complex precisions).
-#[allow(clippy::too_many_arguments)]
 pub fn hemm<T: ComplexScalar>(
     side: Side,
     uplo: Uplo,
@@ -3550,7 +3451,6 @@ pub fn hemm<T: ComplexScalar>(
 
 /// Hermitian rank-k update `C := α · op(A) · op(A)ᴴ + β · C` with
 /// real `α` and `β`. `trans` must be `Trans::No` or `Trans::C`.
-#[allow(clippy::too_many_arguments)]
 pub fn herk<T: ComplexScalar>(
     uplo: Uplo,
     trans: Trans,
@@ -3581,7 +3481,6 @@ pub fn herk<T: ComplexScalar>(
 }
 
 /// Hermitian rank-2k update.
-#[allow(clippy::too_many_arguments)]
 pub fn her2k<T: ComplexScalar>(
     uplo: Uplo,
     trans: Trans,
@@ -3621,7 +3520,6 @@ pub fn her2k<T: ComplexScalar>(
 
 /// Banded mat-vec `Y := α · op(A) · X + β · Y`. `A` uses BLAS band
 /// storage with leading dimension `kl + ku + 1`.
-#[allow(clippy::too_many_arguments)]
 pub fn gbmv<T: Scalar>(
     layout: Layout,
     trans_a: Trans,
@@ -3642,7 +3540,6 @@ pub fn gbmv<T: Scalar>(
 }
 
 /// Triangular banded mat-vec `X := op(A) · X`.
-#[allow(clippy::too_many_arguments)]
 pub fn tbmv<T: Scalar>(
     layout: Layout,
     uplo: Uplo,
@@ -3658,7 +3555,6 @@ pub fn tbmv<T: Scalar>(
 }
 
 /// Triangular banded solve `op(A) · X' = X`.
-#[allow(clippy::too_many_arguments)]
 pub fn tbsv<T: Scalar>(
     layout: Layout,
     uplo: Uplo,
@@ -3698,7 +3594,6 @@ pub fn tpsv<T: Scalar>(
 }
 
 /// Symmetric banded mat-vec.
-#[allow(clippy::too_many_arguments)]
 pub fn sbmv<T: RealScalar>(
     uplo: Uplo,
     n: usize,
@@ -3727,7 +3622,6 @@ pub fn sbmv<T: RealScalar>(
 }
 
 /// Symmetric packed mat-vec.
-#[allow(clippy::too_many_arguments)]
 pub fn spmv<T: RealScalar>(
     uplo: Uplo,
     n: usize,
@@ -3758,7 +3652,6 @@ pub fn spr2<T: RealScalar>(
 }
 
 /// Hermitian banded mat-vec.
-#[allow(clippy::too_many_arguments)]
 pub fn hbmv<T: ComplexScalar>(
     uplo: Uplo,
     n: usize,
@@ -3787,7 +3680,6 @@ pub fn hbmv<T: ComplexScalar>(
 }
 
 /// Hermitian packed mat-vec.
-#[allow(clippy::too_many_arguments)]
 pub fn hpmv<T: ComplexScalar>(
     uplo: Uplo,
     n: usize,
@@ -3843,7 +3735,6 @@ pub trait BlasExt: Scalar {
 
     /// Triangular GEMM: `C := α · op(A) · op(B) + β · C` where only the
     /// upper or lower triangle of `C` is updated.
-    #[allow(clippy::too_many_arguments)]
     fn gemmt(
         layout: Layout,
         uplo: Uplo,
@@ -3886,7 +3777,6 @@ impl BlasExt for f32 {
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn gemmt(
         layout: Layout,
         uplo: Uplo,
@@ -3949,7 +3839,6 @@ impl BlasExt for f64 {
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn gemmt(
         layout: Layout,
         uplo: Uplo,
@@ -4012,7 +3901,6 @@ impl BlasExt for Complex32 {
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn gemmt(
         layout: Layout,
         uplo: Uplo,
@@ -4075,7 +3963,6 @@ impl BlasExt for Complex64 {
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn gemmt(
         layout: Layout,
         uplo: Uplo,
@@ -4121,7 +4008,6 @@ pub fn axpby<T: BlasExt>(alpha: T, x: &[T], beta: T, y: &mut [T]) -> Result<()> 
 
 /// Triangular GEMM: like [`gemm`], but only the upper or lower triangle
 /// of `C` is updated.
-#[allow(clippy::too_many_arguments)]
 pub fn gemmt<T: BlasExt>(
     uplo: Uplo,
     trans_a: Trans,
@@ -4301,7 +4187,6 @@ pub fn zdrot(x: &mut [Complex64], y: &mut [Complex64], c: f64, s: f64) -> Result
 /// `a_array` / `b_array` / `c_array` must point to `Σ group_size`
 /// matrix pointers, and the per-group descriptor arrays must each
 /// have length `group_count`.
-#[allow(clippy::too_many_arguments)]
 pub unsafe fn sgemm_batch(
     layout: Layout,
     trans_a: &mut [sys::CBLAS_TRANSPOSE],
@@ -4344,7 +4229,6 @@ pub unsafe fn sgemm_batch(
 ///
 /// # Safety
 /// See [`sgemm_batch`].
-#[allow(clippy::too_many_arguments)]
 pub unsafe fn dgemm_batch(
     layout: Layout,
     trans_a: &mut [sys::CBLAS_TRANSPOSE],
@@ -4388,7 +4272,6 @@ pub unsafe fn dgemm_batch(
 ///
 /// # Safety
 /// See [`sgemm_batch`].
-#[allow(clippy::too_many_arguments)]
 pub unsafe fn cgemm_batch(
     layout: Layout,
     trans_a: &mut [sys::CBLAS_TRANSPOSE],
@@ -4431,7 +4314,6 @@ pub unsafe fn cgemm_batch(
 ///
 /// # Safety
 /// See [`sgemm_batch`].
-#[allow(clippy::too_many_arguments)]
 pub unsafe fn zgemm_batch(
     layout: Layout,
     trans_a: &mut [sys::CBLAS_TRANSPOSE],
@@ -4516,7 +4398,6 @@ pub fn dgemm_pack_get_size(id: PackId, m: usize, n: usize, k: usize) -> usize {
 /// Pack `src` into the BLIS-specific packed format used by
 /// [`sgemm_compute`]. `dest` must be at least
 /// [`sgemm_pack_get_size`] elements long.
-#[allow(clippy::too_many_arguments)]
 pub fn sgemm_pack(
     layout: Layout,
     id: PackId,
@@ -4546,7 +4427,6 @@ pub fn sgemm_pack(
 }
 
 /// `f64` packed-GEMM packing. See [`sgemm_pack`].
-#[allow(clippy::too_many_arguments)]
 pub fn dgemm_pack(
     layout: Layout,
     id: PackId,
@@ -4579,7 +4459,6 @@ pub fn dgemm_pack(
 /// operands produced by [`sgemm_pack`]. `trans_a`/`trans_b` carry both
 /// the `CblasNoTrans/Trans/ConjTrans` value and a `CblasPacked` bit set
 /// by the BLIS API to indicate which operand is pre-packed.
-#[allow(clippy::too_many_arguments)]
 pub fn sgemm_compute(
     layout: Layout,
     trans_a: sys::f77_int,
@@ -4617,7 +4496,6 @@ pub fn sgemm_compute(
 /// `Complex32` Strassen-like GEMM (`3M` algorithm) — equivalent to
 /// [`gemm`] but using only three real matmuls per complex matmul.
 /// Tends to be faster on large complex problems.
-#[allow(clippy::too_many_arguments)]
 pub fn cgemm3m(
     layout: Layout,
     trans_a: Trans,
@@ -4655,7 +4533,6 @@ pub fn cgemm3m(
 }
 
 /// `Complex64` Strassen-like GEMM. See [`cgemm3m`].
-#[allow(clippy::too_many_arguments)]
 pub fn zgemm3m(
     layout: Layout,
     trans_a: Trans,
@@ -4704,7 +4581,6 @@ pub fn dcabs1(z: Complex64) -> f64 {
 }
 
 /// `f64` packed-GEMM compute. See [`sgemm_compute`].
-#[allow(clippy::too_many_arguments)]
 pub fn dgemm_compute(
     layout: Layout,
     trans_a: sys::f77_int,

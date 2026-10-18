@@ -1,5 +1,9 @@
 //! Safe wrappers for AOCL-RNG.
 
+#![allow(
+    clippy::too_many_arguments,
+    reason = "wrappers mirror the C API's argument lists"
+)]
 #![warn(missing_debug_implementations)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
@@ -333,7 +337,6 @@ impl Rng {
     /// vector (length `k`) from `m` trials with category probabilities
     /// `p` (length `k`). `out` is laid out as `n × k` with leading
     /// dimension `ldx`.
-    #[allow(clippy::too_many_arguments)]
     pub fn multinomial(
         &mut self,
         m: RngInt,
@@ -378,7 +381,6 @@ impl Rng {
     /// where `C` is an `m × m` covariance matrix with leading
     /// dimension `ldc`. `out` is laid out as `n × m` with leading
     /// dimension `ldx`.
-    #[allow(clippy::too_many_arguments)]
     pub fn multinormal(
         &mut self,
         m: RngInt,
@@ -464,7 +466,6 @@ impl Rng {
     /// with `df` degrees of freedom, mean `xmu` (length `m`), and
     /// scale matrix `c` (`m × m`, leading dim `ldc`). `out` is laid
     /// out as `n × m` with leading dim `ldx`.
-    #[allow(clippy::too_many_arguments)]
     pub fn multi_students_t(
         &mut self,
         m: RngInt,
@@ -525,7 +526,6 @@ impl BlumBlumShub {
     /// Initialise BBS from prime factors `p` and `q` (must each be
     /// `≡ 3 (mod 4)`) and a seed `s` coprime to `p · q`. `nbits`
     /// controls how many bits per call to extract.
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         nbits: RngInt,
         p: &mut [RngInt],

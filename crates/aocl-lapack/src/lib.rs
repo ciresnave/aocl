@@ -13,6 +13,10 @@
 //! Plus factorizations:
 //! - QR: `geqrf`. LQ: `gelqf`.
 
+#![allow(
+    clippy::too_many_arguments,
+    reason = "wrappers mirror the C API's argument lists"
+)]
 #![warn(missing_debug_implementations)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
@@ -107,7 +111,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     // --- General LU ------------------------------------------------------
 
     /// Solve `A · X = B` for general `n × n` `A` (LU + back-substitution).
-    #[allow(clippy::too_many_arguments)]
     fn gesv(
         layout: Layout,
         n: usize,
@@ -130,7 +133,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     ) -> Result<()>;
 
     /// Back-substitute using a prior LU factorization.
-    #[allow(clippy::too_many_arguments)]
     fn getrs(
         layout: Layout,
         trans: Trans,
@@ -149,7 +151,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     // --- Cholesky --------------------------------------------------------
 
     /// Solve `A · X = B` for symmetric/Hermitian positive-definite `A`.
-    #[allow(clippy::too_many_arguments)]
     fn posv(
         layout: Layout,
         uplo: Uplo,
@@ -165,7 +166,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     fn potrf(layout: Layout, uplo: Uplo, n: usize, a: &mut [Self], lda: usize) -> Result<()>;
 
     /// Back-substitute using a prior Cholesky factorization.
-    #[allow(clippy::too_many_arguments)]
     fn potrs(
         layout: Layout,
         uplo: Uplo,
@@ -185,7 +185,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     /// Solve `A · X = B` for symmetric indefinite `A` (real or complex
     /// **symmetric**, NOT Hermitian — for complex Hermitian use
     /// [`ComplexScalar::hesv`]).
-    #[allow(clippy::too_many_arguments)]
     fn sysv(
         layout: Layout,
         uplo: Uplo,
@@ -209,7 +208,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     ) -> Result<()>;
 
     /// Back-substitute using a prior Bunch-Kaufman factorization.
-    #[allow(clippy::too_many_arguments)]
     fn sytrs(
         layout: Layout,
         uplo: Uplo,
@@ -225,7 +223,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     // --- Banded ----------------------------------------------------------
 
     /// Solve `A · X = B` for general banded `A`.
-    #[allow(clippy::too_many_arguments)]
     fn gbsv(
         layout: Layout,
         n: usize,
@@ -240,7 +237,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     ) -> Result<()>;
 
     /// Banded LU factorization.
-    #[allow(clippy::too_many_arguments)]
     fn gbtrf(
         layout: Layout,
         m: usize,
@@ -253,7 +249,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     ) -> Result<()>;
 
     /// Back-substitute using a prior banded LU factorization.
-    #[allow(clippy::too_many_arguments)]
     fn gbtrs(
         layout: Layout,
         trans: Trans,
@@ -271,7 +266,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     // --- Tridiagonal -----------------------------------------------------
 
     /// Solve `A · X = B` for general tridiagonal `A`.
-    #[allow(clippy::too_many_arguments)]
     fn gtsv(
         layout: Layout,
         n: usize,
@@ -286,7 +280,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     /// Solve `A · X = B` for symmetric/Hermitian positive-definite
     /// tridiagonal `A`. The main diagonal `d` is **real**; `e` is the
     /// (sub-/super-)diagonal whose precision matches `Self`.
-    #[allow(clippy::too_many_arguments)]
     fn ptsv(
         layout: Layout,
         n: usize,
@@ -300,7 +293,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     // --- Least squares ---------------------------------------------------
 
     /// Solve `min || A·X − B ||₂` (or transposed equivalents).
-    #[allow(clippy::too_many_arguments)]
     fn gels(
         layout: Layout,
         trans: Trans,
@@ -340,7 +332,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     /// SVD via the QR-iteration algorithm. `s` receives `min(m, n)`
     /// singular values in descending order. The job parameters specify
     /// how much of `U` and `V^H` to compute.
-    #[allow(clippy::too_many_arguments)]
     fn gesvd(
         layout: Layout,
         jobu: SvdJob,
@@ -359,7 +350,6 @@ pub trait Scalar: Copy + Sized + Sealed {
 
     /// SVD via the divide-and-conquer algorithm (typically faster than
     /// gesvd for large matrices).
-    #[allow(clippy::too_many_arguments)]
     fn gesdd(
         layout: Layout,
         jobz: SvdJob,
@@ -378,7 +368,6 @@ pub trait Scalar: Copy + Sized + Sealed {
 
     /// Least squares using SVD (handles rank-deficient `A`). On exit
     /// `rank` is the effective numerical rank.
-    #[allow(clippy::too_many_arguments)]
     fn gelsd(
         layout: Layout,
         m: usize,
@@ -394,7 +383,6 @@ pub trait Scalar: Copy + Sized + Sealed {
     ) -> Result<()>;
 
     /// Least squares using QR with column pivoting.
-    #[allow(clippy::too_many_arguments)]
     fn gelsy(
         layout: Layout,
         m: usize,
@@ -460,7 +448,6 @@ pub trait RealScalar: Scalar<Real = Self> {
     /// eigenvectors) of an `n × n` symmetric matrix.
     /// On exit, `a` contains the eigenvectors when `compute = ValuesAndVectors`.
     /// `w` receives the eigenvalues in ascending order.
-    #[allow(clippy::too_many_arguments)]
     fn syev(
         layout: Layout,
         compute: Compute,
@@ -476,7 +463,6 @@ pub trait RealScalar: Scalar<Real = Self> {
     /// complex conjugate pairs share consecutive entries.
     /// `vl` and `vr` receive left/right eigenvectors when their respective
     /// `compute_*` flags request them; pass empty slices when not needed.
-    #[allow(clippy::too_many_arguments)]
     fn geev(
         layout: Layout,
         compute_left: Compute,
@@ -496,7 +482,6 @@ pub trait RealScalar: Scalar<Real = Self> {
 /// Operations defined only for complex precisions.
 pub trait ComplexScalar: Scalar {
     /// Hermitian indefinite solve.
-    #[allow(clippy::too_many_arguments)]
     fn hesv(
         layout: Layout,
         uplo: Uplo,
@@ -520,7 +505,6 @@ pub trait ComplexScalar: Scalar {
     ) -> Result<()>;
 
     /// Back-substitute using a Hermitian Bunch-Kaufman factorization.
-    #[allow(clippy::too_many_arguments)]
     fn hetrs(
         layout: Layout,
         uplo: Uplo,
@@ -535,7 +519,6 @@ pub trait ComplexScalar: Scalar {
 
     /// Hermitian eigendecomposition: compute eigenvalues (real) and
     /// optionally eigenvectors of an `n × n` Hermitian matrix.
-    #[allow(clippy::too_many_arguments)]
     fn heev(
         layout: Layout,
         compute: Compute,
@@ -548,7 +531,6 @@ pub trait ComplexScalar: Scalar {
 
     /// Non-symmetric complex eigendecomposition.
     /// `w` is the array of complex eigenvalues.
-    #[allow(clippy::too_many_arguments)]
     fn geev(
         layout: Layout,
         compute_left: Compute,
@@ -1098,7 +1080,6 @@ macro_rules! impl_real {
                 map_info("lapack", info)
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn gesvd(
                 layout: Layout,
                 jobu: SvdJob,
@@ -1134,7 +1115,6 @@ macro_rules! impl_real {
                 map_info("lapack", info)
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn gesdd(
                 layout: Layout,
                 jobz: SvdJob,
@@ -1166,7 +1146,6 @@ macro_rules! impl_real {
                 map_info("lapack", info)
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn gelsd(
                 layout: Layout,
                 m: usize,
@@ -1198,7 +1177,6 @@ macro_rules! impl_real {
                 map_info("lapack", info)
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn gelsy(
                 layout: Layout,
                 m: usize,
@@ -1232,7 +1210,6 @@ macro_rules! impl_real {
         }
 
         impl RealScalar for $t {
-            #[allow(clippy::too_many_arguments)]
             fn syev(
                 layout: Layout,
                 compute: Compute,
@@ -1256,7 +1233,6 @@ macro_rules! impl_real {
                 map_info("lapack", info)
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn geev(
                 layout: Layout,
                 compute_left: Compute,
@@ -1841,7 +1817,6 @@ macro_rules! impl_complex {
                 map_info("lapack", info)
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn gesvd(
                 layout: Layout,
                 jobu: SvdJob,
@@ -1877,7 +1852,6 @@ macro_rules! impl_complex {
                 map_info("lapack", info)
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn gesdd(
                 layout: Layout,
                 jobz: SvdJob,
@@ -1909,7 +1883,6 @@ macro_rules! impl_complex {
                 map_info("lapack", info)
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn gelsd(
                 layout: Layout,
                 m: usize,
@@ -1941,7 +1914,6 @@ macro_rules! impl_complex {
                 map_info("lapack", info)
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn gelsy(
                 layout: Layout,
                 m: usize,
@@ -2050,7 +2022,6 @@ macro_rules! impl_complex {
                 map_info("lapack", info)
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn heev(
                 layout: Layout,
                 compute: Compute,
@@ -2074,7 +2045,6 @@ macro_rules! impl_complex {
                 map_info("lapack", info)
             }
 
-            #[allow(clippy::too_many_arguments)]
             fn geev(
                 layout: Layout,
                 compute_left: Compute,
@@ -2314,7 +2284,6 @@ pub fn heev<T: ComplexScalar>(
 
 /// SVD via the QR-iteration algorithm. Returns the count of converged
 /// singular values; pass `superb` of size `min(m, n) - 1`.
-#[allow(clippy::too_many_arguments)]
 pub fn gesvd<T: Scalar>(
     jobu: SvdJob,
     jobvt: SvdJob,
@@ -2346,7 +2315,6 @@ pub fn gesvd<T: Scalar>(
 }
 
 /// SVD via divide-and-conquer.
-#[allow(clippy::too_many_arguments)]
 pub fn gesdd<T: Scalar>(
     jobz: SvdJob,
     m: usize,
@@ -2362,7 +2330,6 @@ pub fn gesdd<T: Scalar>(
 }
 
 /// SVD-based least squares (handles rank-deficient `A`).
-#[allow(clippy::too_many_arguments)]
 pub fn gelsd<T: Scalar>(
     m: usize,
     n: usize,
@@ -2391,7 +2358,6 @@ pub fn gelsd<T: Scalar>(
 }
 
 /// QR-with-column-pivoting least squares.
-#[allow(clippy::too_many_arguments)]
 pub fn gelsy<T: Scalar>(
     m: usize,
     n: usize,
@@ -2459,7 +2425,6 @@ fn diag_char(d: aocl_types::Diag) -> c_char {
 // ----- Triangular solve / inverse (real and complex) -----------------------
 
 /// Solve `op(A) · X = B` for triangular `A`. (`f64`)
-#[allow(clippy::too_many_arguments)]
 pub fn dtrtrs(
     uplo: Uplo,
     trans: Trans,
@@ -2489,7 +2454,6 @@ pub fn dtrtrs(
 }
 
 /// `f32` triangular solve. See [`dtrtrs`].
-#[allow(clippy::too_many_arguments)]
 pub fn strtrs(
     uplo: Uplo,
     trans: Trans,
@@ -2674,7 +2638,6 @@ pub fn cungqr(
 
 /// Compute eigenvalues `λᵢ = wr[i] + wi[i]·j` of `A`, optionally with
 /// left (`vl`) and/or right (`vr`) eigenvectors. (`f64`)
-#[allow(clippy::too_many_arguments)]
 pub fn dgeev(
     compute_vl: bool,
     compute_vr: bool,
@@ -2710,7 +2673,6 @@ pub fn dgeev(
 }
 
 /// `f32` non-symmetric eig. See [`dgeev`].
-#[allow(clippy::too_many_arguments)]
 pub fn sgeev(
     compute_vl: bool,
     compute_vr: bool,
@@ -2746,7 +2708,6 @@ pub fn sgeev(
 }
 
 /// Complex non-symmetric eig: complex eigenvalues `w[i]`. (`Complex64`)
-#[allow(clippy::too_many_arguments)]
 pub fn zgeev(
     compute_vl: bool,
     compute_vr: bool,
@@ -2780,7 +2741,6 @@ pub fn zgeev(
 }
 
 /// `Complex32` non-symmetric eig. See [`zgeev`].
-#[allow(clippy::too_many_arguments)]
 pub fn cgeev(
     compute_vl: bool,
     compute_vr: bool,
@@ -2818,7 +2778,6 @@ pub fn cgeev(
 /// Generalised symmetric eigenproblem `A·x = λ·B·x` (or related, per
 /// `itype`). `compute_vectors = true` requests eigenvectors in `a`.
 /// `B` must be positive definite. (`f64`)
-#[allow(clippy::too_many_arguments)]
 pub fn dsygv(
     itype: i32,
     compute_vectors: bool,
@@ -2849,7 +2808,6 @@ pub fn dsygv(
 }
 
 /// `f32` generalised symmetric eig. See [`dsygv`].
-#[allow(clippy::too_many_arguments)]
 pub fn ssygv(
     itype: i32,
     compute_vectors: bool,
@@ -2880,7 +2838,6 @@ pub fn ssygv(
 }
 
 /// Generalised hermitian eigenproblem. (`Complex64`)
-#[allow(clippy::too_many_arguments)]
 pub fn zhegv(
     itype: i32,
     compute_vectors: bool,
@@ -2911,7 +2868,6 @@ pub fn zhegv(
 }
 
 /// `Complex32` generalised hermitian eig. See [`zhegv`].
-#[allow(clippy::too_many_arguments)]
 pub fn chegv(
     itype: i32,
     compute_vectors: bool,
@@ -3309,7 +3265,6 @@ pub fn cheevd(
 /// Relative-robust symmetric eigendecomposition with optional range
 /// selection. Returns the count of eigenvalues actually computed (in
 /// the selected range). (`f64`)
-#[allow(clippy::too_many_arguments)]
 pub fn dsyevr(
     jobz_v: bool,
     range: Range,
@@ -3355,7 +3310,6 @@ pub fn dsyevr(
 }
 
 /// `f32` relative-robust eigen. See [`dsyevr`].
-#[allow(clippy::too_many_arguments)]
 pub fn ssyevr(
     jobz_v: bool,
     range: Range,
@@ -3401,7 +3355,6 @@ pub fn ssyevr(
 }
 
 /// `Complex64` relative-robust Hermitian eigen. See [`dsyevr`].
-#[allow(clippy::too_many_arguments)]
 pub fn zheevr(
     jobz_v: bool,
     range: Range,
@@ -3447,7 +3400,6 @@ pub fn zheevr(
 }
 
 /// `Complex32` relative-robust Hermitian eigen. See [`dsyevr`].
-#[allow(clippy::too_many_arguments)]
 pub fn cheevr(
     jobz_v: bool,
     range: Range,
@@ -3496,7 +3448,6 @@ pub fn cheevr(
 
 /// Partial SVD by value or index range. (`f64`) Returns the number of
 /// singular values actually computed.
-#[allow(clippy::too_many_arguments)]
 pub fn dgesvdx(
     jobu_v: bool,
     jobvt_v: bool,
@@ -3547,7 +3498,6 @@ pub fn dgesvdx(
 }
 
 /// `f32` partial SVD. See [`dgesvdx`].
-#[allow(clippy::too_many_arguments)]
 pub fn sgesvdx(
     jobu_v: bool,
     jobvt_v: bool,
@@ -3598,7 +3548,6 @@ pub fn sgesvdx(
 }
 
 /// `Complex64` partial SVD. See [`dgesvdx`].
-#[allow(clippy::too_many_arguments)]
 pub fn zgesvdx(
     jobu_v: bool,
     jobvt_v: bool,
@@ -3649,7 +3598,6 @@ pub fn zgesvdx(
 }
 
 /// `Complex32` partial SVD. See [`dgesvdx`].
-#[allow(clippy::too_many_arguments)]
 pub fn cgesvdx(
     jobu_v: bool,
     jobvt_v: bool,
@@ -3703,7 +3651,6 @@ pub fn cgesvdx(
 
 /// Generalised eigenproblem `A·x = λ·B·x`. Real version returns
 /// eigenvalues as `(alphar + alphai·j) / beta`. (`f64`)
-#[allow(clippy::too_many_arguments)]
 pub fn dggev(
     compute_vl: bool,
     compute_vr: bool,
@@ -3744,7 +3691,6 @@ pub fn dggev(
 }
 
 /// `f32` generalised eig. See [`dggev`].
-#[allow(clippy::too_many_arguments)]
 pub fn sggev(
     compute_vl: bool,
     compute_vr: bool,
@@ -3786,7 +3732,6 @@ pub fn sggev(
 
 /// `Complex64` generalised eig. Returns single complex `alpha` (no
 /// split). See [`dggev`].
-#[allow(clippy::too_many_arguments)]
 pub fn zggev(
     compute_vl: bool,
     compute_vr: bool,
@@ -3825,7 +3770,6 @@ pub fn zggev(
 }
 
 /// `Complex32` generalised eig. See [`zggev`].
-#[allow(clippy::too_many_arguments)]
 pub fn cggev(
     compute_vl: bool,
     compute_vr: bool,
@@ -3869,7 +3813,6 @@ pub fn cggev(
 /// callback (`select`) is passed `None` here; use the sys crate
 /// directly if you need to filter eigenvalues. Returns `sdim`, the
 /// number of eigenvalues that satisfied the (absent) selection. (`f64`)
-#[allow(clippy::too_many_arguments)]
 pub fn dgees(
     compute_vs: bool,
     n: usize,
@@ -3903,7 +3846,6 @@ pub fn dgees(
 }
 
 /// `f32` Schur decomposition. See [`dgees`].
-#[allow(clippy::too_many_arguments)]
 pub fn sgees(
     compute_vs: bool,
     n: usize,
@@ -4004,7 +3946,6 @@ pub fn csytrf(
 }
 
 /// Solve after [`dsytrf`].
-#[allow(clippy::too_many_arguments)]
 pub fn dsytrs(
     uplo: Uplo,
     n: usize,
@@ -4030,7 +3971,6 @@ pub fn dsytrs(
     )
 }
 /// `f32` solve after [`ssytrf`].
-#[allow(clippy::too_many_arguments)]
 pub fn ssytrs(
     uplo: Uplo,
     n: usize,
@@ -4056,7 +3996,6 @@ pub fn ssytrs(
     )
 }
 /// `Complex64` solve after [`zsytrf`].
-#[allow(clippy::too_many_arguments)]
 pub fn zsytrs(
     uplo: Uplo,
     n: usize,
@@ -4082,7 +4021,6 @@ pub fn zsytrs(
     )
 }
 /// `Complex32` solve after [`csytrf`].
-#[allow(clippy::too_many_arguments)]
 pub fn csytrs(
     uplo: Uplo,
     n: usize,
@@ -4202,7 +4140,6 @@ pub fn chetrf(
     )
 }
 /// `Complex64` solve after [`zhetrf`].
-#[allow(clippy::too_many_arguments)]
 pub fn zhetrs(
     uplo: Uplo,
     n: usize,
@@ -4228,7 +4165,6 @@ pub fn zhetrs(
     )
 }
 /// `Complex32` solve after [`chetrf`].
-#[allow(clippy::too_many_arguments)]
 pub fn chetrs(
     uplo: Uplo,
     n: usize,
@@ -4283,7 +4219,6 @@ pub fn chetri(uplo: Uplo, n: usize, a: &mut [Complex32], lda: usize, ipiv: &[i32
 // ----- gelss: SVD-based least-squares -----
 
 /// SVD-based least-squares solve. Returns the rank found. (`f64`)
-#[allow(clippy::too_many_arguments)]
 pub fn dgelss(
     m: usize,
     n: usize,
@@ -4315,7 +4250,6 @@ pub fn dgelss(
     Ok(rank as usize)
 }
 /// `f32` SVD-LSQ. See [`dgelss`].
-#[allow(clippy::too_many_arguments)]
 pub fn sgelss(
     m: usize,
     n: usize,
@@ -4347,7 +4281,6 @@ pub fn sgelss(
     Ok(rank as usize)
 }
 /// `Complex64` SVD-LSQ. See [`dgelss`].
-#[allow(clippy::too_many_arguments)]
 pub fn zgelss(
     m: usize,
     n: usize,
@@ -4379,7 +4312,6 @@ pub fn zgelss(
     Ok(rank as usize)
 }
 /// `Complex32` SVD-LSQ. See [`dgelss`].
-#[allow(clippy::too_many_arguments)]
 pub fn cgelss(
     m: usize,
     n: usize,
@@ -4415,7 +4347,6 @@ pub fn cgelss(
 
 /// Apply `Q` from [`geqrf`] to `C`: `C := op(Q) · C` or `C · op(Q)`.
 /// `side = b'L'` for left, `b'R'` for right. `trans = b'N'` or `b'T'`. (`f64`)
-#[allow(clippy::too_many_arguments)]
 pub fn dormqr(
     side_l: bool,
     trans: Trans,
@@ -4446,7 +4377,6 @@ pub fn dormqr(
     )
 }
 /// `f32` apply Q from QR. See [`dormqr`].
-#[allow(clippy::too_many_arguments)]
 pub fn sormqr(
     side_l: bool,
     trans: Trans,
@@ -4477,7 +4407,6 @@ pub fn sormqr(
     )
 }
 /// `Complex64` apply Q from QR. `trans = b'N'` or `b'C'` (conj-transpose).
-#[allow(clippy::too_many_arguments)]
 pub fn zunmqr(
     side_l: bool,
     trans: Trans,
@@ -4508,7 +4437,6 @@ pub fn zunmqr(
     )
 }
 /// `Complex32` apply Q from QR. See [`zunmqr`].
-#[allow(clippy::too_many_arguments)]
 pub fn cunmqr(
     side_l: bool,
     trans: Trans,
@@ -4613,7 +4541,6 @@ pub fn cunglq(
 }
 
 /// Apply Q from LQ. (`f64`)
-#[allow(clippy::too_many_arguments)]
 pub fn dormlq(
     side_l: bool,
     trans: Trans,
@@ -4644,7 +4571,6 @@ pub fn dormlq(
     )
 }
 /// `f32` apply Q from LQ. See [`dormlq`].
-#[allow(clippy::too_many_arguments)]
 pub fn sormlq(
     side_l: bool,
     trans: Trans,
@@ -4675,7 +4601,6 @@ pub fn sormlq(
     )
 }
 /// `Complex64` apply Q from LQ. See [`dormlq`].
-#[allow(clippy::too_many_arguments)]
 pub fn zunmlq(
     side_l: bool,
     trans: Trans,
@@ -4706,7 +4631,6 @@ pub fn zunmlq(
     )
 }
 /// `Complex32` apply Q from LQ. See [`dormlq`].
-#[allow(clippy::too_many_arguments)]
 pub fn cunmlq(
     side_l: bool,
     trans: Trans,
@@ -4825,7 +4749,6 @@ pub fn cgehrd(
 }
 
 /// Reduce general matrix to bidiagonal form (preprocess for SVD). (`f64`)
-#[allow(clippy::too_many_arguments)]
 pub fn dgebrd(
     m: usize,
     n: usize,
@@ -4851,7 +4774,6 @@ pub fn dgebrd(
     )
 }
 /// `f32` bidiag reduction. See [`dgebrd`].
-#[allow(clippy::too_many_arguments)]
 pub fn sgebrd(
     m: usize,
     n: usize,
@@ -4877,7 +4799,6 @@ pub fn sgebrd(
     )
 }
 /// `Complex64` bidiag reduction. `d` and `e` are real.
-#[allow(clippy::too_many_arguments)]
 pub fn zgebrd(
     m: usize,
     n: usize,
@@ -4903,7 +4824,6 @@ pub fn zgebrd(
     )
 }
 /// `Complex32` bidiag reduction. See [`zgebrd`].
-#[allow(clippy::too_many_arguments)]
 pub fn cgebrd(
     m: usize,
     n: usize,

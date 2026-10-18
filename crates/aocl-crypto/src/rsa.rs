@@ -91,7 +91,6 @@ impl Rsa {
     /// `dq = d mod (q-1)`, `qinv = q⁻¹ mod p`. `modulus` is `n`.
     /// All byte slices must be the same length (key size in bytes / 2
     /// for `dp`, `dq`, `p`, `q`, `qinv`; full key size for `modulus`).
-    #[allow(clippy::too_many_arguments)]
     pub fn set_private_key(
         &mut self,
         dp: &[u8],

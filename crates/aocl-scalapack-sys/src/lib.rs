@@ -22,7 +22,13 @@
 //! The signatures here cover the most-used distributed solve / BLAS-3
 //! entry points across all four precisions; extend as needed.
 
-#![allow(non_snake_case, non_camel_case_types, dead_code, clippy::all)]
+#![allow(
+    non_snake_case,
+    non_camel_case_types,
+    dead_code,
+    clippy::all,
+    reason = "bindgen output mirrors the C headers: names, unused items and C-only types are not ours to change"
+)]
 
 use std::os::raw::{c_char, c_int};
 

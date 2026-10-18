@@ -18,6 +18,10 @@
 //! invoke them via `mpiexec -n N cargo test -- --ignored` from inside
 //! a properly configured MPI host.
 
+#![allow(
+    clippy::too_many_arguments,
+    reason = "wrappers mirror the C API's argument lists"
+)]
 #![warn(missing_debug_implementations)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
@@ -260,7 +264,6 @@ pub fn numroc(n: usize, nb: usize, iproc: usize, isrcproc: usize, nprocs: usize)
 /// Distributed double-precision general solve `A · X = B`.
 /// All matrices use 1-based row/column origins per Fortran convention
 /// (`ia`, `ja`, `ib`, `jb` are typically 1).
-#[allow(clippy::too_many_arguments)]
 pub fn pdgesv(
     n: usize,
     nrhs: usize,
@@ -297,7 +300,6 @@ pub fn pdgesv(
 }
 
 /// Distributed double-precision `C := α · op(A) · op(B) + β · C`.
-#[allow(clippy::too_many_arguments)]
 pub fn pdgemm(
     trans_a: Trans,
     trans_b: Trans,
@@ -350,7 +352,6 @@ pub fn pdgemm(
 }
 
 /// Distributed double-precision Cholesky factorization.
-#[allow(clippy::too_many_arguments)]
 pub fn pdpotrf(
     uplo: Uplo,
     n: usize,
@@ -377,7 +378,6 @@ pub fn pdpotrf(
 }
 
 /// Distributed double-precision LU factorization with partial pivoting.
-#[allow(clippy::too_many_arguments)]
 pub fn pdgetrf(
     m: usize,
     n: usize,
@@ -406,7 +406,6 @@ pub fn pdgetrf(
 }
 
 /// Distributed back-substitution after [`pdgetrf`].
-#[allow(clippy::too_many_arguments)]
 pub fn pdgetrs(
     trans: Trans,
     n: usize,
@@ -446,7 +445,6 @@ pub fn pdgetrs(
 }
 
 /// Distributed back-substitution after [`pdpotrf`].
-#[allow(clippy::too_many_arguments)]
 pub fn pdpotrs(
     uplo: Uplo,
     n: usize,
@@ -502,7 +500,6 @@ impl EigCompute {
 /// Distributed real symmetric eigendecomposition. Provide `work` of
 /// size `lwork`; pass `lwork = -1` for a workspace-size query (the
 /// optimum is written into `work[0]`).
-#[allow(clippy::too_many_arguments)]
 pub fn pdsyev(
     compute: EigCompute,
     uplo: Uplo,
@@ -547,7 +544,6 @@ pub fn pdsyev(
 
 /// Distributed least squares `min || A·X − B ||₂`. `trans = Trans::No`
 /// for the standard problem; `Trans::T` for the transposed.
-#[allow(clippy::too_many_arguments)]
 pub fn pdgels(
     trans: Trans,
     m: usize,
@@ -592,7 +588,6 @@ pub fn pdgels(
 }
 
 /// Distributed QR factorization.
-#[allow(clippy::too_many_arguments)]
 pub fn pdgeqrf(
     m: usize,
     n: usize,
@@ -629,7 +624,6 @@ pub fn pdgeqrf(
 // ===========================================================================
 
 /// Single-precision distributed `A·X = B` solve. See [`pdgesv`].
-#[allow(clippy::too_many_arguments)]
 pub fn psgesv(
     n: usize,
     nrhs: usize,
@@ -666,7 +660,6 @@ pub fn psgesv(
 }
 
 /// Single-precision distributed `C := α · op(A) · op(B) + β · C`. See [`pdgemm`].
-#[allow(clippy::too_many_arguments)]
 pub fn psgemm(
     trans_a: Trans,
     trans_b: Trans,
@@ -774,7 +767,6 @@ pub fn psgetrf(
 
 /// Single-precision distributed back-substitution after [`psgetrf`]. See
 /// [`pdgetrs`].
-#[allow(clippy::too_many_arguments)]
 pub fn psgetrs(
     trans: Trans,
     n: usize,
@@ -814,7 +806,6 @@ pub fn psgetrs(
 }
 
 /// Single-precision Cholesky back-substitution. See [`pdpotrs`].
-#[allow(clippy::too_many_arguments)]
 pub fn pspotrs(
     uplo: Uplo,
     n: usize,
@@ -852,7 +843,6 @@ pub fn pspotrs(
 }
 
 /// Single-precision symmetric eigendecomposition. See [`pdsyev`].
-#[allow(clippy::too_many_arguments)]
 pub fn pssyev(
     compute: EigCompute,
     uplo: Uplo,
@@ -900,7 +890,6 @@ pub fn pssyev(
 }
 
 /// Single-precision distributed least-squares solve. See [`pdgels`].
-#[allow(clippy::too_many_arguments)]
 pub fn psgels(
     trans: Trans,
     m: usize,
@@ -946,7 +935,6 @@ pub fn psgels(
 }
 
 /// Single-precision distributed QR. See [`pdgeqrf`].
-#[allow(clippy::too_many_arguments)]
 pub fn psgeqrf(
     m: usize,
     n: usize,
@@ -986,7 +974,6 @@ pub fn psgeqrf(
 /// Single-precision complex distributed solve `A·X = B`. Elements are
 /// passed as `[f32; 2]` `(re, im)` pairs (ABI-compatible with
 /// `Complex32`).
-#[allow(clippy::too_many_arguments)]
 pub fn pcgesv(
     n: usize,
     nrhs: usize,
@@ -1025,7 +1012,6 @@ pub fn pcgesv(
 /// Double-precision complex distributed solve `A·X = B`. Elements are
 /// passed as `[f64; 2]` `(re, im)` pairs (ABI-compatible with
 /// `Complex64`).
-#[allow(clippy::too_many_arguments)]
 pub fn pzgesv(
     n: usize,
     nrhs: usize,
