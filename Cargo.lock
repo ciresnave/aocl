@@ -13,7 +13,7 @@ dependencies = [
 
 [[package]]
 name = "aocl"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "aocl-blas",
  "aocl-compression",
@@ -33,7 +33,7 @@ dependencies = [
 
 [[package]]
 name = "aocl-blas"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "aocl-blas-sys",
  "aocl-error",
@@ -42,7 +42,7 @@ dependencies = [
 
 [[package]]
 name = "aocl-blas-sys"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "aocl-build",
  "libc",
@@ -50,14 +50,14 @@ dependencies = [
 
 [[package]]
 name = "aocl-build"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "bindgen",
 ]
 
 [[package]]
 name = "aocl-compression"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "aocl-compression-sys",
  "aocl-error",
@@ -65,7 +65,7 @@ dependencies = [
 
 [[package]]
 name = "aocl-compression-sys"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "aocl-build",
  "libc",
@@ -73,7 +73,7 @@ dependencies = [
 
 [[package]]
 name = "aocl-crypto"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "aocl-crypto-sys",
  "aocl-error",
@@ -81,7 +81,7 @@ dependencies = [
 
 [[package]]
 name = "aocl-crypto-sys"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "aocl-build",
  "libc",
@@ -89,7 +89,7 @@ dependencies = [
 
 [[package]]
 name = "aocl-data-analytics"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "aocl-data-analytics-sys",
  "aocl-error",
@@ -98,7 +98,7 @@ dependencies = [
 
 [[package]]
 name = "aocl-data-analytics-sys"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "aocl-build",
  "libc",
@@ -106,14 +106,14 @@ dependencies = [
 
 [[package]]
 name = "aocl-error"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "thiserror",
 ]
 
 [[package]]
 name = "aocl-fft"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "aocl-error",
  "aocl-fft-sys",
@@ -121,7 +121,7 @@ dependencies = [
 
 [[package]]
 name = "aocl-fft-sys"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "aocl-build",
  "libc",
@@ -129,7 +129,7 @@ dependencies = [
 
 [[package]]
 name = "aocl-lapack"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "aocl-error",
  "aocl-lapack-sys",
@@ -138,7 +138,7 @@ dependencies = [
 
 [[package]]
 name = "aocl-lapack-sys"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "aocl-build",
  "libc",
@@ -146,7 +146,7 @@ dependencies = [
 
 [[package]]
 name = "aocl-math"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "aocl-error",
  "aocl-math-sys",
@@ -155,7 +155,7 @@ dependencies = [
 
 [[package]]
 name = "aocl-math-sys"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "aocl-build",
  "libc",
@@ -163,7 +163,7 @@ dependencies = [
 
 [[package]]
 name = "aocl-rng"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "aocl-error",
  "aocl-rng-sys",
@@ -171,7 +171,7 @@ dependencies = [
 
 [[package]]
 name = "aocl-rng-sys"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "aocl-build",
  "libc",
@@ -179,7 +179,7 @@ dependencies = [
 
 [[package]]
 name = "aocl-scalapack"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "aocl-error",
  "aocl-scalapack-sys",
@@ -188,7 +188,7 @@ dependencies = [
 
 [[package]]
 name = "aocl-scalapack-sys"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "aocl-build",
  "libc",
@@ -196,7 +196,7 @@ dependencies = [
 
 [[package]]
 name = "aocl-securerng"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "aocl-error",
  "aocl-securerng-sys",
@@ -204,7 +204,7 @@ dependencies = [
 
 [[package]]
 name = "aocl-securerng-sys"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "aocl-build",
  "libc",
@@ -212,7 +212,7 @@ dependencies = [
 
 [[package]]
 name = "aocl-sparse"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "aocl-error",
  "aocl-sparse-sys",
@@ -221,7 +221,7 @@ dependencies = [
 
 [[package]]
 name = "aocl-sparse-sys"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "aocl-build",
  "libc",
@@ -229,7 +229,7 @@ dependencies = [
 
 [[package]]
 name = "aocl-sys"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "aocl-blas-sys",
  "aocl-compression-sys",
@@ -247,11 +247,11 @@ dependencies = [
 
 [[package]]
 name = "aocl-types"
-version = "0.1.3"
+version = "0.1.4"
 
 [[package]]
 name = "aocl-utils"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "aocl-error",
  "aocl-utils-sys",
@@ -259,7 +259,7 @@ dependencies = [
 
 [[package]]
 name = "aocl-utils-sys"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "aocl-build",
  "libc",
